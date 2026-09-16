@@ -1,0 +1,46 @@
+{
+  "name": "booking-call-center-agent",
+  "version": "1.0.0",
+  "description": "Multi-tenant AI call center booking backend",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "migrate": "node db/migrate.js",
+    "test": "node --test",
+    "load-test": "node scripts/loadTest.js",
+    "create-platform-admin": "node scripts/createPlatformAdmin.js",
+    "local-db": "node scripts/localMongo.js",
+    "local-tunnel": "node scripts/localTunnel.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UnzilaSohail/Booking-Call-Center-Agent-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/UnzilaSohail/Booking-Call-Center-Agent-/issues"
+  },
+  "homepage": "https://github.com/UnzilaSohail/Booking-Call-Center-Agent-#readme",
+  "dependencies": {
+    "@google/genai": "^2.22.0",
+    "@sendgrid/mail": "^8.1.6",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "googleapis": "^181.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "luxon": "^3.7.2",
+    "mongodb": "^7.6.0",
+    "twilio": "^6.1.1",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "cloudflared": "^0.7.3",
+    "mongodb-memory-server": "^11.2.0"
+  }
+}

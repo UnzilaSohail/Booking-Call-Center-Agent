@@ -1,0 +1,24 @@
+{
+  "name": "booking-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Admin dashboard (plan.md §8 phase 2) — calendar view + manual booking, reading/writing the same API the voice agent uses.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3002",
+    "build": "next build",
+    "start": "next start -p 3002"
+  },
+  "dependencies": {
+    "@fullcalendar/core": "^6.1.21",
+    "@fullcalendar/daygrid": "^6.1.21",
+    "@fullcalendar/interaction": "^6.1.21",
+    "@fullcalendar/react": "^6.1.21",
+    "@fullcalendar/timegrid": "^6.1.21",
+    "lucide-react": "^1.46.0",
+    "next": "^16.3.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "recharts": "^3.10.1"
+  }
+}

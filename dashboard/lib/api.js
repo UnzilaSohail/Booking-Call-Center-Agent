@@ -1,0 +1,120 @@
+// Thin client for the backend REST API (../src). No calendar logic lives here — every
+// availability/conflict decision stays server-side so the dashboard and the voice agent
+// can never disagree (plan.md §8 phase 2: "no calendar logic duplicated").
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const TOKEN_KEY = 'booking_admin_token';
+const PLATFORM_TOKEN_KEY = 'booking_platform_admin_token';
+
+function makeTokenStore(key) {
+  return {
+    get: () => (typeof window === 'undefined' ? null : window.localStorage.getItem(key)),
+    set: (token) => window.localStorage.setItem(key, token),
+    clear: () => window.localStorage.removeItem(key),
+  };
+}
+
+const companyTokenStore = makeTokenStore(TOKEN_KEY);
+const platformTokenStore = makeTokenStore(PLATFORM_TOKEN_KEY);
+
+// Kept as named exports for the existing company-admin pages.
+export const getToken = companyTokenStore.get;
+export const setToken = companyTokenStore.set;
+export const clearToken = companyTokenStore.clear;
+
+class ApiError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function request(path, { method = 'GET', body, tokenStore } = {}) {
+  const headers = { 'content-type': 'application/json' };
+  const token = tokenStore?.get();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, data?.error || `request failed (${res.status})`);
+  return data;
+}
+
+export const api = {
+  login: (payload) => request('/api/auth/login', { method: 'POST', body: payload }),
+  getMe: () => request('/api/auth/me', { tokenStore: companyTokenStore }),
+  changePassword: (payload) => request('/api/auth/password', { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
+
+  getBusiness: () => request('/api/business', { tokenStore: companyTokenStore }),
+  updateBusiness: (payload) => request('/api/business', { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
+
+  listServices: () => request('/api/services', { tokenStore: companyTokenStore }),
+  createService: (payload) => request('/api/services', { method: 'POST', body: payload, tokenStore: companyTokenStore }),
+  updateService: (id, payload) => request(`/api/services/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
+  deleteService: (id) => request(`/api/services/${id}`, { method: 'DELETE', tokenStore: companyTokenStore }),
+
+  listStaff: () => request('/api/staff', { tokenStore: companyTokenStore }),
+  createStaff: (payload) => request('/api/staff', { method: 'POST', body: payload, tokenStore: companyTokenStore }),
+  updateStaff: (id, payload) => request(`/api/staff/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
+  deleteStaff: (id) => request(`/api/staff/${id}`, { method: 'DELETE', tokenStore: companyTokenStore }),
+
+  getBusinessHours: () => request('/api/business-hours', { tokenStore: companyTokenStore }),
+  putBusinessHours: (hours) => request('/api/business-hours', { method: 'PUT', body: { hours }, tokenStore: companyTokenStore }),
+
+  putFaqs: (faqs) => request('/api/faqs', { method: 'PUT', body: { faqs }, tokenStore: companyTokenStore }),
+
+  getAvailability: (serviceId, date, staffId, excludeBookingId) =>
+    request(`/api/availability?${new URLSearchParams({ serviceId, date, ...(staffId ? { staffId } : {}), ...(excludeBookingId ? { excludeBookingId } : {}) })}`, { tokenStore: companyTokenStore }),
+
+  listBookings: (from, to, extra = {}) => {
+    const params = {};
+    for (const [k, v] of Object.entries({ from, to, ...extra })) if (v !== undefined && v !== '') params[k] = v;
+    return request(`/api/bookings?${new URLSearchParams(params)}`, { tokenStore: companyTokenStore });
+  },
+  createBooking: (payload) => request('/api/bookings', { method: 'POST', body: { ...payload, createdVia: 'dashboard' }, tokenStore: companyTokenStore }),
+  rescheduleBooking: (id, startTime) => request(`/api/bookings/${id}`, { method: 'PATCH', body: { startTime }, tokenStore: companyTokenStore }),
+  cancelBooking: (id) => request(`/api/bookings/${id}`, { method: 'DELETE', tokenStore: companyTokenStore }),
+
+  getStats: () => request('/api/stats', { tokenStore: companyTokenStore }),
+  getAnalytics: () => request('/api/analytics', { tokenStore: companyTokenStore }),
+
+  calendarStatus: () => request('/api/calendar/status', { tokenStore: companyTokenStore }),
+  calendarConnectUrl: () => request('/api/calendar/connect', { tokenStore: companyTokenStore }),
+
+  getPhoneNumber: () => request('/api/phone-number', { tokenStore: companyTokenStore }),
+  provisionPhoneNumber: (payload) => request('/api/phone-number/provision', { method: 'POST', body: payload, tokenStore: companyTokenStore }),
+
+  listCallLogs: (from, to) => request(`/api/call-logs?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`, { tokenStore: companyTokenStore }),
+};
+
+// Platform-admin actions: registering/listing companies. A separate token namespace
+// from the company-admin `api` above, so being logged into one doesn't imply the other.
+export const platformApi = {
+  getToken: platformTokenStore.get,
+  setToken: platformTokenStore.set,
+  clearToken: platformTokenStore.clear,
+
+  login: (payload) => request('/api/platform/auth/login', { method: 'POST', body: payload }),
+  changePassword: (payload) => request('/api/platform/auth/password', { method: 'PATCH', body: payload, tokenStore: platformTokenStore }),
+  getMe: () => request('/api/platform/auth/me', { tokenStore: platformTokenStore }),
+  listCompanies: (q) => request(`/api/platform/businesses${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: platformTokenStore }),
+  getCompany: (id) => request(`/api/platform/businesses/${id}`, { tokenStore: platformTokenStore }),
+  setCompanyStatus: (id, status) => request(`/api/platform/businesses/${id}/status`, { method: 'PATCH', body: { status }, tokenStore: platformTokenStore }),
+  resetAdminPassword: (adminId, newPassword) => request(`/api/platform/admins/${adminId}/password`, { method: 'PATCH', body: { newPassword }, tokenStore: platformTokenStore }),
+  registerCompany: (payload) => request('/api/platform/businesses', { method: 'POST', body: payload, tokenStore: platformTokenStore }),
+  getStats: () => request('/api/platform/stats', { tokenStore: platformTokenStore }),
+  getAnalytics: () => request('/api/platform/analytics', { tokenStore: platformTokenStore }),
+  listBookings: (q, status) => request(`/api/platform/bookings?${new URLSearchParams({ ...(q ? { q } : {}), ...(status ? { status } : {}) })}`, { tokenStore: platformTokenStore }),
+  listCallLogs: () => request('/api/platform/call-logs', { tokenStore: platformTokenStore }),
+};
+
+// Single login call used by the one login page (app/login/page.jsx) — tries both roles
+// server-side (src/routes/unifiedLogin.js) so the admin doesn't have to know or pick
+// which one they are. Returns { token, role: 'business' | 'platform' }; the caller
+// stores the token in the matching store (companyTokenStore vs platformTokenStore) and
+// routes to that role's dashboard.
+export const unifiedLogin = (payload) => request('/api/login', { method: 'POST', body: payload });
+export function storeTokenForRole(role, token) {
+  (role === 'platform' ? platformTokenStore : companyTokenStore).set(token);
+}
+
+export { ApiError };

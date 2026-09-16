@@ -1,0 +1,378 @@
+:root {
+  color-scheme: light;
+
+  /* --swatch-1/2 are pinned to the sidebar specifically (components/Sidebar.jsx,
+     PlatformSidebar.jsx via .sidebar/.sidebar-link.active in this file) and stay
+     exactly as they were. Everything else below — --ink, --accent, --success etc. —
+     is a separate, independently-refined set for the rest of the UI, richer and more
+     defined than before, deliberately decoupled from the sidebar so tuning one never
+     moves the other. */
+  --swatch-1: #1a3a52; /* sidebar background only */
+  --swatch-2: #235068; /* sidebar active-item background only */
+  --swatch-4: #8ab4c4; /* sidebar active-item left-border accent only */
+  --swatch-5: #d7dbdd; /* pale gray, still used as a shared neutral */
+
+  --bg: #eef3f5;
+  --surface: #ffffff;
+  --surface-alt: #e3ebee;
+  --border: #cfd9dd;
+  --border-strong: #a9b8bd;
+  --text: #16324a;
+  --text-muted: #4d5c66;
+  --text-faint: #85949c;
+
+  --ink: #17344a;
+  --ink-hover: #234a63;
+  --ink-text: #f2f6f7;
+  --accent: #2563eb;
+  --accent-soft: #dbeafe;
+
+  /* Semantic + chart colors — genuinely vibrant and distinct from each other now
+     (badges, icon tiles, chart series), replacing the earlier all-blue-shades set. */
+  --success: #16a34a;
+  --success-soft: #dcfce7;
+  --warning: #d97706;
+  --warning-soft: #fef3c7;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --info: #0891b2;
+  --info-soft: #cffafe;
+  --violet: #7c3aed;
+  --violet-soft: #ede9fe;
+
+  --radius-sm: 5px;
+  --radius: 8px;
+  --radius-lg: 10px;
+  --shadow: 0 1px 2px rgba(10, 22, 33, 0.06);
+  --shadow-lg: 0 12px 32px rgba(10, 22, 33, 0.16);
+
+  --sidebar-w: 216px;
+  --font-serif: 'Fraunces', Georgia, serif;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+h1, h2, h3 {
+  font-family: var(--font-serif);
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--text);
+}
+h1 { font-size: 22px; }
+h2 { font-size: 16.5px; }
+
+/* ---- Buttons ---- */
+button {
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 7px 13px;
+  font-weight: 550;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+button:hover { background: var(--surface-alt); }
+button:active { transform: translateY(0.5px); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button.primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--ink-text);
+}
+button.primary:hover { background: var(--ink-hover); border-color: var(--ink-hover); }
+
+button.danger {
+  background: var(--surface);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+button.danger:hover { background: var(--danger-soft); }
+
+button.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+button.ghost:hover { background: var(--surface-alt); color: var(--text); }
+
+button.icon-btn {
+  padding: 5px;
+  border-color: transparent;
+  background: transparent;
+}
+button.icon-btn:hover { background: var(--surface-alt); }
+
+/* ---- Inputs ---- */
+input, select, textarea {
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  width: 100%;
+  background: var(--surface);
+}
+input:disabled, select:disabled { background: var(--surface-alt); color: var(--text-faint); }
+
+/* ---- Layout primitives ---- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+}
+
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 30px 26px 64px;
+}
+
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.field label { font-size: 11.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.row { display: flex; gap: 12px; flex-wrap: wrap; }
+.stack { display: flex; flex-direction: column; gap: 18px; }
+
+.error-text { color: var(--danger); font-size: 13px; }
+.success-text { color: var(--success); font-size: 13px; }
+.muted { color: var(--text-muted); }
+.faint { color: var(--text-faint); }
+
+/* ---- Badges ---- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.badge.success { background: var(--success-soft); color: var(--success); }
+.badge.warning { background: var(--warning-soft); color: var(--warning); }
+.badge.danger { background: var(--danger-soft); color: var(--danger); }
+.badge.info { background: var(--info-soft); color: var(--info); }
+.badge.violet { background: var(--violet-soft); color: var(--violet); }
+.badge.neutral { background: var(--surface-alt); color: var(--text-muted); }
+
+/* ---- Modal ---- */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(10, 22, 33, 0.4);
+  display: flex; align-items: center; justify-content: center; z-index: 50;
+  padding: 16px;
+}
+.modal {
+  background: var(--surface); border-radius: var(--radius-lg); padding: 24px;
+  width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+}
+
+/* ---- Table ---- */
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+th { color: var(--text-faint); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+tbody tr:hover { background: var(--surface-alt); }
+
+/* ---- Sidebar app shell ---- */
+.app-shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: var(--swatch-1);
+  display: flex;
+  flex-direction: column;
+  padding: 22px 14px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.sidebar-brand {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 17px;
+  padding: 2px 8px 22px;
+  letter-spacing: -0.01em;
+  color: #f5f7f8; /* pinned, independent of --ink-text so tuning that elsewhere never touches the sidebar */
+}
+
+.sidebar-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: rgba(245, 248, 247, 0.62);
+  font-weight: 500;
+  font-size: 13.5px;
+  border-left: 2px solid transparent;
+}
+.sidebar-link:hover { background: rgba(245, 248, 247, 0.08); text-decoration: none; color: #f5f7f8; }
+.sidebar-link.active { color: #f5f7f8; border-left-color: var(--swatch-4); background: var(--swatch-2); font-weight: 600; }
+
+.sidebar button.ghost { color: rgba(245, 248, 247, 0.62); }
+.sidebar button.ghost:hover { background: rgba(245, 248, 247, 0.08); color: #f5f7f8; }
+
+.main-content { flex: 1; min-width: 0; background: var(--surface); }
+
+/* ---- Stat strip (replaces the boxed icon-card pattern — one bordered strip, dividers not boxes) ---- */
+.stat-strip {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
+}
+.stat-strip .stat {
+  flex: 1;
+  padding: 16px 20px;
+  border-right: 1px solid var(--border);
+}
+.stat-strip .stat:last-child { border-right: none; }
+.stat-strip .value { font-family: var(--font-serif); font-size: 27px; font-weight: 560; letter-spacing: -0.01em; }
+.stat-strip .label { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+
+/* ---- Icon-badge stat cards (platform Overview) ---- */
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.stat-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.stat-card .icon-badge {
+  width: 40px; height: 40px;
+  border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 14px;
+}
+.stat-card .value { font-family: var(--font-serif); font-size: 26px; font-weight: 560; letter-spacing: -0.01em; }
+.stat-card .label { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+.stat-card .trend { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; margin-top: 10px; }
+.stat-card .trend.up { color: var(--success); }
+.stat-card .trend.down { color: var(--danger); }
+.stat-card .trend.flat { color: var(--text-faint); }
+.stat-card .trend .trend-context { color: var(--text-faint); font-weight: 500; }
+@media (max-width: 860px) { .stat-cards { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px) { .stat-cards { grid-template-columns: 1fr; } }
+
+/* ---- Avatars (initials, deterministic color) ---- */
+.avatar {
+  flex-shrink: 0;
+  border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  color: #f4f8f9;
+  font-weight: 650;
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+}
+
+/* ---- Leaderboard progress bar ---- */
+.progress-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* ---- Toasts ---- */
+.toast-stack {
+  position: fixed; bottom: 20px; right: 20px; z-index: 100;
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: 340px;
+}
+.toast {
+  background: var(--ink);
+  color: var(--ink-text);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: var(--shadow-lg);
+  display: flex; align-items: center; gap: 8px;
+}
+.toast.success { background: var(--success); }
+.toast.error { background: var(--danger); }
+
+/* ---- Empty state ---- */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; padding: 48px 20px; text-align: center; color: var(--text-muted);
+}
+
+@media (max-width: 860px) {
+  .app-shell { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: static; flex-direction: row; overflow-x: auto; padding: 10px; }
+  .sidebar-brand { display: none; }
+  .page { padding: 18px 14px 40px; }
+  .stat-strip { flex-direction: column; }
+  .stat-strip .stat { border-right: none; border-bottom: 1px solid var(--border); }
+  .stat-strip .stat:last-child { border-bottom: none; }
+}
+
+/* ---- FullCalendar theme override — it ships a bright-blue default that would clash
+   with the warm/ink palette above otherwise. ---- */
+.fc {
+  --fc-border-color: var(--border);
+  --fc-button-text-color: var(--text);
+  --fc-button-bg-color: var(--surface);
+  --fc-button-border-color: var(--border-strong);
+  --fc-button-hover-bg-color: var(--surface-alt);
+  --fc-button-hover-border-color: var(--border-strong);
+  --fc-button-active-bg-color: var(--ink);
+  --fc-button-active-border-color: var(--ink);
+  --fc-today-bg-color: var(--accent-soft);
+  --fc-now-indicator-color: var(--accent);
+  --fc-highlight-color: var(--accent-soft);
+  font-family: inherit;
+}
+.fc .fc-toolbar-title { font-family: var(--font-serif); font-weight: 560; }
+.fc .fc-button { text-transform: capitalize; font-weight: 550; box-shadow: none !important; }
+.fc .fc-button-primary:not(:disabled).fc-button-active { color: var(--ink-text); }
+.fc a { text-decoration: none; }
+/* FullCalendar's toolbar doesn't wrap by default — without this, the three toolbar
+   groups (prev/next, title, view switcher) overflow horizontally the moment the
+   calendar column gets narrower than all three combined, which it now regularly is
+   since the calendar sits next to the sidebar instead of full-width. */
+.fc .fc-toolbar {
+  flex-wrap: wrap;
+  gap: 10px;
+  row-gap: 10px;
+}
+.fc .fc-toolbar-chunk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

@@ -1,0 +1,6 @@
+node_modules/
+.env
+.env.local
+dashboard/.next/
+dashboard/.env.local
+.local_mongo_data/
