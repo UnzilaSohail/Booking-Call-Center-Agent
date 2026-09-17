@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  CalendarDays, LayoutDashboard, ListChecks, LogOut, Phone, Settings as SettingsIcon,
+  CalendarDays, LayoutDashboard, ListChecks, ListTodo, LogOut, Phone, Settings as SettingsIcon,
   Tag, Users,
 } from 'lucide-react';
 import Avatar from './Avatar';
@@ -16,6 +16,7 @@ const LINKS = [
   { href: '/calls', label: 'Calls', icon: Phone },
   { href: '/services', label: 'Services', icon: Tag },
   { href: '/team', label: 'Team', icon: Users },
+  { href: '/onboarding', label: 'Onboarding', icon: ListTodo },
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 

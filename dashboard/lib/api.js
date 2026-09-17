@@ -47,6 +47,20 @@ export const api = {
   getBusiness: () => request('/api/business', { tokenStore: companyTokenStore }),
   updateBusiness: (payload) => request('/api/business', { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
 
+  signup: (payload) => request('/api/signup', { method: 'POST', body: payload }),
+
+  getOnboardingStatus: () => request('/api/onboarding/status', { tokenStore: companyTokenStore }),
+  sendVerificationCode: (channel) => request('/api/onboarding/verify/send', { method: 'POST', body: { channel }, tokenStore: companyTokenStore }),
+  confirmVerificationCode: (channel, code) => request('/api/onboarding/verify/confirm', { method: 'POST', body: { channel, code }, tokenStore: companyTokenStore }),
+  setVoice: (voiceName) => request('/api/onboarding/voice', { method: 'POST', body: { voiceName }, tokenStore: companyTokenStore }),
+  triggerTestCall: (toPhoneNumber) => request('/api/onboarding/test-call', { method: 'POST', body: { toPhoneNumber }, tokenStore: companyTokenStore }),
+  goLive: () => request('/api/onboarding/go-live', { method: 'POST', tokenStore: companyTokenStore }),
+
+  listLocations: () => request('/api/locations', { tokenStore: companyTokenStore }),
+  createLocation: (payload) => request('/api/locations', { method: 'POST', body: payload, tokenStore: companyTokenStore }),
+  updateLocation: (id, payload) => request(`/api/locations/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
+  deleteLocation: (id) => request(`/api/locations/${id}`, { method: 'DELETE', tokenStore: companyTokenStore }),
+
   listServices: () => request('/api/services', { tokenStore: companyTokenStore }),
   createService: (payload) => request('/api/services', { method: 'POST', body: payload, tokenStore: companyTokenStore }),
   updateService: (id, payload) => request(`/api/services/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),

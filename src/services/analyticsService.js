@@ -73,7 +73,7 @@ export async function getAnalytics(businessId) {
       // Call outcomes, current vs previous 30-day window — conversion rate plus its
       // trend (the "+6% vs previous period" style badge on the Call conversion card).
       col('call_logs').aggregate([
-        { $match: { created_at: { $gte: daysAgo(59) } } },
+        { $match: { created_at: { $gte: daysAgo(59) }, is_test: { $ne: true } } },
         { $group: {
           _id: { $cond: [{ $gte: ['$created_at', daysAgo(29)] }, 'current', 'previous'] },
           total: { $sum: 1 },

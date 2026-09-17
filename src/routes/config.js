@@ -155,10 +155,11 @@ configRouter.get('/business', async (req, res, next) => {
     const db = await getDb();
     const business = await db.collection('businesses').findOne(
       { _id: req.businessId },
-      { projection: { name: 1, timezone: 1, phone_number: 1, reschedule_cutoff_minutes: 1, contact_email: 1, contact_phone: 1, address: 1, faqs: 1 } }
+      { projection: { name: 1, industry: 1, timezone: 1, phone_number: 1, reschedule_cutoff_minutes: 1, contact_email: 1, contact_phone: 1, address: 1, faqs: 1, voice_name: 1 } }
     );
     res.json({
       name: business.name,
+      industry: business.industry ?? null,
       timezone: business.timezone,
       phoneNumber: business.phone_number ?? null,
       rescheduleCutoffMinutes: business.reschedule_cutoff_minutes,
@@ -166,6 +167,7 @@ configRouter.get('/business', async (req, res, next) => {
       contactPhone: business.contact_phone ?? '',
       address: business.address ?? '',
       faqs: business.faqs ?? [],
+      voiceName: business.voice_name ?? null,
     });
   } catch (err) {
     next(err);
@@ -174,12 +176,13 @@ configRouter.get('/business', async (req, res, next) => {
 
 configRouter.patch('/business', async (req, res, next) => {
   try {
-    const { name, timezone, rescheduleCutoffMinutes, contactEmail, contactPhone, address } = req.body ?? {};
+    const { name, industry, timezone, rescheduleCutoffMinutes, contactEmail, contactPhone, address } = req.body ?? {};
     const updates = {};
     if (name !== undefined) {
       if (!name) return res.status(400).json({ error: 'name cannot be empty' });
       updates.name = name;
     }
+    if (industry !== undefined) updates.industry = industry || null;
     if (timezone !== undefined) {
       if (!timezone) return res.status(400).json({ error: 'timezone cannot be empty' });
       updates.timezone = timezone;

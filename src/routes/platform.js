@@ -252,7 +252,7 @@ platformRouter.get('/analytics', async (req, res, next) => {
 
       // Voice-agent call performance, current vs previous 30-day window.
       db.collection('call_logs').aggregate([
-        { $match: { created_at: { $gte: prevWindowStart } } },
+        { $match: { created_at: { $gte: prevWindowStart }, is_test: { $ne: true } } },
         { $group: {
           _id: { $cond: [{ $gte: ['$created_at', trendStart] }, 'current', 'previous'] },
           total: { $sum: 1 },
@@ -386,7 +386,7 @@ function validateFaqs(faqs) {
 // services directly, all scoped to the new business_id, no separate follow-up calls needed.
 platformRouter.post('/businesses', async (req, res, next) => {
   const {
-    businessName, timezone, adminName, adminEmail, adminPassword,
+    businessName, industry, timezone, adminName, adminEmail, adminPassword,
     contactEmail, contactPhone, address, hours, services, faqs,
   } = req.body ?? {};
   if (!businessName || !adminEmail || !adminPassword) {
@@ -402,6 +402,7 @@ platformRouter.post('/businesses', async (req, res, next) => {
     await db.collection('businesses').insertOne({
       _id: businessId,
       name: businessName,
+      industry: industry || null,
       timezone: timezone || 'UTC',
       contact_email: contactEmail || null,
       contact_phone: contactPhone || null,

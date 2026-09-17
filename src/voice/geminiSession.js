@@ -13,6 +13,7 @@
 import { GoogleGenAI, Modality } from '@google/genai';
 import { toolDeclarations, createToolHandlers } from './tools.js';
 import { withTenant } from '../db.js';
+import { DEFAULT_VOICE } from '../routes/onboarding.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const MODEL = process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live';
@@ -61,6 +62,10 @@ export async function startGeminiSession({ business, callSid, onAudio, onTranscr
       responseModalities: [Modality.AUDIO],
       systemInstruction: { parts: [{ text: systemInstruction }] },
       tools: [{ functionDeclarations: toolDeclarations }],
+      // Per-business AI voice, set via onboarding (src/routes/onboarding.js POST
+      // /onboarding/voice); falls back to the same default a business gets before ever
+      // touching that step.
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: business.voice_name || DEFAULT_VOICE } } },
       // Native audio in/out on one session absorbs turn-taking/interruption (barge-in)
       // handling — no custom VAD needed (plan.md §3, §6 "Dead air / silence handling").
     },

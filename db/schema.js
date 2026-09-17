@@ -61,4 +61,8 @@ export async function ensureIndexes(db) {
     { call_sid: 1 },
     { unique: true, partialFilterExpression: { call_sid: { $type: 'string' } } }
   );
+
+  // Location records (self-signup + Settings) — address/contact display only, no
+  // booking/call-routing logic depends on this yet (see routes/locations.js).
+  await db.collection('locations').createIndex({ business_id: 1 });
 }

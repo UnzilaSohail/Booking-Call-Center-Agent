@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { unifiedLogin, storeTokenForRole } from '../../lib/api';
 
@@ -49,8 +50,10 @@ export default function LoginPage() {
           {loading ? 'Logging in...' : 'Log in'}
         </button>
         <p className="muted" style={{ marginTop: 16, fontSize: 12.5 }}>
-          Works for both company and platform admin accounts — new accounts are created
-          by a platform admin, not self-service.
+          Works for both company and platform admin accounts.
+        </p>
+        <p className="muted" style={{ marginTop: 4, fontSize: 12.5 }}>
+          New business? <Link href="/signup">Sign up</Link>
         </p>
       </form>
     </div>

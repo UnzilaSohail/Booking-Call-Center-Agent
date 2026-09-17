@@ -3,17 +3,20 @@ import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { platformApi } from '../lib/api';
 import { useToast } from '../lib/Toast';
+import { useTimezones } from '../lib/timezones';
 
-const TIMEZONES = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : ['UTC'];
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const INDUSTRIES = ['Salon / Spa', 'Medical / Dental', 'Fitness', 'Home Services', 'Restaurant', 'Professional Services', 'Other'];
 
 const emptyService = () => ({ name: '', durationMinutes: 30, bufferMinutes: 0, price: '' });
 const emptyFaq = () => ({ question: '', answer: '' });
 
 export default function RegisterCompanyForm({ onRegistered }) {
   const toast = useToast();
+  const TIMEZONES = useTimezones();
 
   const [businessName, setBusinessName] = useState('');
+  const [industry, setIndustry] = useState('');
   const [timezone, setTimezone] = useState('UTC');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -42,7 +45,7 @@ export default function RegisterCompanyForm({ onRegistered }) {
   }
 
   function reset() {
-    setBusinessName(''); setContactEmail(''); setContactPhone(''); setAddress('');
+    setBusinessName(''); setIndustry(''); setContactEmail(''); setContactPhone(''); setAddress('');
     setAdminName(''); setAdminEmail(''); setAdminPassword('');
     setHours(DAY_NAMES.map((_, day) => ({ dayOfWeek: day, closed: day === 0 || day === 6, openTime: '09:00', closeTime: '17:00' })));
     setServices([emptyService()]);
@@ -56,7 +59,7 @@ export default function RegisterCompanyForm({ onRegistered }) {
     setSubmitting(true);
     try {
       await platformApi.registerCompany({
-        businessName, timezone, adminName: adminName || undefined, adminEmail, adminPassword,
+        businessName, industry: industry || undefined, timezone, adminName: adminName || undefined, adminEmail, adminPassword,
         contactEmail: contactEmail || undefined, contactPhone: contactPhone || undefined, address: address || undefined,
         hours: hours.filter((h) => !h.closed).map((h) => ({ dayOfWeek: h.dayOfWeek, openTime: h.openTime, closeTime: h.closeTime })),
         services: services.filter((s) => s.name.trim()).map((s) => ({ name: s.name, durationMinutes: Number(s.durationMinutes), bufferMinutes: Number(s.bufferMinutes) || 0, price: s.price ? Number(s.price) : undefined })),
@@ -86,6 +89,13 @@ export default function RegisterCompanyForm({ onRegistered }) {
             <label>Timezone</label>
             <select value={timezone} onChange={(e) => setTimezone(e.target.value)}>
               {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+            </select>
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Industry (optional)</label>
+            <select value={industry} onChange={(e) => setIndustry(e.target.value)}>
+              <option value="">Not set</option>
+              {INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
             </select>
           </div>
         </div>

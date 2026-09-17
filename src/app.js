@@ -4,6 +4,9 @@ import { authRouter, requireAuth } from './auth.js';
 import { platformAuthRouter, requirePlatformAuth } from './platformAuth.js';
 import { unifiedLoginRouter } from './routes/unifiedLogin.js';
 import { platformRouter } from './routes/platform.js';
+import { signupRouter } from './routes/signup.js';
+import { onboardingRouter } from './routes/onboarding.js';
+import { locationsRouter } from './routes/locations.js';
 import { configRouter } from './routes/config.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { calendarRouter, calendarOAuthRouter } from './routes/calendar.js';
@@ -30,6 +33,7 @@ app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/api', unifiedLoginRouter);
+app.use('/api', signupRouter);
 app.use('/api/auth', authRouter);
 // Scoped to /api/platform specifically — requirePlatformAuth must not be mounted at the
 // broader /api prefix, or it would intercept every other /api/* request (including
@@ -37,6 +41,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/platform', platformAuthRouter);
 app.use('/api/platform', requirePlatformAuth, platformRouter);
 app.use('/api', requireAuth, configRouter);
+app.use('/api', requireAuth, onboardingRouter);
+app.use('/api', requireAuth, locationsRouter);
 app.use('/api', requireAuth, bookingsRouter);
 app.use('/api', requireAuth, calendarRouter);
 app.use('/api', requireAuth, phoneNumberRouter);
