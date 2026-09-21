@@ -61,6 +61,9 @@ export async function ensureIndexes(db) {
     { call_sid: 1 },
     { unique: true, partialFilterExpression: { call_sid: { $type: 'string' } } }
   );
+  // Customer-profile call history lookup (src/services/customerService.js) — every other
+  // index on this collection is time-ordered, none are by phone.
+  await db.collection('call_logs').createIndex({ business_id: 1, phone: 1 });
 
   // Location records (self-signup + Settings) — address/contact display only, no
   // booking/call-routing logic depends on this yet (see routes/locations.js).
@@ -73,4 +76,11 @@ export async function ensureIndexes(db) {
 
   // Knowledge-base publish history (src/routes/knowledge.js) — append-only, newest first.
   await db.collection('knowledge_versions').createIndex({ business_id: 1, version: -1 });
+
+  // Staff breaks/time-off (src/routes/config.js) — looked up per staff member, time-ordered.
+  await db.collection('staff_time_off').createIndex({ business_id: 1, staff_id: 1, start_time: 1 });
+
+  // Customer records (src/services/customerService.js) — phone is the dedupe key every
+  // other phone-keyed lookup in this schema (bookings, call_logs) already relies on.
+  await db.collection('customers').createIndex({ business_id: 1, phone: 1 }, { unique: true });
 }

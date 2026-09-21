@@ -54,12 +54,12 @@ bookingsRouter.get('/bookings', async (req, res, next) => {
 
 bookingsRouter.post('/bookings', async (req, res, next) => {
   try {
-    const { customerName, phone, customerEmail, serviceId, staffId, startTime, idempotencyKey, createdVia } = req.body ?? {};
+    const { customerName, phone, customerEmail, serviceId, staffId, locationId, startTime, idempotencyKey, createdVia } = req.body ?? {};
     // Confirmation notification fires from inside createBooking() itself
     // (src/services/bookingService.js) — shared by this route and the voice agent's
     // create_booking tool, so both send it the same way instead of each remembering to.
     const { booking, replayed } = await createBooking(req.businessId, {
-      customerName, phone, customerEmail, serviceId, staffId, startTime, idempotencyKey, createdVia,
+      customerName, phone, customerEmail, serviceId, staffId, locationId, startTime, idempotencyKey, createdVia,
     });
     res.status(replayed ? 200 : 201).json(booking);
   } catch (err) {

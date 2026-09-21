@@ -6,12 +6,13 @@ import { api } from '../lib/api';
 // Handles both "new booking" and "existing booking" flows through the same slot-picking
 // UX the plan requires for calls too (plan.md §5 step 6: read back/confirm before
 // booking) — here that's just "pick a listed slot," never a freehand time.
-export default function BookingModal({ mode, booking, initialDate, services, staffList, onClose, onSaved }) {
+export default function BookingModal({ mode, booking, initialDate, services, staffList, locations = [], onClose, onSaved }) {
   const [customerName, setCustomerName] = useState(booking?.customer_name ?? '');
   const [phone, setPhone] = useState(booking?.phone ?? '');
   const [customerEmail, setCustomerEmail] = useState(booking?.customer_email ?? '');
   const [serviceId, setServiceId] = useState(booking?.service_id ?? services[0]?.id ?? '');
   const [staffId, setStaffId] = useState(booking?.staff_id ?? '');
+  const [locationId, setLocationId] = useState(booking?.location_id ?? '');
   const [date, setDate] = useState((initialDate ?? (booking ? new Date(booking.start_time) : new Date())).toISOString().slice(0, 10));
   const [slots, setSlots] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -39,7 +40,7 @@ export default function BookingModal({ mode, booking, initialDate, services, sta
       if (isReschedule) {
         await api.rescheduleBooking(booking.id, selectedSlot);
       } else {
-        await api.createBooking({ customerName, phone, customerEmail: customerEmail || undefined, serviceId, staffId: staffId || undefined, startTime: selectedSlot });
+        await api.createBooking({ customerName, phone, customerEmail: customerEmail || undefined, serviceId, staffId: staffId || undefined, locationId: locationId || undefined, startTime: selectedSlot });
       }
       onSaved();
     } catch (err) {
@@ -104,6 +105,15 @@ export default function BookingModal({ mode, booking, initialDate, services, sta
               <select value={staffId} onChange={(e) => { setStaffId(e.target.value); setSelectedSlot(null); }} disabled={isReschedule}>
                 <option value="">Any</option>
                 {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          )}
+          {locations.length > 1 && (
+            <div className="field" style={{ flex: 1 }}>
+              <label>Location (optional)</label>
+              <select value={locationId} onChange={(e) => setLocationId(e.target.value)} disabled={isReschedule}>
+                <option value="">Not specified</option>
+                {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
           )}

@@ -26,6 +26,8 @@ function BusinessProfileSection() {
       await api.updateBusiness({
         name: form.name, industry: form.industry, timezone: form.timezone, rescheduleCutoffMinutes: Number(form.rescheduleCutoffMinutes),
         contactEmail: form.contactEmail, contactPhone: form.contactPhone, address: form.address,
+        minBookingNoticeMinutes: Number(form.minBookingNoticeMinutes) || 0,
+        maxBookingWindowDays: form.maxBookingWindowDays === '' ? null : Number(form.maxBookingWindowDays),
       });
       toast.success('Business profile saved');
     } catch (err) {
@@ -72,6 +74,19 @@ function BusinessProfileSection() {
         </div>
         <p className="muted" style={{ fontSize: 12, marginTop: -6, marginBottom: 14 }}>
           How close to an appointment a caller can still reschedule/cancel it by phone. Dashboard admins can always override.
+        </p>
+        <div className="row" style={{ alignItems: 'flex-end' }}>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Minimum booking notice (minutes)</label>
+            <input type="number" min={0} value={form.minBookingNoticeMinutes} onChange={(e) => setForm({ ...form, minBookingNoticeMinutes: e.target.value })} />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Maximum booking window (days, blank = unlimited)</label>
+            <input type="number" min={1} value={form.maxBookingWindowDays ?? ''} onChange={(e) => setForm({ ...form, maxBookingWindowDays: e.target.value })} />
+          </div>
+        </div>
+        <p className="muted" style={{ fontSize: 12, marginTop: -6, marginBottom: 14 }}>
+          How soon a new booking can start from now, and how far out it can be made — applies to both call and dashboard bookings.
         </p>
         <div className="row">
           <div className="field" style={{ flex: 1 }}>
@@ -260,6 +275,66 @@ function BusinessHoursSection() {
         </div>
       ))}
       <button className="primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save hours'}</button>
+      {error && <p className="error-text">{error}</p>}
+    </div>
+  );
+}
+
+function HolidaysSection() {
+  const toast = useToast();
+  const [holidays, setHolidays] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => { api.getHolidays().then((h) => setHolidays(h.length ? h : [{ date: '', name: '' }])).catch((e) => setError(e.message)); }, []);
+
+  function update(i, patch) {
+    setHolidays((prev) => prev.map((h, idx) => (idx === i ? { ...h, ...patch } : h)));
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const cleaned = await api.putHolidays(holidays.filter((h) => h.date));
+      setHolidays(cleaned.length ? cleaned : [{ date: '', name: '' }]);
+      toast.success('Holidays saved');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!holidays) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+
+  return (
+    <div className="card">
+      <h2>Holidays</h2>
+      <p className="muted" style={{ marginTop: -8, fontSize: 12.5 }}>
+        Full closures on specific dates — no slots are offered on these days, regardless of the usual weekly hours.
+      </p>
+      <div className="stack" style={{ gap: 8 }}>
+        {holidays.map((h, i) => (
+          <div key={i} className="row" style={{ alignItems: 'flex-end' }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              {i === 0 && <label>Date</label>}
+              <input type="date" value={h.date} onChange={(e) => update(i, { date: e.target.value })} />
+            </div>
+            <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+              {i === 0 && <label>Name (optional)</label>}
+              <input value={h.name ?? ''} onChange={(e) => update(i, { name: e.target.value })} placeholder="Christmas" />
+            </div>
+            <button className="icon-btn" onClick={() => setHolidays((prev) => prev.filter((_, idx) => idx !== i))} disabled={holidays.length === 1}>
+              <Trash2 size={15} color="var(--danger)" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="ghost" onClick={() => setHolidays((prev) => [...prev, { date: '', name: '' }])}><Plus size={14} /> Add another date</button>
+        <button className="primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save holidays'}</button>
+      </div>
       {error && <p className="error-text">{error}</p>}
     </div>
   );
@@ -540,6 +615,7 @@ export default function SettingsPage() {
         <BusinessProfileSection />
         <LocationsSection />
         <BusinessHoursSection />
+        <HolidaysSection />
         <KnowledgeBaseSection />
         <CalendarConnectSection />
         <PhoneNumberSection />

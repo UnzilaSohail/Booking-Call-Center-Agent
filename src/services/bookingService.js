@@ -5,6 +5,7 @@ import { DateTime } from 'luxon';
 import { client, getDb, withTenant, newId, serialize, serializeAll } from '../db.js';
 import { busyIntervals } from '../calendar/google.js';
 import { sendBookingConfirmation } from '../notifications/notify.js';
+import { upsertCustomer } from './customerService.js';
 
 export class BookingError extends Error {
   constructor(status, message) {
@@ -30,6 +31,16 @@ export async function findBusinessByPhoneNumber(phoneNumber) {
   return business ? serialize(business) : null;
 }
 
+// hours: [{day_of_week, open_time, close_time}] — same lookup used for both business
+// hours and a staff member's own override hours.
+function hoursForDay(hours, dow) {
+  return (hours ?? []).find((h) => h.day_of_week === dow) ?? null;
+}
+function timeOnDay(day, timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  return day.set({ hour: h, minute: m });
+}
+
 export async function getAvailability(businessId, { serviceId, date, staffId, excludeBookingId }) {
   const business = await getBusiness(businessId);
   const zone = business.timezone;
@@ -44,14 +55,38 @@ export async function getAvailability(businessId, { serviceId, date, staffId, ex
   const dayStart = DateTime.fromISO(date, { zone }).startOf('day');
   if (!dayStart.isValid) throw new BookingError(400, 'invalid date');
   const dow = dayStart.weekday % 7; // luxon: 1=Mon..7=Sun -> 0=Sun..6=Sat
+  const empty = { slots: [], durationMinutes: service.duration_minutes, bufferMinutes: service.buffer_minutes };
 
-  const hours = (business.hours ?? []).find((h) => h.day_of_week === dow);
-  if (!hours) return { slots: [], durationMinutes: service.duration_minutes, bufferMinutes: service.buffer_minutes }; // closed that day
+  // Date-specific full closures (holidays) take priority over the recurring weekly hours.
+  if ((business.holidays ?? []).some((h) => h.date === date)) return empty;
 
-  const [openH, openM] = hours.open_time.split(':').map(Number);
-  const [closeH, closeM] = hours.close_time.split(':').map(Number);
-  const open = dayStart.set({ hour: openH, minute: openM });
-  const close = dayStart.set({ hour: closeH, minute: closeM });
+  // Maximum booking window: a date past this is never offered, regardless of hours.
+  if (business.max_booking_window_days != null) {
+    const daysOut = dayStart.diff(DateTime.now().setZone(zone).startOf('day'), 'days').days;
+    if (daysOut > business.max_booking_window_days) return empty;
+  }
+
+  const hours = hoursForDay(business.hours, dow);
+  if (!hours) return empty; // closed that day
+
+  let open = timeOnDay(dayStart, hours.open_time);
+  let close = timeOnDay(dayStart, hours.close_time);
+
+  let staff = null;
+  if (staffId) {
+    staff = await withTenant(businessId, (col) => col('staff').findOne({ _id: staffId }));
+    // A staff member's own hours (if set) narrow the business hours for that day — e.g.
+    // a business open 9-5 but a part-time staffer who only works 9-1.
+    const staffHours = staff ? hoursForDay(staff.hours, dow) : undefined;
+    if (staff?.hours) {
+      if (!staffHours) return empty; // staff doesn't work this day even if the business is open
+      const staffOpen = timeOnDay(dayStart, staffHours.open_time);
+      const staffClose = timeOnDay(dayStart, staffHours.close_time);
+      if (staffOpen > open) open = staffOpen;
+      if (staffClose < close) close = staffClose;
+      if (open >= close) return empty;
+    }
+  }
 
   // excludeBookingId: when checking availability for rescheduling a booking, that
   // booking's own current slot must not count as "busy" against itself — otherwise
@@ -75,18 +110,29 @@ export async function getAvailability(businessId, { serviceId, date, staffId, ex
   let calendarBusy = [];
   try {
     let calendarId = business.google_calendar_id;
-    if (staffId) {
-      const staff = await withTenant(businessId, (col) => col('staff').findOne({ _id: staffId }));
-      if (staff?.google_calendar_id) calendarId = staff.google_calendar_id;
-    }
+    if (staff?.google_calendar_id) calendarId = staff.google_calendar_id;
     calendarBusy = await busyIntervals(business, calendarId, open.toUTC().toISO(), close.toUTC().toISO());
   } catch (err) {
     console.error('freebusy check failed, falling back to DB-only availability:', err.message);
   }
 
+  // A staff member's daily break and any approved time off are busy the same way an
+  // existing booking is — no separate "unavailable" concept, just more busy ranges.
+  let timeOff = [];
+  if (staffId) {
+    timeOff = await withTenant(businessId, (col) =>
+      col('staff_time_off').find({ staff_id: staffId, start_time: { $lt: close.toUTC().toJSDate() }, end_time: { $gt: open.toUTC().toJSDate() } }).toArray()
+    );
+  }
+  const breakRange = staff?.daily_break
+    ? [{ start: timeOnDay(dayStart, staff.daily_break.start_time), end: timeOnDay(dayStart, staff.daily_break.end_time) }]
+    : [];
+
   const busyRanges = [
     ...existing.map((b) => ({ start: DateTime.fromJSDate(b.start_time), end: DateTime.fromJSDate(b.end_time) })),
     ...calendarBusy.map((b) => ({ start: DateTime.fromISO(b.start), end: DateTime.fromISO(b.end) })),
+    ...timeOff.map((t) => ({ start: DateTime.fromJSDate(t.start_time), end: DateTime.fromJSDate(t.end_time) })),
+    ...breakRange,
   ];
 
   const slots = [];
@@ -140,7 +186,7 @@ function slotLockIds(businessId, staffId, startDate, endDate) {
   return ids;
 }
 
-export async function createBooking(businessId, { customerName, phone, customerEmail, serviceId, staffId, startTime, idempotencyKey, createdVia }) {
+export async function createBooking(businessId, { customerName, phone, customerEmail, serviceId, staffId, locationId, startTime, idempotencyKey, createdVia }) {
   if (!customerName || !phone || !serviceId || !startTime) {
     throw new BookingError(400, 'customerName, phone, serviceId and startTime are required');
   }
@@ -154,6 +200,21 @@ export async function createBooking(businessId, { customerName, phone, customerE
   if (end <= start) throw new BookingError(400, 'service has a non-positive duration — fix its durationMinutes/bufferMinutes');
   const startDate = start.toJSDate();
   const endDate = end.toJSDate();
+
+  // The hard backstop behind what check_availability/the dashboard already offer as
+  // slots — never trust a start time handed back by a caller without re-checking it,
+  // same principle as assertWithinChangeCutoff below for reschedule/cancel.
+  const business = await getBusiness(businessId);
+  const minutesUntilStart = start.diffNow('minutes').minutes;
+  if (business.min_booking_notice_minutes && minutesUntilStart < business.min_booking_notice_minutes) {
+    throw new BookingError(422, `bookings need at least ${business.min_booking_notice_minutes} minutes' notice`);
+  }
+  if (business.max_booking_window_days != null) {
+    const daysOut = start.setZone(business.timezone).diff(DateTime.now().setZone(business.timezone).startOf('day'), 'days').days;
+    if (daysOut > business.max_booking_window_days) {
+      throw new BookingError(422, `bookings can only be made up to ${business.max_booking_window_days} days in advance`);
+    }
+  }
 
   // Idempotent replay (plan.md §5): a retried tool-call with the same key returns the
   // booking it already made instead of re-attempting to lock a slot.
@@ -171,6 +232,7 @@ export async function createBooking(businessId, { customerName, phone, customerE
     customer_email: customerEmail || null,
     service_id: serviceId,
     staff_id: staffId || null,
+    location_id: locationId || null,
     start_time: startDate,
     end_time: endDate,
     status: 'confirmed',
@@ -216,10 +278,13 @@ export async function createBooking(businessId, { customerName, phone, customerE
   // Fire-and-forget: confirmation SMS/email must never delay or fail the booking result
   // (plan.md §5 step 8) — lives here, not in each caller, so every entry point (the REST
   // route AND the voice agent's create_booking tool in src/voice/tools.js) gets it for
-  // free instead of only whichever caller remembered to send it.
-  getBusiness(businessId)
-    .then((business) => sendBookingConfirmation(business, bookingDoc, service))
+  // free instead of only whichever caller remembered to send it. Same reasoning for the
+  // customer-record upsert (src/services/customerService.js) — every booking, from any
+  // entry point, keeps the customer directory current.
+  sendBookingConfirmation(business, bookingDoc, service)
     .catch((err) => console.error(`confirmation notification failed for booking ${bookingId}:`, err.message));
+  upsertCustomer(businessId, { phone, name: customerName, email: customerEmail })
+    .catch((err) => console.error(`customer upsert failed for booking ${bookingId}:`, err.message));
 
   return { booking: serialize(bookingDoc), service, replayed: false };
 }

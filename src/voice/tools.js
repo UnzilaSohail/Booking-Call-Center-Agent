@@ -31,6 +31,7 @@ export const toolDeclarations = [
       properties: {
         serviceName: { type: 'STRING' },
         staffName: { type: 'STRING', description: 'Optional staff member name if the business has multiple staff.' },
+        locationName: { type: 'STRING', description: 'Optional: which location, if this business has more than one and the caller named one.' },
         startTime: { type: 'STRING', description: 'Exact start time as an ISO 8601 datetime in UTC, taken from a slot previously returned by check_availability.' },
         customerName: { type: 'STRING' },
         phone: { type: 'STRING', description: "Caller's callback phone number, digits only with country code if given." },
@@ -134,6 +135,14 @@ async function resolveStaffId(businessId, staffName) {
   });
 }
 
+async function resolveLocationId(businessId, locationName) {
+  if (!locationName) return null;
+  return withTenant(businessId, async (c) => {
+    const location = await c('locations').findOne({ name: { $regex: escapeRegex(locationName), $options: 'i' } });
+    return location?._id ?? null;
+  });
+}
+
 // Keyed on the call plus the exact booking content, not a per-invocation counter: a
 // genuine retry of the same tool-call (Gemini re-sending after a timeout, plan.md §5)
 // carries identical arguments and so lands on the same key; a deliberately new booking
@@ -160,13 +169,14 @@ export function createToolHandlers(business, callSid) {
       }
     },
 
-    async create_booking({ serviceName, staffName, startTime, customerName, phone }) {
+    async create_booking({ serviceName, staffName, locationName, startTime, customerName, phone }) {
       const serviceId = await resolveServiceId(business.id, serviceName);
       if (!serviceId) return { error: `no service found matching "${serviceName}"` };
       const staffId = await resolveStaffId(business.id, staffName);
+      const locationId = await resolveLocationId(business.id, locationName);
       try {
         const { booking } = await createBooking(business.id, {
-          customerName, phone, serviceId, staffId, startTime,
+          customerName, phone, serviceId, staffId, locationId, startTime,
           idempotencyKey: idempotencyKeyFor(callSid, { serviceId, staffId, startTime, phone }),
           createdVia: 'call',
         });

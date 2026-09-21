@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  CalendarDays, LayoutDashboard, ListChecks, ListTodo, LogOut, Phone, Settings as SettingsIcon,
+  CalendarDays, Contact, LayoutDashboard, ListChecks, ListTodo, LogOut, Phone, Settings as SettingsIcon,
   Tag, Users,
 } from 'lucide-react';
 import Avatar from './Avatar';
@@ -13,6 +13,7 @@ const LINKS = [
   { href: '/', label: 'Overview', icon: LayoutDashboard },
   { href: '/calendar', label: 'Calendar', icon: CalendarDays },
   { href: '/bookings', label: 'Bookings', icon: ListChecks },
+  { href: '/customers', label: 'Customers', icon: Contact },
   { href: '/calls', label: 'Calls', icon: Phone },
   { href: '/services', label: 'Services', icon: Tag },
   { href: '/team', label: 'Team', icon: Users },
@@ -53,7 +54,7 @@ export default function Sidebar() {
       </div>
       <nav className="stack" style={{ gap: 2, flex: 1 }}>
         {LINKS.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={`sidebar-link${pathname === href ? ' active' : ''}`}>
+          <Link key={href} href={href} className={`sidebar-link${pathname === href || (href !== '/' && pathname.startsWith(href)) ? ' active' : ''}`}>
             <Icon size={16} />
             {label}
           </Link>

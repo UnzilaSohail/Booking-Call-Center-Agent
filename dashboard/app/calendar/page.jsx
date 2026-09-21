@@ -17,6 +17,7 @@ function CalendarInner() {
   const toast = useToast();
   const [services, setServices] = useState([]);
   const [staffList, setStaffList] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [staffFilter, setStaffFilter] = useState('all'); // 'all' | staffId | 'none' (no staff assigned)
   const [modal, setModal] = useState(null); // { mode: 'create'|'edit', booking?, initialDate? }
   const calendarRef = useRef(null);
@@ -24,6 +25,7 @@ function CalendarInner() {
   useEffect(() => {
     api.listServices().then(setServices).catch(() => {});
     api.listStaff().then(setStaffList).catch(() => {});
+    api.listLocations().then(setLocations).catch(() => {});
     try {
       const saved = window.localStorage.getItem(STAFF_FILTER_KEY);
       if (saved) setStaffFilter(saved);
@@ -145,6 +147,7 @@ function CalendarInner() {
           initialDate={modal.initialDate}
           services={services}
           staffList={staffList}
+          locations={locations}
           onClose={() => setModal(null)}
           onSaved={refresh}
         />

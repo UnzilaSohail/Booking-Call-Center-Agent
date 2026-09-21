@@ -94,13 +94,63 @@ configRouter.post('/staff', (req, res, next) => {
     .catch(next);
 });
 
+// hours/dailyBreak/locationId are all optional overrides — omitted or null means "follow
+// the business default" (src/services/bookingService.js's getAvailability only narrows
+// business hours with these when staff.hours is actually set).
 configRouter.patch('/staff/:id', async (req, res, next) => {
   try {
-    const { name } = req.body ?? {};
-    if (!name) return res.status(400).json({ error: 'name is required' });
-    const updated = await withTenant(req.businessId, (c) => c('staff').findOneAndUpdate({ _id: req.params.id }, { $set: { name } }, { returnDocument: 'after' }));
+    const { name, hours, dailyBreak, locationId } = req.body ?? {};
+    const updates = {};
+    if (name !== undefined) {
+      if (!name) return res.status(400).json({ error: 'name is required' });
+      updates.name = name;
+    }
+    if (hours !== undefined) {
+      updates.hours = hours === null ? null : hours.map((h) => ({ day_of_week: h.dayOfWeek, open_time: h.openTime, close_time: h.closeTime }));
+    }
+    if (dailyBreak !== undefined) {
+      updates.daily_break = dailyBreak === null ? null : { start_time: dailyBreak.startTime, end_time: dailyBreak.endTime };
+    }
+    if (locationId !== undefined) updates.location_id = locationId || null;
+    if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'nothing to update' });
+
+    const updated = await withTenant(req.businessId, (c) => c('staff').findOneAndUpdate({ _id: req.params.id }, { $set: updates }, { returnDocument: 'after' }));
     if (!updated) return res.status(404).json({ error: 'staff not found' });
     res.json(serialize(updated));
+  } catch (err) {
+    next(err);
+  }
+});
+
+configRouter.get('/staff/:id/time-off', (req, res, next) =>
+  withTenant(req.businessId, (c) => c('staff_time_off').find({ staff_id: req.params.id }).sort({ start_time: 1 }).toArray())
+    .then((rows) => res.json(serializeAll(rows)))
+    .catch(next)
+);
+
+configRouter.post('/staff/:id/time-off', async (req, res, next) => {
+  try {
+    const { startTime, endTime, reason } = req.body ?? {};
+    if (!startTime || !endTime) return res.status(400).json({ error: 'startTime and endTime are required' });
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      return res.status(400).json({ error: 'startTime/endTime must be valid, with endTime after startTime' });
+    }
+
+    const doc = { _id: newId(), business_id: req.businessId, staff_id: req.params.id, start_time: start, end_time: end, reason: reason || null, created_at: new Date() };
+    await withTenant(req.businessId, (c) => c('staff_time_off').insertOne(doc));
+    res.status(201).json(serialize(doc));
+  } catch (err) {
+    next(err);
+  }
+});
+
+configRouter.delete('/time-off/:id', async (req, res, next) => {
+  try {
+    const result = await withTenant(req.businessId, (c) => c('staff_time_off').deleteOne({ _id: req.params.id }));
+    if (result.deletedCount === 0) return res.status(404).json({ error: 'time off entry not found' });
+    res.status(204).send();
   } catch (err) {
     next(err);
   }
@@ -155,7 +205,7 @@ configRouter.get('/business', async (req, res, next) => {
     const db = await getDb();
     const business = await db.collection('businesses').findOne(
       { _id: req.businessId },
-      { projection: { name: 1, industry: 1, timezone: 1, phone_number: 1, reschedule_cutoff_minutes: 1, contact_email: 1, contact_phone: 1, address: 1, faqs: 1, voice_name: 1 } }
+      { projection: { name: 1, industry: 1, timezone: 1, phone_number: 1, reschedule_cutoff_minutes: 1, contact_email: 1, contact_phone: 1, address: 1, faqs: 1, voice_name: 1, min_booking_notice_minutes: 1, max_booking_window_days: 1 } }
     );
     res.json({
       name: business.name,
@@ -168,6 +218,8 @@ configRouter.get('/business', async (req, res, next) => {
       address: business.address ?? '',
       faqs: business.faqs ?? [],
       voiceName: business.voice_name ?? null,
+      minBookingNoticeMinutes: business.min_booking_notice_minutes ?? 0,
+      maxBookingWindowDays: business.max_booking_window_days ?? null,
     });
   } catch (err) {
     next(err);
@@ -176,7 +228,7 @@ configRouter.get('/business', async (req, res, next) => {
 
 configRouter.patch('/business', async (req, res, next) => {
   try {
-    const { name, industry, timezone, rescheduleCutoffMinutes, contactEmail, contactPhone, address } = req.body ?? {};
+    const { name, industry, timezone, rescheduleCutoffMinutes, contactEmail, contactPhone, address, minBookingNoticeMinutes, maxBookingWindowDays } = req.body ?? {};
     const updates = {};
     if (name !== undefined) {
       if (!name) return res.status(400).json({ error: 'name cannot be empty' });
@@ -196,11 +248,48 @@ configRouter.patch('/business', async (req, res, next) => {
     if (contactEmail !== undefined) updates.contact_email = contactEmail || null;
     if (contactPhone !== undefined) updates.contact_phone = contactPhone || null;
     if (address !== undefined) updates.address = address || null;
+    if (minBookingNoticeMinutes !== undefined) {
+      if (!Number.isFinite(minBookingNoticeMinutes) || minBookingNoticeMinutes < 0) {
+        return res.status(400).json({ error: 'minBookingNoticeMinutes must be zero or a positive number' });
+      }
+      updates.min_booking_notice_minutes = minBookingNoticeMinutes;
+    }
+    if (maxBookingWindowDays !== undefined) {
+      if (maxBookingWindowDays !== null && (!Number.isFinite(maxBookingWindowDays) || maxBookingWindowDays <= 0)) {
+        return res.status(400).json({ error: 'maxBookingWindowDays must be null (unlimited) or a positive number' });
+      }
+      updates.max_booking_window_days = maxBookingWindowDays;
+    }
     if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'nothing to update' });
 
     const db = await getDb();
     await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: updates });
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+configRouter.get('/business/holidays', async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { holidays: 1 } });
+    res.json(business?.holidays ?? []);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Full-list upsert — same whole-array-replace pattern as PUT /business-hours.
+configRouter.put('/business/holidays', async (req, res, next) => {
+  try {
+    const { holidays } = req.body ?? {};
+    if (!Array.isArray(holidays)) return res.status(400).json({ error: 'holidays must be an array' });
+    const normalized = holidays.filter((h) => h?.date).map((h) => ({ date: h.date, name: h.name || null }));
+
+    const db = await getDb();
+    await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { holidays: normalized } });
+    res.json(normalized);
   } catch (err) {
     next(err);
   }

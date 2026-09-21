@@ -5,7 +5,10 @@ import assert from 'node:assert/strict';
 import { DateTime } from 'luxon';
 import { formatSystemInstruction } from '../src/voice/geminiSession.js';
 
-const todayDow = DateTime.now().weekday % 7; // luxon: 1=Mon..7=Sun -> 0=Sun..6=Sat
+// UTC explicitly — baseBusiness below uses timezone: 'UTC', and isOpenNow() (in
+// src/voice/geminiSession.js) computes "today" in the business's own timezone, so this
+// must match that, not whatever zone the machine running the test happens to be in.
+const todayDow = DateTime.now().setZone('UTC').weekday % 7; // luxon: 1=Mon..7=Sun -> 0=Sun..6=Sat
 const otherDow = (todayDow + 1) % 7;
 
 const baseBusiness = { id: 'b1', name: 'Test Biz', timezone: 'UTC' };

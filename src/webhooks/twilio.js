@@ -5,6 +5,7 @@
 import express, { Router } from 'express';
 import twilio from 'twilio';
 import { findBusinessByPhoneNumber } from '../services/bookingService.js';
+import { upsertCustomer, markRecordingAcknowledged } from '../services/customerService.js';
 import { withTenant, withSystemAccess, newId, serialize } from '../db.js';
 
 export const twilioWebhookRouter = Router();
@@ -52,8 +53,14 @@ async function respondWithVoiceAgent(res, req, business, { isTest = false } = {}
   );
 
   // plan.md §7: transcripts are stored (call_logs.transcript), so most jurisdictions
-  // require this disclosure before the AI agent starts the actual conversation.
+  // require this disclosure before the AI agent starts the actual conversation. This is
+  // also the actual moment a real caller's consent record (customerService.js) reflects —
+  // skipped for test calls to the admin's own phone, which aren't real customers.
   twiml.say('This call may be recorded and transcribed for booking and quality purposes.');
+  if (!isTest && req.body.From) {
+    upsertCustomer(business.id, { phone: req.body.From }).catch((err) => console.error('customer upsert failed on inbound call:', err.message));
+    markRecordingAcknowledged(business.id, req.body.From).catch((err) => console.error('consent record failed on inbound call:', err.message));
+  }
 
   const streamUrl = process.env.PUBLIC_WSS_URL || `wss://${req.headers.host}/voice/stream`;
   const connect = twiml.connect();

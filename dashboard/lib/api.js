@@ -39,6 +39,19 @@ async function request(path, { method = 'GET', body, tokenStore } = {}) {
   return data;
 }
 
+// CSV export comes back as text, not JSON — bearer-token auth means a plain <a href>
+// can't carry the Authorization header, so the caller fetches the text and triggers a
+// client-side download itself (see dashboard/app/customers/page.jsx).
+async function requestText(path, { tokenStore } = {}) {
+  const headers = {};
+  const token = tokenStore?.get();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { headers });
+  const text = await res.text();
+  if (!res.ok) throw new ApiError(res.status, text || `request failed (${res.status})`);
+  return text;
+}
+
 export const api = {
   login: (payload) => request('/api/auth/login', { method: 'POST', body: payload }),
   getMe: () => request('/api/auth/me', { tokenStore: companyTokenStore }),
@@ -71,8 +84,15 @@ export const api = {
   updateStaff: (id, payload) => request(`/api/staff/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
   deleteStaff: (id) => request(`/api/staff/${id}`, { method: 'DELETE', tokenStore: companyTokenStore }),
 
+  listStaffTimeOff: (staffId) => request(`/api/staff/${staffId}/time-off`, { tokenStore: companyTokenStore }),
+  createStaffTimeOff: (staffId, payload) => request(`/api/staff/${staffId}/time-off`, { method: 'POST', body: payload, tokenStore: companyTokenStore }),
+  deleteStaffTimeOff: (id) => request(`/api/time-off/${id}`, { method: 'DELETE', tokenStore: companyTokenStore }),
+
   getBusinessHours: () => request('/api/business-hours', { tokenStore: companyTokenStore }),
   putBusinessHours: (hours) => request('/api/business-hours', { method: 'PUT', body: { hours }, tokenStore: companyTokenStore }),
+
+  getHolidays: () => request('/api/business/holidays', { tokenStore: companyTokenStore }),
+  putHolidays: (holidays) => request('/api/business/holidays', { method: 'PUT', body: { holidays }, tokenStore: companyTokenStore }),
 
   getKnowledge: () => request('/api/knowledge', { tokenStore: companyTokenStore }),
   saveKnowledgeDraft: (payload) => request('/api/knowledge/draft', { method: 'PUT', body: payload, tokenStore: companyTokenStore }),
@@ -102,6 +122,12 @@ export const api = {
   provisionPhoneNumber: (payload) => request('/api/phone-number/provision', { method: 'POST', body: payload, tokenStore: companyTokenStore }),
 
   listCallLogs: (from, to) => request(`/api/call-logs?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`, { tokenStore: companyTokenStore }),
+
+  listCustomers: (q) => request(`/api/customers${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: companyTokenStore }),
+  getCustomer: (id) => request(`/api/customers/${id}`, { tokenStore: companyTokenStore }),
+  updateCustomer: (id, payload) => request(`/api/customers/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
+  exportCustomersCsv: () => requestText('/api/customers/export', { tokenStore: companyTokenStore }),
+  importCustomersCsv: (csv) => request('/api/customers/import', { method: 'POST', body: { csv }, tokenStore: companyTokenStore }),
 };
 
 // Platform-admin actions: registering/listing companies. A separate token namespace
