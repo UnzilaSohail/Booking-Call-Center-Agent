@@ -5,7 +5,8 @@ import {
   BookingError, getAvailability, createBooking, rescheduleBooking, cancelBooking,
   findUpcomingBookingsByPhone, assertWithinChangeCutoff,
 } from '../services/bookingService.js';
-import { withTenant } from '../db.js';
+import { withTenant, newId } from '../db.js';
+import { sendSms } from '../notifications/sms.js';
 import { createHash } from 'node:crypto';
 
 export const toolDeclarations = [
@@ -69,10 +70,44 @@ export const toolDeclarations = [
   },
   {
     name: 'transfer_to_human',
-    description: 'Escalate the call to a human because the request is out of scope (not a booking/reschedule/cancel this system supports) or the caller explicitly asks for a person.',
+    description: 'Escalate the call to a human because the request is out of scope (not something this system supports — a booking/reschedule/cancel/FAQ/message/callback), the caller explicitly asks for a person, or they are upset and a human would handle it better.',
     parameters: {
       type: 'OBJECT',
       properties: { reason: { type: 'STRING' } },
+      required: ['reason'],
+    },
+  },
+  {
+    name: 'leave_voicemail',
+    description: "Capture a message from the caller to pass on to staff — use when the business is currently closed and the caller wants to leave a message, or they ask to leave one directly. Say the message back to confirm you got it right before calling this.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        message: { type: 'STRING', description: 'The message content, in the caller\'s own words.' },
+        phone: { type: 'STRING', description: "Caller's phone number, so staff can call back." },
+      },
+      required: ['message', 'phone'],
+    },
+  },
+  {
+    name: 'request_callback',
+    description: 'Queue a request for staff to call the caller back at a preferred time — this does not place an automatic call, it just notes the request for a human to act on.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        phone: { type: 'STRING' },
+        preferredTime: { type: 'STRING', description: 'When the caller would like to be called back, in their own words (e.g. "tomorrow morning").' },
+        reason: { type: 'STRING' },
+      },
+      required: ['phone', 'reason'],
+    },
+  },
+  {
+    name: 'flag_emergency',
+    description: "Call this immediately if the caller describes something matching this business's emergency rules (see the Emergency section of your instructions), after telling them what those rules say to say. This flags the call for urgent staff attention in addition to whatever else you do (e.g. transfer_to_human).",
+    parameters: {
+      type: 'OBJECT',
+      properties: { reason: { type: 'STRING', description: 'Brief description of the emergency, for the staff alert.' } },
       required: ['reason'],
     },
   },
@@ -177,6 +212,33 @@ export function createToolHandlers(business, callSid) {
 
     async transfer_to_human({ reason }) {
       return { transferred: true, reason };
+    },
+
+    async leave_voicemail({ message, phone }) {
+      await withTenant(business.id, (c) => c('voicemails').insertOne({
+        _id: newId(), call_sid: callSid, phone, message, created_at: new Date(),
+      }));
+      await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: 'voicemail' } }));
+      return { captured: true };
+    },
+
+    async request_callback({ phone, preferredTime, reason }) {
+      await withTenant(business.id, (c) => c('callback_requests').insertOne({
+        _id: newId(), call_sid: callSid, phone, preferred_time: preferredTime || null, reason, status: 'pending', created_at: new Date(),
+      }));
+      await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: 'callback_requested' } }));
+      return { requested: true };
+    },
+
+    async flag_emergency({ reason }) {
+      await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `emergency: ${reason}`.slice(0, 200) } }));
+      // Fire-and-forget, same pattern as booking confirmations (bookingService.js) —
+      // an emergency alert must never block or fail the call itself.
+      if (business.contact_phone) {
+        sendSms(business.contact_phone, `Emergency flagged on a call to ${business.name}: ${reason}`)
+          .catch((err) => console.error(`emergency SMS alert failed for call ${callSid}:`, err.message));
+      }
+      return { flagged: true };
     },
   };
 }

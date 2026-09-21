@@ -74,7 +74,11 @@ export const api = {
   getBusinessHours: () => request('/api/business-hours', { tokenStore: companyTokenStore }),
   putBusinessHours: (hours) => request('/api/business-hours', { method: 'PUT', body: { hours }, tokenStore: companyTokenStore }),
 
-  putFaqs: (faqs) => request('/api/faqs', { method: 'PUT', body: { faqs }, tokenStore: companyTokenStore }),
+  getKnowledge: () => request('/api/knowledge', { tokenStore: companyTokenStore }),
+  saveKnowledgeDraft: (payload) => request('/api/knowledge/draft', { method: 'PUT', body: payload, tokenStore: companyTokenStore }),
+  publishKnowledge: () => request('/api/knowledge/publish', { method: 'POST', tokenStore: companyTokenStore }),
+  getKnowledgeVersions: () => request('/api/knowledge/versions', { tokenStore: companyTokenStore }),
+  rollbackKnowledge: (version) => request(`/api/knowledge/versions/${version}/rollback`, { method: 'POST', tokenStore: companyTokenStore }),
 
   getAvailability: (serviceId, date, staffId, excludeBookingId) =>
     request(`/api/availability?${new URLSearchParams({ serviceId, date, ...(staffId ? { staffId } : {}), ...(excludeBookingId ? { excludeBookingId } : {}) })}`, { tokenStore: companyTokenStore }),

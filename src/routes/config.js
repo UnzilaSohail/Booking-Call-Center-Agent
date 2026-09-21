@@ -205,19 +205,3 @@ configRouter.patch('/business', async (req, res, next) => {
     next(err);
   }
 });
-
-// FAQs: whole-array replace, same pattern as PUT /business-hours — the dashboard edits
-// the list locally and sends the final version, not incremental patches.
-configRouter.put('/faqs', async (req, res, next) => {
-  try {
-    const { faqs } = req.body ?? {};
-    if (!Array.isArray(faqs)) return res.status(400).json({ error: 'faqs must be an array' });
-    const normalized = faqs.filter((f) => f?.question && f?.answer).map((f) => ({ question: String(f.question).trim(), answer: String(f.answer).trim() }));
-
-    const db = await getDb();
-    await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { faqs: normalized } });
-    res.json(normalized);
-  } catch (err) {
-    next(err);
-  }
-});

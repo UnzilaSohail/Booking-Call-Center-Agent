@@ -10,6 +10,7 @@
 // only the model id did. If GEMINI_LIVE_MODEL ever starts failing with a 404, that's
 // almost certainly the model having moved on again — check `ai.models.list()` for
 // anything with "live" in the name and matching `bidiGenerateContent` support.
+import { DateTime } from 'luxon';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { toolDeclarations, createToolHandlers } from './tools.js';
 import { withTenant } from '../db.js';
@@ -18,36 +19,88 @@ import { DEFAULT_VOICE } from '../routes/onboarding.js';
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const MODEL = process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live';
 
-async function buildSystemInstruction(business) {
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// A business that never touched the Knowledge Base UI (src/routes/knowledge.js) has no
+// `knowledge` yet — same fallback that endpoint uses, so a fresh business still gets a
+// working prompt built from whatever legacy `faqs` it has.
+function resolveKnowledge(business) {
+  if (business.knowledge) return business.knowledge;
+  return { faqs: business.faqs ?? [] };
+}
+
+// Whether the business is open right now, in its own timezone — distinct from
+// check_availability's per-day hours lookup, this is "is anyone there *at this moment*"
+// so the agent can greet accordingly instead of behaving as if a human just picked up.
+function isOpenNow(business) {
+  const hours = business.hours ?? [];
+  if (!hours.length) return null; // hours not configured — don't claim either way
+  const now = DateTime.now().setZone(business.timezone);
+  const today = hours.find((h) => h.day_of_week === now.weekday % 7);
+  if (!today) return false;
+  const [openH, openM] = today.open_time.split(':').map(Number);
+  const [closeH, closeM] = today.close_time.split(':').map(Number);
+  const open = now.set({ hour: openH, minute: openM, second: 0 });
+  const close = now.set({ hour: closeH, minute: closeM, second: 0 });
+  return now >= open && now < close;
+}
+
+export async function buildSystemInstruction(business) {
   const [services, staff] = await withTenant(business.id, (c) => Promise.all([
     c('services').find({}, { projection: { name: 1, duration_minutes: 1, price: 1 } }).toArray(),
     c('staff').find({}, { projection: { name: 1 } }).toArray(),
   ]));
+  return formatSystemInstruction(business, services, staff);
+}
 
+// Pure — no DB access — so it's directly unit-testable
+// (test/geminiSystemInstruction.test.js) with fabricated services/staff arrays.
+export function formatSystemInstruction(business, services, staff) {
   // business.hours is embedded on the business document itself (src/routes/config.js),
   // already loaded as part of the business object passed in — no separate query needed.
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const hours = business.hours ?? [];
   const hoursText = hours.length
-    ? [...hours].sort((a, b) => a.day_of_week - b.day_of_week).map((h) => `${dayNames[h.day_of_week]}: ${h.open_time}-${h.close_time}`).join(', ')
+    ? [...hours].sort((a, b) => a.day_of_week - b.day_of_week).map((h) => `${DAY_NAMES[h.day_of_week]}: ${h.open_time}-${h.close_time}`).join(', ')
     : 'not configured — tell the caller you\'ll need to check and call them back';
 
-  const faqs = business.faqs ?? [];
+  const k = resolveKnowledge(business);
+  const faqs = k.faqs ?? [];
   const faqText = faqs.length
     ? faqs.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join('\n')
     : null;
+  const pronunciation = k.pronunciation ?? [];
+  const pronunciationText = pronunciation.length
+    ? pronunciation.map((p) => `Say "${p.term}" like "${p.pronunciation}".`).join(' ')
+    : null;
 
-  return `You are the phone booking agent for "${business.name}". Speak naturally and concisely, like a helpful receptionist — this is a live phone call, not a chat.
+  const open = isOpenNow(business);
+  const openingLine = k.greeting
+    ? `Open the call by saying, in your own natural voice, essentially: "${k.greeting}"${open === false ? ' — then let them know you\'re currently closed.' : '.'}`
+    : `Open the call with a brief, warm greeting naming the business (e.g. "Thanks for calling ${business.name}, how can I help?")${open === false ? ', and let them know you\'re currently closed.' : '.'}`;
+
+  return `You are the phone receptionist for "${business.name}". Speak naturally and concisely, like a helpful receptionist — this is a live phone call, not a chat.
+${pronunciationText ? `\nPronunciation: ${pronunciationText}` : ''}
+
+${openingLine}
 
 Services offered: ${services.map((s) => `${s.name} (${s.duration_minutes} min)`).join(', ') || 'none configured yet'}.
 ${staff.length ? `Staff: ${staff.map((s) => s.name).join(', ')}.` : 'This business has a single shared calendar — do not ask which staff member.'}
 Business hours (${business.timezone}): ${hoursText}.
+${open === false ? '\nThe business is CLOSED right now (outside its business hours). You can still check availability and book future appointments — just be upfront that no one is there this moment. If the caller wants to leave a message, use leave_voicemail; if they\'d rather be called back, use request_callback.\n' : ''}
 ${faqText ? `\nCommon questions you can answer directly from this business's own answers (use these verbatim in spirit, don't invent extra policy beyond them):\n${faqText}\n` : ''}
+${k.booking_policy ? `\nBooking policy: ${k.booking_policy}` : ''}
+${k.cancellation_policy ? `\nCancellation policy: ${k.cancellation_policy}` : ''}
+${k.preparation_instructions ? `\nTell the caller, once a booking is confirmed: ${k.preparation_instructions}` : ''}
+${k.restricted_topics ? `\nDo NOT discuss or advise on: ${k.restricted_topics}. If asked, politely decline and offer to transfer to a human.` : ''}
+${k.emergency_rules ? `\nEmergency rules for this business: ${k.emergency_rules}\nIf the caller's situation matches this, say what these rules say to say, then call flag_emergency with a brief reason (in addition to transfer_to_human if the rules call for that).` : ''}
+
 Rules:
 - Always call check_availability before offering a time slot. Never invent times.
 - Before calling create_booking or reschedule_booking, read the exact date and time back to the caller in plain speech ("Tuesday the 14th at 11:30 AM") and get an explicit yes. This is mandatory — misheard dates are the most common error.
 - For reschedule/cancel requests, call find_upcoming_bookings with the caller's phone number first to get the booking id.
-- If the caller asks a question covered by the common-questions list above, answer from it. If they ask something else outside booking/reschedule/cancel/business-info, or explicitly ask for a person, call transfer_to_human.
+- If the caller asks a question covered by the common-questions list above, answer from it.
+- If the caller wants to leave a message for staff, use leave_voicemail (confirm the message back to them first). If they'd rather staff call them back, use request_callback.
+- If they ask for something else this system doesn't support (outside booking/reschedule/cancel/business-info/messages/callbacks), or explicitly ask for a person, or seem upset, call transfer_to_human.
 - If a request fails (e.g. slot no longer available or too close to the appointment to change), explain briefly and offer alternatives — don't just repeat the error.
 - Keep responses short; this is a voice call, not a document.`;
 }

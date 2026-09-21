@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import {
-  BookingError, getBusiness, getAvailability, listBookings,
+  BookingError, getAvailability, listBookings,
   createBooking, rescheduleBooking, cancelBooking, getDashboardStats,
 } from '../services/bookingService.js';
 import { getAnalytics } from '../services/analyticsService.js';
-import { sendBookingConfirmation } from '../notifications/notify.js';
 
 export const bookingsRouter = Router();
 
@@ -56,19 +55,13 @@ bookingsRouter.get('/bookings', async (req, res, next) => {
 bookingsRouter.post('/bookings', async (req, res, next) => {
   try {
     const { customerName, phone, customerEmail, serviceId, staffId, startTime, idempotencyKey, createdVia } = req.body ?? {};
-    const { booking, service, replayed } = await createBooking(req.businessId, {
+    // Confirmation notification fires from inside createBooking() itself
+    // (src/services/bookingService.js) — shared by this route and the voice agent's
+    // create_booking tool, so both send it the same way instead of each remembering to.
+    const { booking, replayed } = await createBooking(req.businessId, {
       customerName, phone, customerEmail, serviceId, staffId, startTime, idempotencyKey, createdVia,
     });
     res.status(replayed ? 200 : 201).json(booking);
-
-    if (replayed) return; // already confirmed once; don't re-notify on a retried request
-
-    // Fire-and-forget: confirmation SMS/email must never delay or fail the booking
-    // response (plan.md §5 step 8) — the calendar sync worker separately mirrors to
-    // Google Calendar out of band. Errors here are logged only; the response already went out.
-    getBusiness(req.businessId)
-      .then((business) => sendBookingConfirmation(business, booking, service))
-      .catch((err) => console.error(`confirmation notification failed for booking ${booking.id}:`, err.message));
   } catch (err) {
     handleError(err, res, next);
   }

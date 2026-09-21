@@ -7,7 +7,10 @@ import { DateTime } from '../../lib/datetime';
 
 function OutcomeBadge({ log }) {
   if (log.booking) return <span className="badge success">Booked</span>;
+  if (log.outcome?.startsWith('emergency')) return <span className="badge danger">Emergency</span>;
   if (log.outcome?.startsWith('transferred')) return <span className="badge warning">Transferred</span>;
+  if (log.outcome === 'voicemail') return <span className="badge info">Voicemail</span>;
+  if (log.outcome === 'callback_requested') return <span className="badge info">Callback requested</span>;
   if (log.outcome === 'completed') return <span className="badge neutral">No booking</span>;
   if (log.outcome === 'in_progress') return <span className="badge info">In progress</span>;
   return <span className="badge neutral">{log.outcome || 'Unknown'}</span>;
@@ -49,24 +52,46 @@ function CallsInner() {
               <tr><th>When</th><th>Phone</th><th>Outcome</th><th>Booking</th><th></th></tr>
             </thead>
             <tbody>
-              {logs.map((log) => (
-                <Fragment key={log.id}>
-                  <tr style={{ cursor: log.transcript ? 'pointer' : 'default' }} onClick={() => log.transcript && setExpandedId(expandedId === log.id ? null : log.id)}>
-                    <td>{DateTime.formatDateTime(log.created_at)}</td>
-                    <td>{log.phone || '—'}</td>
-                    <td><OutcomeBadge log={log} /></td>
-                    <td>{log.booking ? `${log.booking.customerName} — ${DateTime.formatDateTime(log.booking.startTime)}` : '—'}</td>
-                    <td className="muted">{log.transcript ? (expandedId === log.id ? '▲ hide' : '▼ transcript') : ''}</td>
-                  </tr>
-                  {expandedId === log.id && log.transcript && (
-                    <tr>
-                      <td colSpan={5} style={{ background: 'var(--surface-alt)', whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
-                        {log.transcript}
-                      </td>
+              {logs.map((log) => {
+                const expandable = log.transcript || log.voicemail || log.callbackRequest;
+                return (
+                  <Fragment key={log.id}>
+                    <tr style={{ cursor: expandable ? 'pointer' : 'default' }} onClick={() => expandable && setExpandedId(expandedId === log.id ? null : log.id)}>
+                      <td>{DateTime.formatDateTime(log.created_at)}</td>
+                      <td>{log.phone || '—'}</td>
+                      <td><OutcomeBadge log={log} /></td>
+                      <td>{log.booking ? `${log.booking.customerName} — ${DateTime.formatDateTime(log.booking.startTime)}` : '—'}</td>
+                      <td className="muted">{expandable ? (expandedId === log.id ? '▲ hide' : '▼ details') : ''}</td>
                     </tr>
-                  )}
-                </Fragment>
-              ))}
+                    {expandedId === log.id && expandable && (
+                      <tr>
+                        <td colSpan={5} style={{ background: 'var(--surface-alt)' }}>
+                          {log.voicemail && (
+                            <div style={{ padding: '10px 12px', borderBottom: log.transcript ? '1px solid var(--border)' : 'none' }}>
+                              <strong style={{ fontSize: 12.5 }}>Voicemail</strong>
+                              <p style={{ fontSize: 13, margin: '4px 0 0' }}>{log.voicemail.message}</p>
+                            </div>
+                          )}
+                          {log.callbackRequest && (
+                            <div style={{ padding: '10px 12px', borderBottom: log.transcript ? '1px solid var(--border)' : 'none' }}>
+                              <strong style={{ fontSize: 12.5 }}>Callback requested</strong>
+                              <p style={{ fontSize: 13, margin: '4px 0 0' }}>
+                                {log.callbackRequest.preferredTime ? `Preferred time: ${log.callbackRequest.preferredTime}. ` : ''}
+                                {log.callbackRequest.reason}
+                              </p>
+                            </div>
+                          )}
+                          {log.transcript && (
+                            <div style={{ padding: '10px 12px', whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
+                              {log.transcript}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}

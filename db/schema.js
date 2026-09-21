@@ -65,4 +65,12 @@ export async function ensureIndexes(db) {
   // Location records (self-signup + Settings) — address/contact display only, no
   // booking/call-routing logic depends on this yet (see routes/locations.js).
   await db.collection('locations').createIndex({ business_id: 1 });
+
+  // Voice-agent captures (src/voice/tools.js) — a structured message/request instead of
+  // an audio recording, so these are just business-scoped, time-ordered lists.
+  await db.collection('voicemails').createIndex({ business_id: 1, created_at: 1 });
+  await db.collection('callback_requests').createIndex({ business_id: 1, created_at: 1 });
+
+  // Knowledge-base publish history (src/routes/knowledge.js) — append-only, newest first.
+  await db.collection('knowledge_versions').createIndex({ business_id: 1, version: -1 });
 }

@@ -4,6 +4,7 @@
 import { DateTime } from 'luxon';
 import { client, getDb, withTenant, newId, serialize, serializeAll } from '../db.js';
 import { busyIntervals } from '../calendar/google.js';
+import { sendBookingConfirmation } from '../notifications/notify.js';
 
 export class BookingError extends Error {
   constructor(status, message) {
@@ -211,6 +212,14 @@ export async function createBooking(businessId, { customerName, phone, customerE
   } finally {
     await session.endSession();
   }
+
+  // Fire-and-forget: confirmation SMS/email must never delay or fail the booking result
+  // (plan.md §5 step 8) — lives here, not in each caller, so every entry point (the REST
+  // route AND the voice agent's create_booking tool in src/voice/tools.js) gets it for
+  // free instead of only whichever caller remembered to send it.
+  getBusiness(businessId)
+    .then((business) => sendBookingConfirmation(business, bookingDoc, service))
+    .catch((err) => console.error(`confirmation notification failed for booking ${bookingId}:`, err.message));
 
   return { booking: serialize(bookingDoc), service, replayed: false };
 }
