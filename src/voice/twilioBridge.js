@@ -5,7 +5,8 @@
 import { WebSocketServer } from 'ws';
 import { twilioPayloadToGeminiPCM, geminiPCMToTwilioPayload } from './audio.js';
 import { startGeminiSession } from './geminiSession.js';
-import { getDb, withTenant, serialize } from '../db.js';
+import { transferCallToHuman } from '../webhooks/twilio.js';
+import { getDb, withTenant, newId, serialize } from '../db.js';
 
 export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream') {
   const wss = new WebSocketServer({ noServer: true });
@@ -25,6 +26,7 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
   wss.on('connection', (ws) => {
     let streamSid = null;
     let callSid = null;
+    let fromNumber = null;
     let business = null;
     let gemini = null;
     const transcript = [];
@@ -59,6 +61,7 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
           case 'start': {
             streamSid = msg.start.streamSid;
             callSid = msg.start.callSid;
+            fromNumber = msg.start.customParameters?.from ?? null;
             const businessId = msg.start.customParameters?.businessId;
 
             const db = await getDb();
@@ -87,12 +90,35 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
                 ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload: geminiPCMToTwilioPayload(base64Pcm24k) } }));
               },
               onTranscript: (speaker, text) => transcript.push(`${speaker}: ${text}`),
-              onTransferToHuman: async (reason) => {
-                await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200) } }));
+              onTransferToHuman: async (reason, transferPhoneNumber) => {
+                // transferCallToHuman redirects the *live* Twilio call via REST — that
+                // replaces the TwiML currently running (this Media Stream), so Twilio
+                // itself tears the stream down (triggering 'stop'/close below) once the
+                // redirect takes effect. Nothing more to do here on success.
+                const redirected = transferPhoneNumber
+                  ? await transferCallToHuman(callSid, transferPhoneNumber, reason).catch((err) => {
+                      console.error(`transfer redirect threw for call ${callSid}:`, err.message);
+                      return false;
+                    })
+                  : false;
+
+                if (redirected) {
+                  await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200) } }));
+                  return;
+                }
+
+                // No target configured, or the redirect itself failed — never leave the
+                // caller with nothing: queue a callback the same way an explicit
+                // request_callback tool call would (ROADMAP.md §5 "Callback creation
+                // when staff are unavailable"), then end gracefully like before.
+                await withTenant(business.id, (c) => Promise.all([
+                  c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200) } }),
+                  fromNumber
+                    ? c('callback_requests').insertOne({ _id: newId(), call_sid: callSid, phone: fromNumber, preferred_time: null, reason, status: 'pending', created_at: new Date() })
+                    : Promise.resolve(),
+                ]));
                 // Give Gemini's in-flight audio (e.g. "let me transfer you") a moment to
-                // reach Twilio before hanging up. MVP: ends the call cleanly rather than
-                // a real warm transfer — wiring <Dial> to a human queue number is a
-                // Twilio REST call away but needs a real queue/number to dial.
+                // reach Twilio before hanging up.
                 setTimeout(() => ws.close(), 2000);
               },
               onBookingCreated: async (bookingId) => {

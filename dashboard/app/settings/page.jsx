@@ -28,6 +28,7 @@ function BusinessProfileSection() {
         contactEmail: form.contactEmail, contactPhone: form.contactPhone, address: form.address,
         minBookingNoticeMinutes: Number(form.minBookingNoticeMinutes) || 0,
         maxBookingWindowDays: form.maxBookingWindowDays === '' ? null : Number(form.maxBookingWindowDays),
+        transferPhoneNumber: form.transferPhoneNumber,
       });
       toast.success('Business profile saved');
     } catch (err) {
@@ -101,6 +102,10 @@ function BusinessProfileSection() {
         <div className="field">
           <label>Address</label>
           <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Human transfer number (fallback)</label>
+          <input value={form.transferPhoneNumber} onChange={(e) => setForm({ ...form, transferPhoneNumber: e.target.value })} placeholder="Where calls go when the AI hands off, if no department/staff/location number applies" />
         </div>
         {error && <p className="error-text">{error}</p>}
         <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving...' : 'Save profile'}</button>
@@ -334,6 +339,69 @@ function HolidaysSection() {
       <div className="row" style={{ marginTop: 10 }}>
         <button className="ghost" onClick={() => setHolidays((prev) => [...prev, { date: '', name: '' }])}><Plus size={14} /> Add another date</button>
         <button className="primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save holidays'}</button>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+    </div>
+  );
+}
+
+// Department-based transfer routing (ROADMAP.md §5) — src/voice/tools.js's
+// resolveTransferTarget matches a department the caller names before falling back to
+// staff/location/business-wide numbers.
+function TransferDepartmentsSection() {
+  const toast = useToast();
+  const [departments, setDepartments] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => { api.getTransferDepartments().then((d) => setDepartments(d.length ? d : [{ name: '', phoneNumber: '' }])).catch((e) => setError(e.message)); }, []);
+
+  function update(i, patch) {
+    setDepartments((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const cleaned = await api.putTransferDepartments(departments.filter((d) => d.name && d.phoneNumber));
+      setDepartments(cleaned.length ? cleaned : [{ name: '', phoneNumber: '' }]);
+      toast.success('Departments saved');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!departments) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+
+  return (
+    <div className="card">
+      <h2>Transfer departments</h2>
+      <p className="muted" style={{ marginTop: -8, fontSize: 12.5 }}>
+        Named phone lines the AI can transfer to when a caller asks for one by name (e.g. "billing").
+      </p>
+      <div className="stack" style={{ gap: 8 }}>
+        {departments.map((d, i) => (
+          <div key={i} className="row" style={{ alignItems: 'flex-end' }}>
+            <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+              {i === 0 && <label>Department</label>}
+              <input value={d.name} onChange={(e) => update(i, { name: e.target.value })} placeholder="Billing" />
+            </div>
+            <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+              {i === 0 && <label>Phone number</label>}
+              <input value={d.phoneNumber} onChange={(e) => update(i, { phoneNumber: e.target.value })} placeholder="+15551234567" />
+            </div>
+            <button className="icon-btn" onClick={() => setDepartments((prev) => prev.filter((_, idx) => idx !== i))} disabled={departments.length === 1}>
+              <Trash2 size={15} color="var(--danger)" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="ghost" onClick={() => setDepartments((prev) => [...prev, { name: '', phoneNumber: '' }])}><Plus size={14} /> Add another department</button>
+        <button className="primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save departments'}</button>
       </div>
       {error && <p className="error-text">{error}</p>}
     </div>
@@ -616,6 +684,7 @@ export default function SettingsPage() {
         <LocationsSection />
         <BusinessHoursSection />
         <HolidaysSection />
+        <TransferDepartmentsSection />
         <KnowledgeBaseSection />
         <CalendarConnectSection />
         <PhoneNumberSection />

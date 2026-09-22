@@ -94,6 +94,9 @@ export const api = {
   getHolidays: () => request('/api/business/holidays', { tokenStore: companyTokenStore }),
   putHolidays: (holidays) => request('/api/business/holidays', { method: 'PUT', body: { holidays }, tokenStore: companyTokenStore }),
 
+  getTransferDepartments: () => request('/api/business/transfer-departments', { tokenStore: companyTokenStore }),
+  putTransferDepartments: (departments) => request('/api/business/transfer-departments', { method: 'PUT', body: { departments }, tokenStore: companyTokenStore }),
+
   getKnowledge: () => request('/api/knowledge', { tokenStore: companyTokenStore }),
   saveKnowledgeDraft: (payload) => request('/api/knowledge/draft', { method: 'PUT', body: payload, tokenStore: companyTokenStore }),
   publishKnowledge: () => request('/api/knowledge/publish', { method: 'POST', tokenStore: companyTokenStore }),
@@ -128,6 +131,15 @@ export const api = {
   updateCustomer: (id, payload) => request(`/api/customers/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
   exportCustomersCsv: () => requestText('/api/customers/export', { tokenStore: companyTokenStore }),
   importCustomersCsv: (csv) => request('/api/customers/import', { method: 'POST', body: { csv }, tokenStore: companyTokenStore }),
+};
+
+// Customer self-service (ROADMAP.md §6 reschedule/cancel links) — token-authenticated
+// via the URL itself (dashboard/app/manage/[token]/page.jsx), no bearer token/login at all.
+export const myBookingApi = {
+  get: (token) => request(`/api/my-booking/${token}`),
+  getAvailability: (token, date) => request(`/api/my-booking/${token}/availability?${new URLSearchParams({ date })}`),
+  reschedule: (token, startTime) => request(`/api/my-booking/${token}/reschedule`, { method: 'POST', body: { startTime } }),
+  cancel: (token) => request(`/api/my-booking/${token}/cancel`, { method: 'POST' }),
 };
 
 // Platform-admin actions: registering/listing companies. A separate token namespace

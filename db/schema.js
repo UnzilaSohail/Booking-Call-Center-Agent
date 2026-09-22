@@ -83,4 +83,12 @@ export async function ensureIndexes(db) {
   // Customer records (src/services/customerService.js) — phone is the dedupe key every
   // other phone-keyed lookup in this schema (bookings, call_logs) already relies on.
   await db.collection('customers').createIndex({ business_id: 1, phone: 1 }, { unique: true });
+
+  // Twilio's SMS status callback (src/webhooks/twilio.js POST /webhooks/twilio/sms-status)
+  // looks a booking up by the message sid it was given at send time, not business_id —
+  // matches how call_logs.call_sid works today.
+  await db.collection('bookings').createIndex(
+    { confirmation_sms_sid: 1 },
+    { partialFilterExpression: { confirmation_sms_sid: { $type: 'string' } } }
+  );
 }

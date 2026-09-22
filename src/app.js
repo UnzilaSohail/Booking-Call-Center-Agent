@@ -5,6 +5,7 @@ import { platformAuthRouter, requirePlatformAuth } from './platformAuth.js';
 import { unifiedLoginRouter } from './routes/unifiedLogin.js';
 import { platformRouter } from './routes/platform.js';
 import { signupRouter } from './routes/signup.js';
+import { myBookingRouter } from './routes/myBooking.js';
 import { onboardingRouter } from './routes/onboarding.js';
 import { locationsRouter } from './routes/locations.js';
 import { customersRouter } from './routes/customers.js';
@@ -36,6 +37,7 @@ app.use(express.json());
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/api', unifiedLoginRouter);
 app.use('/api', signupRouter);
+app.use('/api', myBookingRouter);
 app.use('/api/auth', authRouter);
 // Scoped to /api/platform specifically — requirePlatformAuth must not be mounted at the
 // broader /api prefix, or it would intercept every other /api/* request (including

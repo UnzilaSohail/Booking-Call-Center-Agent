@@ -99,12 +99,13 @@ configRouter.post('/staff', (req, res, next) => {
 // business hours with these when staff.hours is actually set).
 configRouter.patch('/staff/:id', async (req, res, next) => {
   try {
-    const { name, hours, dailyBreak, locationId } = req.body ?? {};
+    const { name, phone, hours, dailyBreak, locationId } = req.body ?? {};
     const updates = {};
     if (name !== undefined) {
       if (!name) return res.status(400).json({ error: 'name is required' });
       updates.name = name;
     }
+    if (phone !== undefined) updates.phone = phone || null;
     if (hours !== undefined) {
       updates.hours = hours === null ? null : hours.map((h) => ({ day_of_week: h.dayOfWeek, open_time: h.openTime, close_time: h.closeTime }));
     }
@@ -205,7 +206,7 @@ configRouter.get('/business', async (req, res, next) => {
     const db = await getDb();
     const business = await db.collection('businesses').findOne(
       { _id: req.businessId },
-      { projection: { name: 1, industry: 1, timezone: 1, phone_number: 1, reschedule_cutoff_minutes: 1, contact_email: 1, contact_phone: 1, address: 1, faqs: 1, voice_name: 1, min_booking_notice_minutes: 1, max_booking_window_days: 1 } }
+      { projection: { name: 1, industry: 1, timezone: 1, phone_number: 1, reschedule_cutoff_minutes: 1, contact_email: 1, contact_phone: 1, address: 1, faqs: 1, voice_name: 1, min_booking_notice_minutes: 1, max_booking_window_days: 1, transfer_phone_number: 1 } }
     );
     res.json({
       name: business.name,
@@ -220,6 +221,7 @@ configRouter.get('/business', async (req, res, next) => {
       voiceName: business.voice_name ?? null,
       minBookingNoticeMinutes: business.min_booking_notice_minutes ?? 0,
       maxBookingWindowDays: business.max_booking_window_days ?? null,
+      transferPhoneNumber: business.transfer_phone_number ?? '',
     });
   } catch (err) {
     next(err);
@@ -228,7 +230,7 @@ configRouter.get('/business', async (req, res, next) => {
 
 configRouter.patch('/business', async (req, res, next) => {
   try {
-    const { name, industry, timezone, rescheduleCutoffMinutes, contactEmail, contactPhone, address, minBookingNoticeMinutes, maxBookingWindowDays } = req.body ?? {};
+    const { name, industry, timezone, rescheduleCutoffMinutes, contactEmail, contactPhone, address, minBookingNoticeMinutes, maxBookingWindowDays, transferPhoneNumber } = req.body ?? {};
     const updates = {};
     if (name !== undefined) {
       if (!name) return res.status(400).json({ error: 'name cannot be empty' });
@@ -260,6 +262,7 @@ configRouter.patch('/business', async (req, res, next) => {
       }
       updates.max_booking_window_days = maxBookingWindowDays;
     }
+    if (transferPhoneNumber !== undefined) updates.transfer_phone_number = transferPhoneNumber || null;
     if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'nothing to update' });
 
     const db = await getDb();
@@ -289,6 +292,32 @@ configRouter.put('/business/holidays', async (req, res, next) => {
 
     const db = await getDb();
     await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { holidays: normalized } });
+    res.json(normalized);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Department-based transfer routing (src/voice/tools.js resolveTransferTarget) — same
+// whole-array-replace pattern as PUT /business-hours / PUT /business/holidays.
+configRouter.get('/business/transfer-departments', async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { transfer_departments: 1 } });
+    res.json(business?.transfer_departments ?? []);
+  } catch (err) {
+    next(err);
+  }
+});
+
+configRouter.put('/business/transfer-departments', async (req, res, next) => {
+  try {
+    const { departments } = req.body ?? {};
+    if (!Array.isArray(departments)) return res.status(400).json({ error: 'departments must be an array' });
+    const normalized = departments.filter((d) => d?.name && d?.phoneNumber).map((d) => ({ name: String(d.name).trim(), phoneNumber: String(d.phoneNumber).trim() }));
+
+    const db = await getDb();
+    await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { transfer_departments: normalized } });
     res.json(normalized);
   } catch (err) {
     next(err);

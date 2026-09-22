@@ -11,11 +11,15 @@ function getClient() {
   return client;
 }
 
+// Returns the sent message's sid (so callers can track delivery status — see
+// src/webhooks/twilio.js POST /webhooks/twilio/sms-status), or null if it wasn't sent.
 export async function sendSms(to, body) {
   const c = getClient();
   if (!c || !fromNumber) {
     console.warn('SMS not sent (Twilio not configured):', to, body);
-    return;
+    return null;
   }
-  await c.messages.create({ to, from: fromNumber, body });
+  const statusCallback = process.env.PUBLIC_HTTPS_URL ? `${process.env.PUBLIC_HTTPS_URL}/webhooks/twilio/sms-status` : undefined;
+  const message = await c.messages.create({ to, from: fromNumber, body, ...(statusCallback ? { statusCallback } : {}) });
+  return message.sid;
 }

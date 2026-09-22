@@ -71,10 +71,15 @@ export const toolDeclarations = [
   },
   {
     name: 'transfer_to_human',
-    description: 'Escalate the call to a human because the request is out of scope (not something this system supports — a booking/reschedule/cancel/FAQ/message/callback), the caller explicitly asks for a person, or they are upset and a human would handle it better.',
+    description: "Escalate the call to a human because the request is out of scope (not something this system supports — a booking/reschedule/cancel/FAQ/message/callback), the caller explicitly asks for a person, they are upset and a human would handle it better, or you are not confident you understood the request correctly even after asking once to clarify. Tell the caller you're transferring them before calling this.",
     parameters: {
       type: 'OBJECT',
-      properties: { reason: { type: 'STRING' } },
+      properties: {
+        reason: { type: 'STRING', description: "Brief summary of why and what the caller needs — this is read aloud to the human as a heads-up before they're connected, so make it useful context, not just a category label." },
+        department: { type: 'STRING', description: 'Optional: a named department the caller asked for, if this business has any configured (e.g. "billing", "support").' },
+        staffName: { type: 'STRING', description: 'Optional: a specific staff member the caller asked for, by name.' },
+        locationName: { type: 'STRING', description: 'Optional: which location, if this business has more than one and the caller named one.' },
+      },
       required: ['reason'],
     },
   },
@@ -141,6 +146,33 @@ async function resolveLocationId(businessId, locationName) {
     const location = await c('locations').findOne({ name: { $regex: escapeRegex(locationName), $options: 'i' } });
     return location?._id ?? null;
   });
+}
+
+// Transfer routing needs the actual staff/location documents (for .phone/.contact_phone),
+// not just their ids — separate from resolveStaffId/resolveLocationId above, which only
+// ever feed a booking's staff_id/location_id field.
+async function resolveStaffDoc(businessId, staffName) {
+  if (!staffName) return null;
+  return withTenant(businessId, (c) => c('staff').findOne({ name: { $regex: escapeRegex(staffName), $options: 'i' } }));
+}
+async function resolveLocationDoc(businessId, locationName) {
+  if (!locationName) return null;
+  return withTenant(businessId, (c) => c('locations').findOne({ name: { $regex: escapeRegex(locationName), $options: 'i' } }));
+}
+
+// Pure — priority: named department match > staff's own phone > location's contact
+// phone > business-wide default. staff/location are already-resolved documents (or
+// null/undefined), not names, so this has no DB access of its own and is directly
+// unit-testable (test/transferRouting.test.js).
+export function resolveTransferTarget(business, { department, staff, location } = {}) {
+  if (department) {
+    const match = (business.transfer_departments ?? []).find((d) => d.name.toLowerCase() === department.toLowerCase());
+    if (match) return { phoneNumber: match.phoneNumber, matchedBy: 'department' };
+  }
+  if (staff?.phone) return { phoneNumber: staff.phone, matchedBy: 'staff' };
+  if (location?.contact_phone) return { phoneNumber: location.contact_phone, matchedBy: 'location' };
+  if (business.transfer_phone_number) return { phoneNumber: business.transfer_phone_number, matchedBy: 'business' };
+  return null;
 }
 
 // Keyed on the call plus the exact booking content, not a per-invocation counter: a
@@ -220,8 +252,11 @@ export function createToolHandlers(business, callSid) {
       }
     },
 
-    async transfer_to_human({ reason }) {
-      return { transferred: true, reason };
+    async transfer_to_human({ reason, department, staffName, locationName }) {
+      const staff = await resolveStaffDoc(business.id, staffName);
+      const location = await resolveLocationDoc(business.id, locationName);
+      const target = resolveTransferTarget(business, { department, staff, location });
+      return { transferred: true, reason, transferPhoneNumber: target?.phoneNumber ?? null };
     },
 
     async leave_voicemail({ message, phone }) {

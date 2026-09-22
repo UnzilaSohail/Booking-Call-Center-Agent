@@ -11,6 +11,15 @@ function StatusBadge({ status }) {
   return <span className={`badge ${status === 'confirmed' ? 'success' : 'neutral'}`}>{status}</span>;
 }
 
+// "Failed-message alerts" (ROADMAP.md §6) — src/notifications/notify.js records a send
+// failure on the booking instead of only logging it; this is where an admin actually
+// sees it, right where they already look for a given customer's booking.
+function DeliveryBadge({ booking }) {
+  const errors = [booking.confirmation_sms_error && 'SMS', booking.confirmation_email_error && 'Email'].filter(Boolean);
+  if (!errors.length) return null;
+  return <span className="badge danger" title={[booking.confirmation_sms_error, booking.confirmation_email_error].filter(Boolean).join(' / ')}>{errors.join('/')} failed</span>;
+}
+
 function BookingsInner() {
   const toast = useToast();
   const [q, setQ] = useState('');
@@ -78,7 +87,7 @@ function BookingsInner() {
         )}
         {!loading && results.length > 0 && (
           <table>
-            <thead><tr><th>When</th><th>Customer</th><th>Phone</th><th>Service</th><th>Status</th></tr></thead>
+            <thead><tr><th>When</th><th>Customer</th><th>Phone</th><th>Service</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {results.map((b) => (
                 <tr key={b.id} style={{ cursor: b.status === 'confirmed' ? 'pointer' : 'default' }} onClick={() => b.status === 'confirmed' && setModal({ mode: 'edit', booking: b })}>
@@ -87,6 +96,7 @@ function BookingsInner() {
                   <td>{b.phone}</td>
                   <td>{b.service_name}</td>
                   <td><StatusBadge status={b.status} /></td>
+                  <td><DeliveryBadge booking={b} /></td>
                 </tr>
               ))}
             </tbody>

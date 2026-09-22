@@ -61,6 +61,29 @@ export async function markRecordingAcknowledged(businessId, phone) {
   );
 }
 
+// Inbound STOP/START SMS replies (src/webhooks/twilio.js) — upserts first so a reply
+// from a number with no customer record yet still records the opt-out instead of
+// silently doing nothing.
+export async function setSmsOptIn(businessId, phone, optedIn) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return;
+  await upsertCustomer(businessId, { phone });
+  await withTenant(businessId, (c) =>
+    c('customers').updateOne({ phone: normalized }, { $set: { 'consent.smsOptIn': optedIn, updated_at: new Date() } })
+  );
+}
+
+// Checked before every send in src/notifications/notify.js — "Opt-out management"
+// (ROADMAP.md §6) only means something if consent is actually enforced, not just
+// stored. No customer record yet reads as "not explicitly opted out" (a fresh
+// customer's default is opted in), same as upsertCustomer's own defaults.
+export async function getConsent(businessId, phone) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+  const customer = await withTenant(businessId, (c) => c('customers').findOne({ phone: normalized }, { projection: { consent: 1 } }));
+  return customer?.consent ?? null;
+}
+
 export async function listCustomers(businessId, { q } = {}) {
   const filter = {};
   if (q) {

@@ -73,6 +73,9 @@ export function formatSystemInstruction(business, services, staff) {
     ? pronunciation.map((p) => `Say "${p.term}" like "${p.pronunciation}".`).join(' ')
     : null;
 
+  const departments = business.transfer_departments ?? [];
+  const departmentsText = departments.length ? departments.map((d) => d.name).join(', ') : null;
+
   const open = isOpenNow(business);
   const openingLine = k.greeting
     ? `Open the call by saying, in your own natural voice, essentially: "${k.greeting}"${open === false ? ' — then let them know you\'re currently closed.' : '.'}`
@@ -100,7 +103,9 @@ Rules:
 - For reschedule/cancel requests, call find_upcoming_bookings with the caller's phone number first to get the booking id.
 - If the caller asks a question covered by the common-questions list above, answer from it.
 - If the caller wants to leave a message for staff, use leave_voicemail (confirm the message back to them first). If they'd rather staff call them back, use request_callback.
-- If they ask for something else this system doesn't support (outside booking/reschedule/cancel/business-info/messages/callbacks), or explicitly ask for a person, or seem upset, call transfer_to_human.
+- If they ask for something else this system doesn't support (outside booking/reschedule/cancel/business-info/messages/callbacks), explicitly ask for a person, seem upset, or you're not confident you understood their request correctly even after asking once to clarify, call transfer_to_human. Tell them you're transferring first, and give a genuinely useful reason (what they need, not just "caller request") — that reason is read to whoever picks up before you're connected.
+${departmentsText ? `- This business has these departments a caller might ask for: ${departmentsText}. Pass the matching one as transfer_to_human's department argument.` : ''}
+${staff.length ? `- If the caller names a specific staff member for the transfer, pass their name as transfer_to_human's staffName argument.` : ''}
 - If a request fails (e.g. slot no longer available or too close to the appointment to change), explain briefly and offer alternatives — don't just repeat the error.
 - Keep responses short; this is a voice call, not a document.`;
 }
@@ -147,7 +152,7 @@ export async function startGeminiSession({ business, callSid, onAudio, onTranscr
                 console.error(`tool ${call.name} threw:`, err);
                 response = { error: 'internal error handling this request' };
               }
-              if (call.name === 'transfer_to_human' && !response.error) onTransferToHuman?.(response.reason);
+              if (call.name === 'transfer_to_human' && !response.error) onTransferToHuman?.(response.reason, response.transferPhoneNumber);
               if (call.name === 'create_booking' && !response.error) onBookingCreated?.(response.bookingId);
               responses.push({ id: call.id, name: call.name, response });
             }

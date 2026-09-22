@@ -30,6 +30,7 @@ function StaffScheduleEditor({ staff, locations, onChanged }) {
   const [breakStart, setBreakStart] = useState(staff.daily_break?.start_time?.slice(0, 5) ?? '12:00');
   const [breakEnd, setBreakEnd] = useState(staff.daily_break?.end_time?.slice(0, 5) ?? '13:00');
   const [locationId, setLocationId] = useState(staff.location_id ?? '');
+  const [phone, setPhone] = useState(staff.phone ?? '');
   const [timeOff, setTimeOff] = useState(null);
   const [newStart, setNewStart] = useState('');
   const [newEnd, setNewEnd] = useState('');
@@ -54,6 +55,7 @@ function StaffScheduleEditor({ staff, locations, onChanged }) {
         hours: customHours ? rows.filter((r) => !r.closed).map((r) => ({ dayOfWeek: r.dayOfWeek, openTime: r.openTime, closeTime: r.closeTime })) : null,
         dailyBreak: breakEnabled ? { startTime: breakStart, endTime: breakEnd } : null,
         locationId: locationId || null,
+        phone: phone || null,
       });
       toast.success(`${staff.name}'s schedule saved`);
       onChanged();
@@ -120,15 +122,21 @@ function StaffScheduleEditor({ staff, locations, onChanged }) {
         </div>
       )}
 
-      {locations.length > 0 && (
-        <div className="field" style={{ maxWidth: 260, marginBottom: 12 }}>
-          <label>Location</label>
-          <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-            <option value="">Unassigned</option>
-            {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
+      <div className="row" style={{ marginBottom: 12 }}>
+        {locations.length > 0 && (
+          <div className="field" style={{ maxWidth: 260, marginBottom: 0 }}>
+            <label>Location</label>
+            <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+              <option value="">Unassigned</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="field" style={{ maxWidth: 260, marginBottom: 0 }}>
+          <label>Direct line (for transfers)</label>
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+15551234567" />
         </div>
-      )}
+      </div>
 
       {error && <p className="error-text">{error}</p>}
       <button className="primary" onClick={saveSchedule} disabled={saving}>{saving ? 'Saving...' : 'Save schedule'}</button>
