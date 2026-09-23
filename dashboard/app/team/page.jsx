@@ -1,6 +1,6 @@
 'use client';
 import { Fragment, useEffect, useState } from 'react';
-import { CalendarClock, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { CalendarClock, Mail, Pencil, Plus, Trash2, UserX, X } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import Avatar from '../../components/Avatar';
 import { api, ApiError } from '../../lib/api';
@@ -8,6 +8,8 @@ import { useToast } from '../../lib/Toast';
 import { DateTime } from '../../lib/datetime';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const ROLES = ['manager', 'receptionist', 'staff', 'billing', 'custom'];
+const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', receptionist: 'Receptionist', staff: 'Staff', billing: 'Billing', custom: 'Custom' };
 
 function emptyWeek() {
   return DAY_NAMES.map((_, day) => ({ dayOfWeek: day, closed: true, openTime: '09:00', closeTime: '17:00' }));
@@ -16,9 +18,11 @@ function emptyWeek() {
 // Expandable per-staff schedule: hours (defaults to "follow business hours" unless
 // overridden), an optional daily break, a location assignment, and time off — same
 // row-expand pattern the Calls page uses for call details.
-function StaffScheduleEditor({ staff, locations, onChanged }) {
+function StaffScheduleEditor({ staff, locations, services, onChanged }) {
   const toast = useToast();
   const [customHours, setCustomHours] = useState(staff.hours != null);
+  const [customServices, setCustomServices] = useState(staff.service_ids != null);
+  const [serviceIds, setServiceIds] = useState(staff.service_ids ?? []);
   const [rows, setRows] = useState(() => {
     if (!staff.hours) return emptyWeek();
     return emptyWeek().map((row) => {
@@ -56,6 +60,7 @@ function StaffScheduleEditor({ staff, locations, onChanged }) {
         dailyBreak: breakEnabled ? { startTime: breakStart, endTime: breakEnd } : null,
         locationId: locationId || null,
         phone: phone || null,
+        serviceIds: customServices ? serviceIds : null,
       });
       toast.success(`${staff.name}'s schedule saved`);
       onChanged();
@@ -138,6 +143,29 @@ function StaffScheduleEditor({ staff, locations, onChanged }) {
         </div>
       </div>
 
+      {services.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 6 }}>
+            <input type="checkbox" style={{ width: 'auto' }} checked={customServices} onChange={(e) => setCustomServices(e.target.checked)} />
+            Only offers specific services (unchecked = offers everything)
+          </label>
+          {customServices && (
+            <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+              {services.map((s) => (
+                <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
+                  <input
+                    type="checkbox" style={{ width: 'auto' }}
+                    checked={serviceIds.includes(s.id)}
+                    onChange={(e) => setServiceIds((prev) => (e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id)))}
+                  />
+                  {s.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {error && <p className="error-text">{error}</p>}
       <button className="primary" onClick={saveSchedule} disabled={saving}>{saving ? 'Saving...' : 'Save schedule'}</button>
 
@@ -167,6 +195,7 @@ function StaffSection() {
   const toast = useToast();
   const [staff, setStaff] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [services, setServices] = useState([]);
   const [name, setName] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
@@ -174,7 +203,7 @@ function StaffSection() {
   const [error, setError] = useState(null);
 
   const load = () => api.listStaff().then(setStaff).catch((e) => setError(e.message));
-  useEffect(() => { load(); api.listLocations().then(setLocations).catch(() => {}); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); api.listLocations().then(setLocations).catch(() => {}); api.listServices().then(setServices).catch(() => {}); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function add(e) {
     e.preventDefault();
@@ -250,7 +279,7 @@ function StaffSection() {
               {expandedId === s.id && (
                 <tr>
                   <td colSpan={2}>
-                    <StaffScheduleEditor staff={s} locations={locations} onChanged={load} />
+                    <StaffScheduleEditor staff={s} locations={locations} services={services} onChanged={load} />
                   </td>
                 </tr>
               )}
@@ -268,21 +297,141 @@ function StaffSection() {
   );
 }
 
+// Matches src/permissions.js's AREAS — the fixed set a custom role picks from.
+const AREAS = ['bookings', 'customers', 'calls', 'services', 'team', 'settings', 'exceptions'];
+
+function TeamMembersSection() {
+  const toast = useToast();
+  const [members, setMembers] = useState([]);
+  const [me, setMe] = useState(null);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('receptionist');
+  const [permissions, setPermissions] = useState([]);
+  const [inviting, setInviting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = () => api.listTeamMembers().then(setMembers).catch((e) => setError(e.message));
+  useEffect(() => { load(); api.getMe().then(setMe).catch(() => {}); }, []);
+
+  const isOwner = me?.role === 'owner';
+
+  async function invite(e) {
+    e.preventDefault();
+    setError(null);
+    setInviting(true);
+    try {
+      await api.inviteTeamMember({ name, email, role, permissions: role === 'custom' ? permissions : undefined });
+      setName(''); setEmail(''); setRole('receptionist'); setPermissions([]);
+      toast.success(`Invited ${email}`);
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function setStatus(id, status) {
+    if (status === 'suspended' && !confirm('Suspend this team member? They will immediately lose access.')) return;
+    try {
+      await api.updateTeamMember(id, { status });
+      toast.success(status === 'suspended' ? 'Suspended' : 'Reactivated');
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  async function setRoleFor(id, newRole) {
+    try {
+      await api.updateTeamMember(id, { role: newRole });
+      toast.success('Role updated');
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2>Team members &amp; access</h2>
+      <p className="muted" style={{ marginTop: -8 }}>Who can log into this dashboard, and what they can see.</p>
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th>{isOwner && <th></th>}</tr></thead>
+        <tbody>
+          {members.map((m) => (
+            <tr key={m.id}>
+              <td>{m.name || '—'}</td>
+              <td>{m.email}</td>
+              <td>
+                {isOwner && m.role !== 'owner' ? (
+                  <select value={m.role} onChange={(e) => setRoleFor(m.id, e.target.value)} style={{ maxWidth: 150 }}>
+                    {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                  </select>
+                ) : (ROLE_LABELS[m.role] ?? m.role)}
+              </td>
+              <td><span className={`badge ${m.status === 'suspended' ? 'danger' : m.status === 'invited' ? 'neutral' : 'success'}`}>{m.status}</span></td>
+              {isOwner && (
+                <td className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+                  {m.role !== 'owner' && (m.status === 'suspended'
+                    ? <button className="icon-btn" onClick={() => setStatus(m.id, 'active')} title="Reactivate"><Mail size={14} /></button>
+                    : <button className="icon-btn" onClick={() => setStatus(m.id, 'suspended')} title="Suspend"><UserX size={14} color="var(--danger)" /></button>)}
+                </td>
+              )}
+            </tr>
+          ))}
+          {members.length === 0 && <tr><td colSpan={isOwner ? 5 : 4} className="muted">Loading...</td></tr>}
+        </tbody>
+      </table>
+
+      {isOwner && (
+        <form onSubmit={invite} className="stack" style={{ gap: 10, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <label style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Invite someone</label>
+          <div className="row" style={{ alignItems: 'flex-end' }}>
+            <div className="field" style={{ flex: 1 }}><label>Name</label><input required value={name} onChange={(e) => setName(e.target.value)} /></div>
+            <div className="field" style={{ flex: 1 }}><label>Email</label><input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+            <div className="field" style={{ maxWidth: 160 }}>
+              <label>Role</label>
+              <select value={role} onChange={(e) => setRole(e.target.value)}>
+                {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+              </select>
+            </div>
+            <button type="submit" className="primary" disabled={inviting}>{inviting ? 'Inviting...' : 'Invite'}</button>
+          </div>
+          {role === 'custom' && (
+            <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+              {AREAS.map((a) => (
+                <label key={a} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
+                  <input type="checkbox" style={{ width: 'auto' }} checked={permissions.includes(a)} onChange={(e) => setPermissions((prev) => (e.target.checked ? [...prev, a] : prev.filter((x) => x !== a)))} />
+                  {a}
+                </label>
+              ))}
+            </div>
+          )}
+        </form>
+      )}
+      {error && <p className="error-text">{error}</p>}
+    </div>
+  );
+}
+
 function TeamInner() {
   return (
     <div className="stack">
       <div>
         <h1>Team</h1>
-        <p className="muted" style={{ marginTop: 4 }}>Staff members bookings can be assigned to.</p>
+        <p className="muted" style={{ marginTop: 4 }}>Staff members bookings can be assigned to, and who has access to this dashboard.</p>
       </div>
       <StaffSection />
+      <TeamMembersSection />
     </div>
   );
 }
 
 export default function TeamPage() {
   return (
-    <RequireAuth>
+    <RequireAuth area="team">
       <TeamInner />
     </RequireAuth>
   );

@@ -3,16 +3,20 @@
 // services/staff in routes/config.js.
 import { Router } from 'express';
 import { newId, withTenant, serialize, serializeAll } from '../db.js';
+import { requireArea } from '../auth.js';
 
 export const locationsRouter = Router();
 
-locationsRouter.get('/locations', (req, res, next) =>
+// Applied per-route (see the comment in src/routes/services.js for why).
+const gate = requireArea('settings');
+
+locationsRouter.get('/locations', gate, (req, res, next) =>
   withTenant(req.businessId, (c) => c('locations').find({}).sort({ is_primary: -1, name: 1 }).toArray())
     .then((rows) => res.json(serializeAll(rows)))
     .catch(next)
 );
 
-locationsRouter.post('/locations', (req, res, next) => {
+locationsRouter.post('/locations', gate, (req, res, next) => {
   const { name, address, contactPhone } = req.body ?? {};
   if (!name) return res.status(400).json({ error: 'name is required' });
 
@@ -22,7 +26,7 @@ locationsRouter.post('/locations', (req, res, next) => {
     .catch(next);
 });
 
-locationsRouter.patch('/locations/:id', async (req, res, next) => {
+locationsRouter.patch('/locations/:id', gate, async (req, res, next) => {
   try {
     const { name, address, contactPhone } = req.body ?? {};
     const updates = {};
@@ -42,7 +46,7 @@ locationsRouter.patch('/locations/:id', async (req, res, next) => {
   }
 });
 
-locationsRouter.delete('/locations/:id', async (req, res, next) => {
+locationsRouter.delete('/locations/:id', gate, async (req, res, next) => {
   try {
     const result = await withTenant(req.businessId, (c) => c('locations').deleteOne({ _id: req.params.id }));
     if (result.deletedCount === 0) return res.status(404).json({ error: 'location not found' });

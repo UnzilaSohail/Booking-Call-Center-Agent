@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { Router } from 'express';
 import { getDb } from './db.js';
 import { verifyCompanyAdmin, LoginError } from './loginHelpers.js';
+import { areasFor } from './permissions.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
@@ -48,18 +49,43 @@ export async function requireAuth(req, res, next) {
 
   try {
     // Checked on every request, not just at login — otherwise a platform admin
-    // suspending a company would only stop *new* logins, and any token issued before
-    // the suspension (valid up to 12h) would keep working right through it.
+    // suspending a company (or an owner suspending a teammate) would only stop *new*
+    // logins, and any token issued before the suspension (valid up to 12h) would keep
+    // working right through it.
     const db = await getDb();
-    const business = await db.collection('businesses').findOne({ _id: payload.businessId }, { projection: { status: 1 } });
+    const [business, admin] = await Promise.all([
+      db.collection('businesses').findOne({ _id: payload.businessId }, { projection: { status: 1 } }),
+      db.collection('admins').findOne({ _id: payload.adminId }, { projection: { role: 1, permissions: 1, status: 1 } }),
+    ]);
     if (business?.status === 'suspended') return res.status(403).json({ error: 'this account has been suspended — contact the platform' });
+    if (!admin) return res.status(401).json({ error: 'admin not found' });
+    if (admin.status === 'suspended') return res.status(403).json({ error: 'your access has been suspended — contact your business owner' });
 
     req.businessId = payload.businessId;
     req.adminId = payload.adminId;
+    req.admin = { role: admin.role ?? 'owner', areas: areasFor(admin) };
     next();
   } catch (err) {
     next(err);
   }
+}
+
+// Gates a route to admins whose role grants the given dashboard area (src/permissions.js)
+// — mount after requireAuth, which populates req.admin.
+export function requireArea(area) {
+  return (req, res, next) => {
+    if (!req.admin?.areas.includes(area)) return res.status(403).json({ error: `you don't have access to ${area}` });
+    next();
+  };
+}
+
+// Admin-management (inviting/role-changing/suspending other admins) is reserved for the
+// Owner specifically, not folded into the area/permission system — otherwise a `custom`
+// role could grant itself the ability to create more admins by including `team` in its
+// permission list.
+export function requireOwner(req, res, next) {
+  if (req.admin?.role !== 'owner') return res.status(403).json({ error: 'only the account owner can do this' });
+  next();
 }
 
 // Who's logged in — the dashboard's greeting/sidebar footer (dashboard/app/page.jsx,
@@ -69,7 +95,7 @@ authRouter.get('/me', requireAuth, async (req, res, next) => {
     const db = await getDb();
     const admin = await db.collection('admins').findOne({ _id: req.adminId }, { projection: { name: 1, email: 1 } });
     if (!admin) return res.status(404).json({ error: 'admin not found' });
-    res.json({ name: admin.name ?? null, email: admin.email });
+    res.json({ name: admin.name ?? null, email: admin.email, role: req.admin.role, areas: req.admin.areas });
   } catch (err) {
     next(err);
   }

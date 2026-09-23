@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  Box, CalendarDays, CalendarRange, Crown, DollarSign, Minus, TrendingDown, TrendingUp, Users,
+  AlertTriangle, Box, CalendarDays, CalendarRange, Crown, DollarSign, Minus, TrendingDown, TrendingUp, Users,
 } from 'lucide-react';
 import RequireAuth from '../components/RequireAuth';
 import Avatar from '../components/Avatar';
@@ -21,6 +21,7 @@ const SUCCESS_SOFT = '#dcfce7';
 const WARNING = '#d97706';
 const WARNING_SOFT = '#fef3c7';
 const DANGER = '#dc2626';
+const DANGER_SOFT = '#fee2e2';
 const INFO = '#0891b2';
 const INFO_SOFT = '#cffafe';
 const VIOLET = '#7c3aed';
@@ -92,6 +93,7 @@ function HomeInner() {
   const [me, setMe] = useState(null);
   const [stats, setStats] = useState(null);
   const [analytics, setAnalytics] = useState(null);
+  const [openExceptions, setOpenExceptions] = useState(null);
   const [upcoming, setUpcoming] = useState([]);
   const [services, setServices] = useState([]);
   const [staffList, setStaffList] = useState([]);
@@ -109,7 +111,10 @@ function HomeInner() {
   }
 
   useEffect(() => {
-    api.getMe().then(setMe).catch(() => {});
+    api.getMe().then((m) => {
+      setMe(m);
+      if (m.areas?.includes('exceptions')) api.listExceptions('open').then((rows) => setOpenExceptions(rows.length)).catch(() => {});
+    }).catch(() => {});
     api.listServices().then(setServices).catch(() => {});
     api.listStaff().then(setStaffList).catch(() => {});
     load();
@@ -184,6 +189,14 @@ function HomeInner() {
           icon={Users} iconColor={WARNING} iconBg={WARNING_SOFT}
           label="Team members" value={stats?.staffCount ?? '—'}
         />
+        {openExceptions !== null && (
+          <Link href="/exceptions" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <StatCard
+              icon={AlertTriangle} iconColor={DANGER} iconBg={DANGER_SOFT}
+              label="Needs attention" value={openExceptions}
+            />
+          </Link>
+        )}
       </div>
 
       <div className="row" style={{ gap: 18, alignItems: 'stretch' }}>

@@ -2,13 +2,17 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../db.js';
 import { getAuthUrl, exchangeCodeForRefreshToken } from '../calendar/google.js';
+import { requireArea } from '../auth.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Protected: mounted behind requireAuth. Dashboard hits these with the admin's bearer token.
 export const calendarRouter = Router();
 
-calendarRouter.get('/calendar/status', async (req, res, next) => {
+// Applied per-route (see the comment in src/routes/services.js for why).
+const gate = requireArea('settings');
+
+calendarRouter.get('/calendar/status', gate, async (req, res, next) => {
   try {
     const db = await getDb();
     const business = await db.collection('businesses').findOne(
@@ -24,7 +28,7 @@ calendarRouter.get('/calendar/status', async (req, res, next) => {
 // Returns the Google consent URL for the dashboard to redirect the admin to. The state
 // token is short-lived and signed so /oauth/callback can trust which business is
 // connecting without requiring a bearer token on a browser redirect (plan.md §7).
-calendarRouter.get('/calendar/connect', (req, res) => {
+calendarRouter.get('/calendar/connect', gate, (req, res) => {
   const state = jwt.sign({ businessId: req.businessId, purpose: 'calendar-connect' }, JWT_SECRET, { expiresIn: '10m' });
   res.json({ url: getAuthUrl(state) });
 });

@@ -114,7 +114,7 @@ function ServicesInner() {
 
 export default function ServicesPage() {
   return (
-    <RequireAuth>
+    <RequireAuth area="services">
       <ServicesInner />
     </RequireAuth>
   );

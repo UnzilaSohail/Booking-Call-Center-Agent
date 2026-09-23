@@ -91,4 +91,9 @@ export async function ensureIndexes(db) {
     { confirmation_sms_sid: 1 },
     { partialFilterExpression: { confirmation_sms_sid: { $type: 'string' } } }
   );
+
+  // Failed booking attempts (src/voice/tools.js create_booking, on BookingError) — the
+  // one genuinely new exceptions-queue collection (ROADMAP.md §9); everything else in
+  // that queue reuses an existing collection's own fields.
+  await db.collection('failed_bookings').createIndex({ business_id: 1, created_at: 1 });
 }

@@ -152,7 +152,7 @@ export async function startGeminiSession({ business, callSid, onAudio, onTranscr
                 console.error(`tool ${call.name} threw:`, err);
                 response = { error: 'internal error handling this request' };
               }
-              if (call.name === 'transfer_to_human' && !response.error) onTransferToHuman?.(response.reason, response.transferPhoneNumber);
+              if (call.name === 'transfer_to_human' && !response.error) onTransferToHuman?.(response.reason, response.transferPhoneNumber, response.category);
               if (call.name === 'create_booking' && !response.error) onBookingCreated?.(response.bookingId);
               responses.push({ id: call.id, name: call.name, response });
             }

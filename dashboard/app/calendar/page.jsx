@@ -158,7 +158,7 @@ function CalendarInner() {
 
 export default function CalendarPage() {
   return (
-    <RequireAuth>
+    <RequireAuth area="bookings">
       <CalendarInner />
     </RequireAuth>
   );

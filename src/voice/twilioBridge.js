@@ -90,7 +90,7 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
                 ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload: geminiPCMToTwilioPayload(base64Pcm24k) } }));
               },
               onTranscript: (speaker, text) => transcript.push(`${speaker}: ${text}`),
-              onTransferToHuman: async (reason, transferPhoneNumber) => {
+              onTransferToHuman: async (reason, transferPhoneNumber, category) => {
                 // transferCallToHuman redirects the *live* Twilio call via REST — that
                 // replaces the TwiML currently running (this Media Stream), so Twilio
                 // itself tears the stream down (triggering 'stop'/close below) once the
@@ -102,8 +102,11 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
                     })
                   : false;
 
+                // transfer_category feeds the exceptions queue's "low-confidence call
+                // queue" (ROADMAP.md §9) — set once here regardless of whether the
+                // redirect itself succeeds, since either way the call needed escalating.
                 if (redirected) {
-                  await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200) } }));
+                  await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200), transfer_category: category ?? null } }));
                   return;
                 }
 
@@ -112,9 +115,9 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
                 // request_callback tool call would (ROADMAP.md §5 "Callback creation
                 // when staff are unavailable"), then end gracefully like before.
                 await withTenant(business.id, (c) => Promise.all([
-                  c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200) } }),
+                  c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200), transfer_category: category ?? null } }),
                   fromNumber
-                    ? c('callback_requests').insertOne({ _id: newId(), call_sid: callSid, phone: fromNumber, preferred_time: null, reason, status: 'pending', created_at: new Date() })
+                    ? c('callback_requests').insertOne({ _id: newId(), call_sid: callSid, phone: fromNumber, preferred_time: null, reason, status: 'pending', created_at: new Date(), assigned_to: null, resolved_at: null, resolved_by: null, resolution_notes: null })
                     : Promise.resolve(),
                 ]));
                 // Give Gemini's in-flight audio (e.g. "let me transfer you") a moment to

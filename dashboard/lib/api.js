@@ -84,6 +84,14 @@ export const api = {
   updateStaff: (id, payload) => request(`/api/staff/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
   deleteStaff: (id) => request(`/api/staff/${id}`, { method: 'DELETE', tokenStore: companyTokenStore }),
 
+  listTeamMembers: () => request('/api/team-members', { tokenStore: companyTokenStore }),
+  inviteTeamMember: (payload) => request('/api/team-members/invite', { method: 'POST', body: payload, tokenStore: companyTokenStore }),
+  updateTeamMember: (id, payload) => request(`/api/team-members/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
+
+  listExceptions: (status) => request(`/api/exceptions?${new URLSearchParams({ status })}`, { tokenStore: companyTokenStore }),
+  updateException: (type, id, payload) => request(`/api/exceptions/${type}/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
+  retryException: (type, id) => request(`/api/exceptions/${type}/${id}/retry`, { method: 'POST', tokenStore: companyTokenStore }),
+
   listStaffTimeOff: (staffId) => request(`/api/staff/${staffId}/time-off`, { tokenStore: companyTokenStore }),
   createStaffTimeOff: (staffId, payload) => request(`/api/staff/${staffId}/time-off`, { method: 'POST', body: payload, tokenStore: companyTokenStore }),
   deleteStaffTimeOff: (id) => request(`/api/time-off/${id}`, { method: 'DELETE', tokenStore: companyTokenStore }),
@@ -140,6 +148,13 @@ export const myBookingApi = {
   getAvailability: (token, date) => request(`/api/my-booking/${token}/availability?${new URLSearchParams({ date })}`),
   reschedule: (token, startTime) => request(`/api/my-booking/${token}/reschedule`, { method: 'POST', body: { startTime } }),
   cancel: (token) => request(`/api/my-booking/${token}/cancel`, { method: 'POST' }),
+};
+
+// Team-invite acceptance (ROADMAP.md §10) — token-authenticated via the URL itself
+// (dashboard/app/accept-invite/[token]/page.jsx), same shape as myBookingApi above.
+export const acceptInviteApi = {
+  get: (token) => request(`/api/accept-invite/${token}`),
+  accept: (token, password) => request(`/api/accept-invite/${token}`, { method: 'POST', body: { password } }),
 };
 
 // Platform-admin actions: registering/listing companies. A separate token namespace

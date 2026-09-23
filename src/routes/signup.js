@@ -81,6 +81,8 @@ signupRouter.post('/signup', async (req, res, next) => {
         email: ownerEmail.toLowerCase(),
         phone: ownerPhone,
         password_hash: passwordHash,
+        role: 'owner',
+        status: 'active',
         terms_accepted_at: new Date(),
         email_verified_at: null,
         phone_verified_at: null,

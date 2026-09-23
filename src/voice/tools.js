@@ -76,6 +76,7 @@ export const toolDeclarations = [
       type: 'OBJECT',
       properties: {
         reason: { type: 'STRING', description: "Brief summary of why and what the caller needs — this is read aloud to the human as a heads-up before they're connected, so make it useful context, not just a category label." },
+        category: { type: 'STRING', enum: ['human_request', 'department_routing', 'low_confidence', 'angry_customer', 'emergency', 'other'], description: 'Which of these best describes why you are transferring — used to route the call into the right staff review queue afterward.' },
         department: { type: 'STRING', description: 'Optional: a named department the caller asked for, if this business has any configured (e.g. "billing", "support").' },
         staffName: { type: 'STRING', description: 'Optional: a specific staff member the caller asked for, by name.' },
         locationName: { type: 'STRING', description: 'Optional: which location, if this business has more than one and the caller named one.' },
@@ -214,7 +215,18 @@ export function createToolHandlers(business, callSid) {
         });
         return { bookingId: booking.id, startTime: booking.start_time, status: 'confirmed' };
       } catch (err) {
-        if (err instanceof BookingError) return { error: err.message };
+        if (err instanceof BookingError) {
+          // A caller who wanted a slot that didn't work out is a real lost booking, not
+          // just a validation message to route back to Gemini — log it so staff see it
+          // in the exceptions queue (ROADMAP.md §9 "failed booking queue") instead of it
+          // vanishing the moment the call ends.
+          await withTenant(business.id, (c) => c('failed_bookings').insertOne({
+            _id: newId(), phone, customer_name: customerName, service_id: serviceId,
+            requested_start_time: startTime ? new Date(startTime) : null, error_message: err.message,
+            created_at: new Date(), status: 'open', assigned_to: null, resolved_at: null, resolved_by: null, resolution_notes: null,
+          })).catch(() => {});
+          return { error: err.message };
+        }
         throw err;
       }
     },
@@ -252,16 +264,17 @@ export function createToolHandlers(business, callSid) {
       }
     },
 
-    async transfer_to_human({ reason, department, staffName, locationName }) {
+    async transfer_to_human({ reason, category, department, staffName, locationName }) {
       const staff = await resolveStaffDoc(business.id, staffName);
       const location = await resolveLocationDoc(business.id, locationName);
       const target = resolveTransferTarget(business, { department, staff, location });
-      return { transferred: true, reason, transferPhoneNumber: target?.phoneNumber ?? null };
+      return { transferred: true, reason, category: category ?? null, transferPhoneNumber: target?.phoneNumber ?? null };
     },
 
     async leave_voicemail({ message, phone }) {
       await withTenant(business.id, (c) => c('voicemails').insertOne({
         _id: newId(), call_sid: callSid, phone, message, created_at: new Date(),
+        status: 'open', assigned_to: null, resolved_at: null, resolved_by: null, resolution_notes: null,
       }));
       await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: 'voicemail' } }));
       return { captured: true };
@@ -270,6 +283,7 @@ export function createToolHandlers(business, callSid) {
     async request_callback({ phone, preferredTime, reason }) {
       await withTenant(business.id, (c) => c('callback_requests').insertOne({
         _id: newId(), call_sid: callSid, phone, preferred_time: preferredTime || null, reason, status: 'pending', created_at: new Date(),
+        assigned_to: null, resolved_at: null, resolved_by: null, resolution_notes: null,
       }));
       await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: 'callback_requested' } }));
       return { requested: true };

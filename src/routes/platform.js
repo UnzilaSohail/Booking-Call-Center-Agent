@@ -431,6 +431,8 @@ platformRouter.post('/businesses', async (req, res, next) => {
         name: adminName || null,
         email: adminEmail.toLowerCase(),
         password_hash: passwordHash,
+        role: 'owner',
+        status: 'active',
         created_at: new Date(),
       });
     } catch (err) {

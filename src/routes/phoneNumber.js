@@ -4,8 +4,12 @@
 import { Router } from 'express';
 import twilio from 'twilio';
 import { getDb } from '../db.js';
+import { requireArea } from '../auth.js';
 
 export const phoneNumberRouter = Router();
+
+// Applied per-route (see the comment in src/routes/services.js for why).
+const gate = requireArea('settings');
 
 function twilioClient() {
   const sid = process.env.TWILIO_ACCOUNT_SID;
@@ -14,7 +18,7 @@ function twilioClient() {
   return twilio(sid, token);
 }
 
-phoneNumberRouter.get('/phone-number', async (req, res, next) => {
+phoneNumberRouter.get('/phone-number', gate, async (req, res, next) => {
   try {
     const db = await getDb();
     const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { phone_number: 1 } });
@@ -26,7 +30,7 @@ phoneNumberRouter.get('/phone-number', async (req, res, next) => {
 
 // POST /phone-number/provision { areaCode?, country? } — searches for and buys one
 // available number, points its voice webhook at this business, and stores it.
-phoneNumberRouter.post('/phone-number/provision', async (req, res, next) => {
+phoneNumberRouter.post('/phone-number/provision', gate, async (req, res, next) => {
   try {
     const db = await getDb();
     const existing = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { phone_number: 1 } });

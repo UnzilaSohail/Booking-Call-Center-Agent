@@ -188,7 +188,7 @@ function CustomerDetailInner() {
 
 export default function CustomerDetailPage() {
   return (
-    <RequireAuth>
+    <RequireAuth area="customers">
       <CustomerDetailInner />
     </RequireAuth>
   );

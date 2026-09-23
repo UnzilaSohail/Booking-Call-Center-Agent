@@ -4,15 +4,19 @@ import {
   createBooking, rescheduleBooking, cancelBooking, getDashboardStats,
 } from '../services/bookingService.js';
 import { getAnalytics } from '../services/analyticsService.js';
+import { requireArea } from '../auth.js';
 
 export const bookingsRouter = Router();
+
+// Applied per-route (see the comment in src/routes/services.js for why).
+const gate = requireArea('bookings');
 
 function handleError(err, res, next) {
   if (err instanceof BookingError) return res.status(err.status).json({ error: err.message });
   next(err);
 }
 
-bookingsRouter.get('/stats', async (req, res, next) => {
+bookingsRouter.get('/stats', gate, async (req, res, next) => {
   try {
     res.json(await getDashboardStats(req.businessId));
   } catch (err) {
@@ -20,7 +24,7 @@ bookingsRouter.get('/stats', async (req, res, next) => {
   }
 });
 
-bookingsRouter.get('/analytics', async (req, res, next) => {
+bookingsRouter.get('/analytics', gate, async (req, res, next) => {
   try {
     res.json(await getAnalytics(req.businessId));
   } catch (err) {
@@ -32,7 +36,7 @@ bookingsRouter.get('/analytics', async (req, res, next) => {
 // Returns free start-time slots (ISO, UTC) for that calendar day in the business's own
 // timezone. excludeBookingId lets the dashboard check availability while rescheduling a
 // booking without that booking's own current slot counting as busy against itself.
-bookingsRouter.get('/availability', async (req, res, next) => {
+bookingsRouter.get('/availability', gate, async (req, res, next) => {
   try {
     const { serviceId, date, staffId, excludeBookingId } = req.query;
     if (!serviceId || !date) return res.status(400).json({ error: 'serviceId and date are required' });
@@ -44,7 +48,7 @@ bookingsRouter.get('/availability', async (req, res, next) => {
 
 // GET /bookings?from=&to=&q=&status=  — from/to for the calendar view, q (customer
 // name/phone) and status for the searchable bookings list page.
-bookingsRouter.get('/bookings', async (req, res, next) => {
+bookingsRouter.get('/bookings', gate, async (req, res, next) => {
   try {
     res.json(await listBookings(req.businessId, { from: req.query.from, to: req.query.to, q: req.query.q, status: req.query.status }));
   } catch (err) {
@@ -52,7 +56,7 @@ bookingsRouter.get('/bookings', async (req, res, next) => {
   }
 });
 
-bookingsRouter.post('/bookings', async (req, res, next) => {
+bookingsRouter.post('/bookings', gate, async (req, res, next) => {
   try {
     const { customerName, phone, customerEmail, serviceId, staffId, locationId, startTime, idempotencyKey, createdVia } = req.body ?? {};
     // Confirmation notification fires from inside createBooking() itself
@@ -68,7 +72,7 @@ bookingsRouter.post('/bookings', async (req, res, next) => {
 });
 
 // PATCH /bookings/:id — reschedule (startTime) and/or status change.
-bookingsRouter.patch('/bookings/:id', async (req, res, next) => {
+bookingsRouter.patch('/bookings/:id', gate, async (req, res, next) => {
   try {
     const { startTime, status } = req.body ?? {};
     if (!startTime && !status) return res.status(400).json({ error: 'nothing to update' });
@@ -83,7 +87,7 @@ bookingsRouter.patch('/bookings/:id', async (req, res, next) => {
 });
 
 // DELETE = cancel (soft delete, keeps history for call_logs/reporting).
-bookingsRouter.delete('/bookings/:id', async (req, res, next) => {
+bookingsRouter.delete('/bookings/:id', gate, async (req, res, next) => {
   try {
     res.json(await cancelBooking(req.businessId, req.params.id));
   } catch (err) {

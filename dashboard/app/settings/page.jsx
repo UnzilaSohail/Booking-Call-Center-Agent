@@ -675,7 +675,7 @@ function PhoneNumberSection() {
 
 export default function SettingsPage() {
   return (
-    <RequireAuth>
+    <RequireAuth area="settings">
       <div className="stack">
         <div>
           <h1>Settings</h1>

@@ -102,7 +102,7 @@ function CallsInner() {
 
 export default function CallsPage() {
   return (
-    <RequireAuth>
+    <RequireAuth area="calls">
       <CallsInner />
     </RequireAuth>
   );

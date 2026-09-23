@@ -104,7 +104,11 @@ export default function BookingModal({ mode, booking, initialDate, services, sta
                   do nothing, so don't offer it. */}
               <select value={staffId} onChange={(e) => { setStaffId(e.target.value); setSelectedSlot(null); }} disabled={isReschedule}>
                 <option value="">Any</option>
-                {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {/* Narrowed to staff who offer the selected service (ROADMAP.md §10
+                    "services assigned to staff") — a staff member with no service_ids
+                    set offers everything, same "null means default" convention as their
+                    hours/location. */}
+                {staffList.filter((s) => !s.service_ids || s.service_ids.includes(serviceId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           )}

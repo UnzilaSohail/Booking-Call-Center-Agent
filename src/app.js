@@ -6,15 +6,19 @@ import { unifiedLoginRouter } from './routes/unifiedLogin.js';
 import { platformRouter } from './routes/platform.js';
 import { signupRouter } from './routes/signup.js';
 import { myBookingRouter } from './routes/myBooking.js';
+import { acceptInviteRouter } from './routes/acceptInvite.js';
 import { onboardingRouter } from './routes/onboarding.js';
 import { locationsRouter } from './routes/locations.js';
 import { customersRouter } from './routes/customers.js';
-import { configRouter } from './routes/config.js';
+import { servicesRouter } from './routes/services.js';
+import { teamRouter } from './routes/team.js';
+import { settingsRouter } from './routes/settings.js';
 import { knowledgeRouter } from './routes/knowledge.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { calendarRouter, calendarOAuthRouter } from './routes/calendar.js';
 import { phoneNumberRouter } from './routes/phoneNumber.js';
 import { callLogsRouter } from './routes/callLogs.js';
+import { exceptionsRouter } from './routes/exceptions.js';
 import { twilioWebhookRouter } from './webhooks/twilio.js';
 
 export const app = express();
@@ -38,21 +42,30 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/api', unifiedLoginRouter);
 app.use('/api', signupRouter);
 app.use('/api', myBookingRouter);
+app.use('/api', acceptInviteRouter);
 app.use('/api/auth', authRouter);
 // Scoped to /api/platform specifically — requirePlatformAuth must not be mounted at the
 // broader /api prefix, or it would intercept every other /api/* request (including
 // legitimate company-admin ones) before they ever reach their own route/auth below.
 app.use('/api/platform', platformAuthRouter);
 app.use('/api/platform', requirePlatformAuth, platformRouter);
-app.use('/api', requireAuth, configRouter);
+// Each router applies its own requireArea(...) gate per-route internally
+// (src/permissions.js) rather than here — these routers all share the '/api' prefix, so
+// a gate applied at this mount level would run for every /api/* request regardless of
+// which router actually owns the path (Express dispatches into a router the moment its
+// mount prefix matches, before that router's own routes get a chance to not-match).
+app.use('/api', requireAuth, servicesRouter);
+app.use('/api', requireAuth, teamRouter);
 app.use('/api', requireAuth, knowledgeRouter);
 app.use('/api', requireAuth, onboardingRouter);
 app.use('/api', requireAuth, locationsRouter);
 app.use('/api', requireAuth, customersRouter);
 app.use('/api', requireAuth, bookingsRouter);
+app.use('/api', requireAuth, settingsRouter);
 app.use('/api', requireAuth, calendarRouter);
 app.use('/api', requireAuth, phoneNumberRouter);
 app.use('/api', requireAuth, callLogsRouter);
+app.use('/api', requireAuth, exceptionsRouter);
 
 // Centralized error handler — every route above forwards unexpected errors via next(err).
 app.use((err, req, res, next) => {

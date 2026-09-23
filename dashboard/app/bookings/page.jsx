@@ -120,7 +120,7 @@ function BookingsInner() {
 
 export default function BookingsPage() {
   return (
-    <RequireAuth>
+    <RequireAuth area="bookings">
       <BookingsInner />
     </RequireAuth>
   );

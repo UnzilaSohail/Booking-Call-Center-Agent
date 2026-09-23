@@ -3,8 +3,12 @@
 // draft, so edits here can't affect a live call until an admin explicitly publishes.
 import { Router } from 'express';
 import { getDb } from '../db.js';
+import { requireArea } from '../auth.js';
 
 export const knowledgeRouter = Router();
+
+// Applied per-route (see the comment in src/routes/services.js for why).
+const gate = requireArea('settings');
 
 const EMPTY_KNOWLEDGE = {
   greeting: null,
@@ -59,7 +63,7 @@ function withLegacyFallback(business, field) {
   return { ...EMPTY_KNOWLEDGE, faqs: business.faqs ?? [] };
 }
 
-knowledgeRouter.get('/knowledge', async (req, res, next) => {
+knowledgeRouter.get('/knowledge', gate, async (req, res, next) => {
   try {
     const db = await getDb();
     const business = await db.collection('businesses').findOne(
@@ -79,7 +83,7 @@ knowledgeRouter.get('/knowledge', async (req, res, next) => {
   }
 });
 
-knowledgeRouter.put('/knowledge/draft', async (req, res, next) => {
+knowledgeRouter.put('/knowledge/draft', gate, async (req, res, next) => {
   try {
     const knowledge_draft = normalizeKnowledge(req.body);
     const db = await getDb();
@@ -90,7 +94,7 @@ knowledgeRouter.put('/knowledge/draft', async (req, res, next) => {
   }
 });
 
-knowledgeRouter.post('/knowledge/publish', async (req, res, next) => {
+knowledgeRouter.post('/knowledge/publish', gate, async (req, res, next) => {
   try {
     const db = await getDb();
     const business = await db.collection('businesses').findOne(
@@ -121,7 +125,7 @@ knowledgeRouter.post('/knowledge/publish', async (req, res, next) => {
   }
 });
 
-knowledgeRouter.get('/knowledge/versions', async (req, res, next) => {
+knowledgeRouter.get('/knowledge/versions', gate, async (req, res, next) => {
   try {
     const db = await getDb();
     const versions = await db.collection('knowledge_versions')
@@ -147,7 +151,7 @@ knowledgeRouter.get('/knowledge/versions', async (req, res, next) => {
   }
 });
 
-knowledgeRouter.post('/knowledge/versions/:version/rollback', async (req, res, next) => {
+knowledgeRouter.post('/knowledge/versions/:version/rollback', gate, async (req, res, next) => {
   try {
     const targetVersion = Number(req.params.version);
     if (!Number.isFinite(targetVersion)) return res.status(400).json({ error: 'invalid version' });

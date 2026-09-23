@@ -17,8 +17,13 @@ export { LoginError };
 export async function verifyCompanyAdmin(email, password) {
   const db = await getDb();
   const admin = await db.collection('admins').findOne({ email });
-  if (!admin || !(await bcrypt.compare(password, admin.password_hash))) return null;
+  // An invited-but-not-yet-accepted admin has no password_hash yet — bcrypt.compare
+  // against a missing hash throws rather than just failing, so this checks first.
+  if (!admin || !admin.password_hash || !(await bcrypt.compare(password, admin.password_hash))) return null;
 
+  if (admin.status === 'suspended') {
+    throw new LoginError(403, 'your access has been suspended — contact your business owner');
+  }
   const business = await db.collection('businesses').findOne({ _id: admin.business_id }, { projection: { status: 1 } });
   if (business?.status === 'suspended') {
     throw new LoginError(403, 'this account has been suspended — contact the platform');
