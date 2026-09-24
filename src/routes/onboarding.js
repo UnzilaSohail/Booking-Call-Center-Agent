@@ -80,7 +80,7 @@ onboardingRouter.post('/onboarding/verify/send', async (req, res, next) => {
     });
 
     if (channel === 'email') await sendEmail(destination, 'Verify your email', `Your verification code is ${code}. It expires in 10 minutes.`);
-    else await sendSms(destination, `Your verification code is ${code}. It expires in 10 minutes.`);
+    else await sendSms(null, destination, `Your verification code is ${code}. It expires in 10 minutes.`);
 
     res.json({ ok: true });
   } catch (err) {

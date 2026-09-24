@@ -143,10 +143,15 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
           case 'stop': {
             gemini?.close();
             if (business) {
+              // duration_seconds feeds voice-minute usage billing (ROADMAP.md §11) —
+              // reuses startedAt, already tracked in this closure for the silence/
+              // max-duration watchdog above, so this is the one place a call's real
+              // wall-clock length is known.
+              const duration_seconds = Math.round((Date.now() - startedAt) / 1000);
               await withTenant(business.id, async (c) => {
                 const current = await c('call_logs').findOne({ call_sid: callSid });
                 const outcome = current?.outcome && current.outcome !== 'in_progress' ? current.outcome : 'completed';
-                await c('call_logs').updateOne({ call_sid: callSid }, { $set: { transcript: transcript.join('\n'), outcome } });
+                await c('call_logs').updateOne({ call_sid: callSid }, { $set: { transcript: transcript.join('\n'), outcome, duration_seconds } });
               });
             }
             break;

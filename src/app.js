@@ -19,7 +19,9 @@ import { calendarRouter, calendarOAuthRouter } from './routes/calendar.js';
 import { phoneNumberRouter } from './routes/phoneNumber.js';
 import { callLogsRouter } from './routes/callLogs.js';
 import { exceptionsRouter } from './routes/exceptions.js';
+import { billingRouter } from './routes/billing.js';
 import { twilioWebhookRouter } from './webhooks/twilio.js';
+import { stripeWebhookRouter } from './webhooks/stripe.js';
 
 export const app = express();
 
@@ -30,10 +32,13 @@ export const app = express();
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map((o) => o.trim());
 app.use(cors({ origin: allowedOrigins ?? true }));
 
-// Public routes first: Twilio's inbound call webhook and Google's OAuth redirect both
-// arrive with no bearer token, so they parse their own body and must not sit behind
-// the app-wide express.json()/requireAuth chain below.
+// Public routes first: Twilio's inbound call webhook, Stripe's webhook, and Google's
+// OAuth redirect all arrive with no bearer token, so they parse their own body and
+// must not sit behind the app-wide express.json()/requireAuth chain below. Stripe's
+// signature check specifically needs the raw body, which is why stripeWebhookRouter
+// must be mounted before express.json() runs (it would otherwise consume the body).
 app.use(twilioWebhookRouter);
+app.use(stripeWebhookRouter);
 app.use('/api', calendarOAuthRouter);
 
 app.use(express.json());
@@ -66,6 +71,7 @@ app.use('/api', requireAuth, calendarRouter);
 app.use('/api', requireAuth, phoneNumberRouter);
 app.use('/api', requireAuth, callLogsRouter);
 app.use('/api', requireAuth, exceptionsRouter);
+app.use('/api', requireAuth, billingRouter);
 
 // Centralized error handler — every route above forwards unexpected errors via next(err).
 app.use((err, req, res, next) => {

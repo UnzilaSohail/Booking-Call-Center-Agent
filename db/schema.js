@@ -96,4 +96,26 @@ export async function ensureIndexes(db) {
   // one genuinely new exceptions-queue collection (ROADMAP.md §9); everything else in
   // that queue reuses an existing collection's own fields.
   await db.collection('failed_bookings').createIndex({ business_id: 1, created_at: 1 });
+
+  // Voice-minute/SMS usage tracking (ROADMAP.md §11) — src/services/billingService.js's
+  // computeUsage aggregates call_logs.duration_seconds and counts sms_sends by
+  // business_id + a date range each billing period, so both need that compound shape.
+  await db.collection('call_logs').createIndex({ business_id: 1, created_at: 1, duration_seconds: 1 });
+  await db.collection('sms_sends').createIndex({ business_id: 1, sent_at: 1 });
+
+  await db.collection('invoices').createIndex({ business_id: 1, created_at: -1 });
+  // src/webhooks/stripe.js looks an invoice up by the PaymentIntent id Stripe's async
+  // event carries, not business_id — matches how call_logs.call_sid works today.
+  await db.collection('invoices').createIndex(
+    { stripe_payment_intent_id: 1 },
+    { partialFilterExpression: { stripe_payment_intent_id: { $type: 'string' } } }
+  );
+  // Businesses whose billing period has ended (src/billing/worker.js's runBillingSweepOnce
+  // poll) — cross-tenant by nature, same pattern as bookings' sync_status/reminder indexes.
+  await db.collection('businesses').createIndex({ current_period_end: 1 });
+  // Platform admin looks a business up by its Stripe customer id in src/webhooks/stripe.js.
+  await db.collection('businesses').createIndex(
+    { stripe_customer_id: 1 },
+    { unique: true, partialFilterExpression: { stripe_customer_id: { $type: 'string' } } }
+  );
 }

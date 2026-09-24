@@ -9,6 +9,7 @@ import { getDb, newId } from '../db.js';
 import { generateCode, hashCode, CODE_TTL_MS } from '../verification.js';
 import { sendEmail } from '../notifications/email.js';
 import { sendSms } from '../notifications/sms.js';
+import { initialBillingFields } from '../billing/plans.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -29,7 +30,7 @@ async function sendVerificationCode(db, adminId, channel, destination) {
   if (channel === 'email') {
     await sendEmail(destination, 'Verify your email', `Your verification code is ${code}. It expires in 10 minutes.`);
   } else {
-    await sendSms(destination, `Your verification code is ${code}. It expires in 10 minutes.`);
+    await sendSms(null, destination, `Your verification code is ${code}. It expires in 10 minutes.`);
   }
 }
 
@@ -68,6 +69,7 @@ signupRouter.post('/signup', async (req, res, next) => {
       onboarding_completed_at: null,
       test_call_at: null,
       created_at: new Date(),
+      ...initialBillingFields(),
     });
 
     const passwordHash = await bcrypt.hash(ownerPassword, 10);

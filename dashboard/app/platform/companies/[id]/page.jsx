@@ -50,6 +50,52 @@ function ResetPasswordRow({ admin }) {
   );
 }
 
+// Read-only view for platform ops (ROADMAP.md §11) — plan changes, payment method and
+// cancellation stay company-admin-only actions (dashboard/app/billing/page.jsx).
+function BillingSection({ id }) {
+  const [billing, setBilling] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    platformApi.getCompanyBilling(id).then(setBilling).catch((e) => setError(e instanceof ApiError ? e.message : 'failed to load'));
+  }, [id]);
+
+  if (error) return <div className="card"><h2>Billing</h2><p className="error-text">{error}</p></div>;
+  if (!billing) return <div className="card"><h2>Billing</h2><p className="muted">Loading...</p></div>;
+
+  return (
+    <div className="card">
+      <h2>Billing</h2>
+      <table>
+        <tbody>
+          <tr><td className="muted" style={{ width: 160 }}>Plan</td><td style={{ textTransform: 'capitalize' }}>{billing.plan}{billing.cancelAt ? ' (cancelling)' : ''}</td></tr>
+          <tr><td className="muted">Billing status</td><td><span className={`badge ${billing.billingStatus === 'past_due' ? 'danger' : 'success'}`}>{billing.billingStatus}</span></td></tr>
+          <tr><td className="muted">Voice minutes this period</td><td>{billing.voiceMinutesUsed} / {billing.voiceMinutesIncluded}</td></tr>
+          <tr><td className="muted">SMS this period</td><td>{billing.smsUsed} / {billing.smsIncluded}</td></tr>
+          <tr><td className="muted">Estimated this period</td><td>${billing.estimate.total.toFixed(2)}</td></tr>
+        </tbody>
+      </table>
+      {billing.invoices.length > 0 && (
+        <>
+          <h2 style={{ marginTop: 18, fontSize: 14 }}>Invoice history</h2>
+          <table>
+            <thead><tr><th>Period</th><th>Total</th><th>Status</th></tr></thead>
+            <tbody>
+              {billing.invoices.map((inv) => (
+                <tr key={inv.id}>
+                  <td>{new Date(inv.period_start).toLocaleDateString()} – {new Date(inv.period_end).toLocaleDateString()}</td>
+                  <td>${inv.total_amount.toFixed(2)}</td>
+                  <td><span className={`badge ${inv.status === 'paid' ? 'success' : inv.status === 'failed' ? 'danger' : 'neutral'}`}>{inv.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  );
+}
+
 function CompanyDetailInner() {
   const { id } = useParams();
   const router = useRouter();
@@ -130,6 +176,8 @@ function CompanyDetailInner() {
           </tbody>
         </table>
       </div>
+
+      <BillingSection id={id} />
     </div>
   );
 }

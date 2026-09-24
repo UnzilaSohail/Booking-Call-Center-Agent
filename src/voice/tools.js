@@ -294,7 +294,7 @@ export function createToolHandlers(business, callSid) {
       // Fire-and-forget, same pattern as booking confirmations (bookingService.js) —
       // an emergency alert must never block or fail the call itself.
       if (business.contact_phone) {
-        sendSms(business.contact_phone, `Emergency flagged on a call to ${business.name}: ${reason}`)
+        sendSms(business.id, business.contact_phone, `Emergency flagged on a call to ${business.name}: ${reason}`)
           .catch((err) => console.error(`emergency SMS alert failed for call ${callSid}:`, err.message));
       }
       return { flagged: true };

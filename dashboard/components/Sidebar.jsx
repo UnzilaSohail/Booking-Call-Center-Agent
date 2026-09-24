@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  AlertTriangle, CalendarDays, Contact, LayoutDashboard, ListChecks, ListTodo, LogOut, Phone, Settings as SettingsIcon,
+  AlertTriangle, CalendarDays, Contact, CreditCard, LayoutDashboard, ListChecks, ListTodo, LogOut, Phone, Settings as SettingsIcon,
   Tag, Users,
 } from 'lucide-react';
 import Avatar from './Avatar';
@@ -25,6 +25,7 @@ const LINKS = [
   { href: '/team', label: 'Team', icon: Users, area: 'team' },
   { href: '/exceptions', label: 'Exceptions', icon: AlertTriangle, area: 'exceptions' },
   { href: '/onboarding', label: 'Onboarding', icon: ListTodo, area: null },
+  { href: '/billing', label: 'Billing', icon: CreditCard, area: 'billing' },
   { href: '/settings', label: 'Settings', icon: SettingsIcon, area: 'settings' },
 ];
 

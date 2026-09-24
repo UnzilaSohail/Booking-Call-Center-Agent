@@ -139,6 +139,16 @@ export const api = {
   updateCustomer: (id, payload) => request(`/api/customers/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
   exportCustomersCsv: () => requestText('/api/customers/export', { tokenStore: companyTokenStore }),
   importCustomersCsv: (csv) => request('/api/customers/import', { method: 'POST', body: { csv }, tokenStore: companyTokenStore }),
+
+  getBillingPlan: () => request('/api/billing/plan', { tokenStore: companyTokenStore }),
+  updateBillingPlan: (plan) => request('/api/billing/plan', { method: 'PATCH', body: { plan }, tokenStore: companyTokenStore }),
+  getBillingUsage: () => request('/api/billing/usage', { tokenStore: companyTokenStore }),
+  listInvoices: () => request('/api/billing/invoices', { tokenStore: companyTokenStore }),
+  retryInvoice: (id) => request(`/api/billing/invoices/${id}/retry`, { method: 'POST', tokenStore: companyTokenStore }),
+  createSetupIntent: () => request('/api/billing/setup-intent', { method: 'POST', tokenStore: companyTokenStore }),
+  savePaymentMethod: (paymentMethodId) => request('/api/billing/payment-method', { method: 'POST', body: { paymentMethodId }, tokenStore: companyTokenStore }),
+  cancelBillingPlan: () => request('/api/billing/cancel', { method: 'POST', tokenStore: companyTokenStore }),
+  reactivateBillingPlan: () => request('/api/billing/reactivate', { method: 'POST', tokenStore: companyTokenStore }),
 };
 
 // Customer self-service (ROADMAP.md §6 reschedule/cancel links) — token-authenticated
@@ -176,6 +186,7 @@ export const platformApi = {
   getAnalytics: () => request('/api/platform/analytics', { tokenStore: platformTokenStore }),
   listBookings: (q, status) => request(`/api/platform/bookings?${new URLSearchParams({ ...(q ? { q } : {}), ...(status ? { status } : {}) })}`, { tokenStore: platformTokenStore }),
   listCallLogs: () => request('/api/platform/call-logs', { tokenStore: platformTokenStore }),
+  getCompanyBilling: (id) => request(`/api/platform/businesses/${id}/billing`, { tokenStore: platformTokenStore }),
 };
 
 // Single login call used by the one login page (app/login/page.jsx) — tries both roles

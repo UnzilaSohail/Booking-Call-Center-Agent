@@ -7,4 +7,7 @@ export const DateTime = {
   formatDateTime(iso) {
     return new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   },
+  formatDate(iso) {
+    return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  },
 };

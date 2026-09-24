@@ -3,7 +3,9 @@
 // the product decision that companies don't register themselves.
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { getDb, newId } from '../db.js';
+import { getDb, newId, withTenant, serializeAll } from '../db.js';
+import { initialBillingFields, getPlan } from '../billing/plans.js';
+import { computeUsage, computeInvoiceAmounts } from '../services/billingService.js';
 
 export const platformRouter = Router();
 
@@ -67,6 +69,40 @@ platformRouter.get('/businesses/:id', async (req, res, next) => {
       createdAt: business.created_at,
       admins: admins.map((a) => ({ id: a._id, name: a.name, email: a.email, createdAt: a.created_at })),
       serviceCount, staffCount, upcomingBookings,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Read-only billing visibility for platform ops (ROADMAP.md §11) — same live-usage
+// computation src/routes/billing.js's GET /billing/usage uses, plus invoice history.
+// No mutation here; plan changes/payment method/cancellation stay company-admin actions.
+platformRouter.get('/businesses/:id/billing', async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const business = await db.collection('businesses').findOne({ _id: req.params.id });
+    if (!business) return res.status(404).json({ error: 'company not found' });
+
+    const plan = getPlan(business.plan ?? 'trial');
+    const periodStart = business.current_period_start ?? new Date();
+    const periodEnd = business.current_period_end ?? new Date();
+    const [usage, invoices] = await Promise.all([
+      computeUsage(business._id, periodStart, periodEnd),
+      withTenant(business._id, (c) => c('invoices').find({}).sort({ created_at: -1 }).limit(20).toArray()),
+    ]);
+    const amounts = computeInvoiceAmounts(plan, usage);
+
+    res.json({
+      plan: business.plan ?? 'trial',
+      trialEndsAt: business.trial_ends_at ?? null,
+      billingStatus: business.billing_status ?? 'active',
+      cancelAt: business.cancel_at ?? null,
+      periodStart, periodEnd,
+      voiceMinutesUsed: usage.voiceMinutes, voiceMinutesIncluded: plan.includedVoiceMinutes,
+      smsUsed: usage.smsCount, smsIncluded: plan.includedSms,
+      estimate: amounts,
+      invoices: serializeAll(invoices),
     });
   } catch (err) {
     next(err);
@@ -421,6 +457,7 @@ platformRouter.post('/businesses', async (req, res, next) => {
       faqs: validateFaqs(faqs),
       created_at: new Date(),
       registered_by_platform_admin_id: req.platformAdminId,
+      ...initialBillingFields(),
     });
 
     const passwordHash = await bcrypt.hash(adminPassword, 10);
