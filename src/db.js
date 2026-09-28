@@ -1,5 +1,18 @@
 import { MongoClient } from 'mongodb';
 import { randomUUID } from 'node:crypto';
+import dns from 'node:dns';
+
+// A `mongodb+srv://` URI (what Atlas gives you) needs Node to resolve a DNS SRV record
+// before it can even open a connection. On some Windows setups — certain VPNs, routers,
+// or ISP resolvers — Node's own DNS client (c-ares, used for dns.resolveSrv) can't reach
+// whatever DNS server the OS is configured to use, even though the OS's own resolver
+// (nslookup, Resolve-DnsName) works fine for the exact same query. Pinning Node to a
+// public resolver sidesteps that mismatch instead of depending on the OS DNS config.
+// Only affects dns.resolve*() (what the driver's SRV lookup uses), not dns.lookup()
+// (plain A/AAAA lookups for hostnames elsewhere in the app), so this is narrowly scoped.
+if (process.env.MONGODB_URI?.startsWith('mongodb+srv://')) {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+}
 
 // `||`, not `??` — dotenv gives an empty string (not undefined) for a present-but-blank
 // `MONGODB_URI=` line, which MongoClient would otherwise reject at import time and take
@@ -49,8 +62,15 @@ class ScopedCollection {
   insertOne(doc, options) {
     return this.collection.insertOne({ ...doc, business_id: this.businessId }, options);
   }
+  // Same force-merge as insertOne, applied to every doc in the batch.
+  insertMany(docs, options) {
+    return this.collection.insertMany(docs.map((doc) => ({ ...doc, business_id: this.businessId })), options);
+  }
   updateOne(filter, update, options) {
     return this.collection.updateOne({ ...filter, business_id: this.businessId }, update, options);
+  }
+  updateMany(filter, update, options) {
+    return this.collection.updateMany({ ...filter, business_id: this.businessId }, update, options);
   }
   findOneAndUpdate(filter, update, options) {
     return this.collection.findOneAndUpdate({ ...filter, business_id: this.businessId }, update, options);

@@ -96,4 +96,11 @@ export async function ensureIndexes(db) {
   // one genuinely new exceptions-queue collection (ROADMAP.md §9); everything else in
   // that queue reuses an existing collection's own fields.
   await db.collection('failed_bookings').createIndex({ business_id: 1, created_at: 1 });
+
+  // Payment failure alerts (src/webhooks/stripe.js, plan.md §11 item 8) — same shape as
+  // failed_bookings above, just written by a webhook instead of the voice agent.
+  await db.collection('payment_failures').createIndex({ business_id: 1, created_at: 1 });
+
+  // Admin action trail (src/auditLog.js, plan.md §11 item 10) — always read newest-first.
+  await db.collection('audit_logs').createIndex({ business_id: 1, created_at: -1 });
 }

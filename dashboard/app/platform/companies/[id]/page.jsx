@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Ban, CheckCircle2, KeyRound } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, KeyRound, Trash2 } from 'lucide-react';
 import RequirePlatformAuth from '../../../../components/RequirePlatformAuth';
 import { platformApi, ApiError } from '../../../../lib/api';
 import { useToast } from '../../../../lib/Toast';
@@ -47,6 +47,50 @@ function ResetPasswordRow({ admin }) {
         {error && <p className="error-text" style={{ marginTop: 4 }}>{error}</p>}
       </td>
     </tr>
+  );
+}
+
+function DeleteCompanySection({ company, id }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [confirmName, setConfirmName] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    setDeleting(true);
+    setError(null);
+    try {
+      await platformApi.deleteCompany(id, confirmName);
+      toast.success(`${company.name} deleted`);
+      router.push('/platform/companies');
+    } catch (err) {
+      setError(err.message);
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ borderColor: 'var(--danger)' }}>
+      <h2>Delete company</h2>
+      <p className="muted" style={{ fontSize: 12, marginTop: -8 }}>
+        Permanently removes {company.name} and everything it owns — admins, services, staff,
+        bookings, call logs, customers, knowledge base history. This cannot be undone.
+      </p>
+      <form onSubmit={submit} className="row" style={{ alignItems: 'center' }}>
+        <input
+          placeholder={`Type "${company.name}" to confirm`}
+          value={confirmName}
+          onChange={(e) => setConfirmName(e.target.value)}
+          style={{ width: 260 }}
+        />
+        <button type="submit" className="danger" disabled={deleting || confirmName !== company.name}>
+          <Trash2 size={15} /> {deleting ? 'Deleting...' : 'Delete permanently'}
+        </button>
+      </form>
+      {error && <p className="error-text" style={{ marginTop: 4 }}>{error}</p>}
+    </div>
   );
 }
 
@@ -130,6 +174,8 @@ function CompanyDetailInner() {
           </tbody>
         </table>
       </div>
+
+      <DeleteCompanySection company={company} id={id} />
     </div>
   );
 }

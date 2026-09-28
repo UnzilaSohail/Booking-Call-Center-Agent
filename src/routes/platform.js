@@ -21,9 +21,10 @@ platformRouter.get('/businesses', async (req, res, next) => {
       .sort({ created_at: -1 })
       .toArray();
 
-    // One aggregation instead of an N+1 count-per-business query.
+    // One aggregation instead of an N+1 count-per-business query. is_test excluded so
+    // onboarding test-call bookings never inflate this count.
     const counts = await db.collection('bookings').aggregate([
-      { $match: { status: 'confirmed', start_time: { $gt: new Date() } } },
+      { $match: { status: 'confirmed', is_test: { $ne: true }, start_time: { $gt: new Date() } } },
       { $group: { _id: '$business_id', count: { $sum: 1 } } },
     ]).toArray();
     const upcomingByBusiness = Object.fromEntries(counts.map((c) => [c._id, c.count]));
@@ -51,7 +52,7 @@ platformRouter.get('/businesses/:id', async (req, res, next) => {
       db.collection('admins').find({ business_id: business._id }, { projection: { name: 1, email: 1, created_at: 1 } }).toArray(),
       db.collection('services').countDocuments({ business_id: business._id }),
       db.collection('staff').countDocuments({ business_id: business._id }),
-      db.collection('bookings').countDocuments({ business_id: business._id, status: 'confirmed', start_time: { $gt: new Date() } }),
+      db.collection('bookings').countDocuments({ business_id: business._id, status: 'confirmed', is_test: { $ne: true }, start_time: { $gt: new Date() } }),
     ]);
 
     res.json({
@@ -89,6 +90,42 @@ platformRouter.patch('/businesses/:id/status', async (req, res, next) => {
   }
 });
 
+// Tenant-scoped collections a company owns (db/schema.js) — everything keyed by
+// business_id, wiped alongside the business document itself. Not wrapped in a
+// transaction: this is an irreversible admin cleanup action, not a money-critical path,
+// and a partial failure here just leaves orphaned rows for a re-run rather than
+// corrupting anything live.
+const OWNED_COLLECTIONS = [
+  'admins', 'services', 'staff', 'staff_time_off', 'bookings', 'call_logs', 'locations',
+  'voicemails', 'callback_requests', 'knowledge_versions', 'customers', 'failed_bookings',
+  'payment_failures', 'audit_logs',
+];
+
+// Irreversible offboarding — the suspend toggle above is for holds, this is for actually
+// removing a company. Requires re-typing the exact company name as a confirmation
+// (checked here, not just in the dashboard) since there's no undo.
+platformRouter.delete('/businesses/:id', async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const business = await db.collection('businesses').findOne({ _id: req.params.id }, { projection: { name: 1 } });
+    if (!business) return res.status(404).json({ error: 'company not found' });
+
+    const { confirmName } = req.body ?? {};
+    if (confirmName !== business.name) {
+      return res.status(400).json({ error: 'confirmName must exactly match the company name' });
+    }
+
+    await Promise.all(OWNED_COLLECTIONS.map((name) => db.collection(name).deleteMany({ business_id: req.params.id })));
+    // booking_slot_locks has no business_id field — its _id is `${businessId}:${staffId}:...`
+    // (src/services/bookingService.js slotLockIds), so it's matched by prefix instead.
+    await db.collection('booking_slot_locks').deleteMany({ _id: { $regex: `^${req.params.id}:` } });
+    await db.collection('businesses').deleteOne({ _id: req.params.id });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Reset a company admin's password without needing their old one — the actual point of
 // this being a platform-admin action rather than the self-service change in src/auth.js.
 platformRouter.patch('/admins/:adminId/password', async (req, res, next) => {
@@ -112,7 +149,7 @@ platformRouter.patch('/admins/:adminId/password', async (req, res, next) => {
 platformRouter.get('/bookings', async (req, res, next) => {
   try {
     const { q, status } = req.query;
-    const filter = {};
+    const filter = { is_test: { $ne: true } };
     if (status && status !== 'all') filter.status = status;
     if (q) {
       const pattern = escapeRegex(q);
@@ -151,7 +188,7 @@ platformRouter.get('/bookings', async (req, res, next) => {
 platformRouter.get('/call-logs', async (req, res, next) => {
   try {
     const db = await getDb();
-    const logs = await db.collection('call_logs').find({}).sort({ created_at: -1 }).limit(300).toArray();
+    const logs = await db.collection('call_logs').find({ is_test: { $ne: true } }).sort({ created_at: -1 }).limit(300).toArray();
 
     const businessIds = [...new Set(logs.map((l) => l.business_id))];
     const bookingIds = [...new Set(logs.map((l) => l.booking_id).filter(Boolean))];
@@ -234,7 +271,7 @@ platformRouter.get('/analytics', async (req, res, next) => {
       // Bookings placed in the current vs previous 30-day window, split by their
       // (current) status — powers the "Total/Confirmed/Cancelled" stat cards.
       db.collection('bookings').aggregate([
-        { $match: { created_at: { $gte: prevWindowStart } } },
+        { $match: { created_at: { $gte: prevWindowStart }, is_test: { $ne: true } } },
         { $group: {
           _id: { period: { $cond: [{ $gte: ['$created_at', trendStart] }, 'current', 'previous'] }, status: '$status' },
           count: { $sum: 1 },
@@ -243,14 +280,16 @@ platformRouter.get('/analytics', async (req, res, next) => {
 
       // Same 30-day window, broken out per day per status — the "Booking activity" chart.
       db.collection('bookings').aggregate([
-        { $match: { created_at: { $gte: trendStart } } },
+        { $match: { created_at: { $gte: trendStart }, is_test: { $ne: true } } },
         { $group: {
           _id: { date: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }, status: '$status' },
           count: { $sum: 1 },
         } },
       ]).toArray(),
 
-      // Voice-agent call performance, current vs previous 30-day window.
+      // Voice-agent call performance, current vs previous 30-day window. callSeconds
+      // feeds the estimated cost card below — duration_seconds is already recorded per
+      // call (src/voice/twilioBridge.js), this just sums it platform-wide.
       db.collection('call_logs').aggregate([
         { $match: { created_at: { $gte: prevWindowStart }, is_test: { $ne: true } } },
         { $group: {
@@ -258,11 +297,12 @@ platformRouter.get('/analytics', async (req, res, next) => {
           total: { $sum: 1 },
           booked: { $sum: { $cond: [{ $ne: ['$booking_id', null] }, 1, 0] } },
           transferred: { $sum: { $cond: [{ $regexMatch: { input: { $ifNull: ['$outcome', ''] }, regex: /^transferred/ } }, 1, 0] } },
+          callSeconds: { $sum: { $ifNull: ['$duration_seconds', 0] } },
         } },
       ]).toArray(),
 
       db.collection('bookings').aggregate([
-        { $match: { status: 'confirmed', start_time: { $gt: now } } },
+        { $match: { status: 'confirmed', is_test: { $ne: true }, start_time: { $gt: now } } },
         { $sort: { start_time: 1 } },
         { $limit: 8 },
         { $lookup: { from: 'businesses', localField: 'business_id', foreignField: '_id', as: 'business' } },
@@ -279,7 +319,7 @@ platformRouter.get('/analytics', async (req, res, next) => {
       // Leaderboard by actual activity (bookings placed in the last 30 days), not just
       // future bookings on the calendar — a quieter-but-real distinction from before.
       db.collection('bookings').aggregate([
-        { $match: { created_at: { $gte: trendStart } } },
+        { $match: { created_at: { $gte: trendStart }, is_test: { $ne: true } } },
         { $group: { _id: '$business_id', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 5 },
@@ -320,8 +360,23 @@ platformRouter.get('/analytics', async (req, res, next) => {
     }
 
     const callsByPeriod = Object.fromEntries(callWindowRows.map((r) => [r._id, r]));
-    const curCalls = callsByPeriod.current ?? { total: 0, booked: 0, transferred: 0 };
-    const prevCalls = callsByPeriod.previous ?? { total: 0, booked: 0, transferred: 0 };
+    const curCalls = callsByPeriod.current ?? { total: 0, booked: 0, transferred: 0, callSeconds: 0 };
+    const prevCalls = callsByPeriod.previous ?? { total: 0, booked: 0, transferred: 0, callSeconds: 0 };
+
+    // Estimated platform cost from voice minutes (plan.md §11 — this is the "how much is
+    // it costing me" you asked for, not what to bill companies). Twilio charges per call
+    // minute and Gemini Live per session minute, so total call duration is the right
+    // basis; the per-minute rates are your own numbers, not fetched from either provider.
+    // ponytail: a flat rate × minutes, not the real Twilio Usage API / Gemini billing API
+    // — those are per-second/per-token and would need actual API credentials wired in to
+    // pull real numbers. Unset either rate and its contribution is just 0, not guessed.
+    const twilioRate = Number(process.env.TWILIO_PER_MINUTE_RATE) || 0;
+    const geminiRate = Number(process.env.GEMINI_PER_MINUTE_RATE) || 0;
+    const costConfigured = twilioRate > 0 || geminiRate > 0;
+    const curMinutes = curCalls.callSeconds / 60;
+    const prevMinutes = prevCalls.callSeconds / 60;
+    const curCost = curMinutes * (twilioRate + geminiRate);
+    const prevCost = prevMinutes * (twilioRate + geminiRate);
 
     res.json({
       totalCompanies: (byStatus.active ?? 0) + (byStatus.suspended ?? 0),
@@ -340,6 +395,14 @@ platformRouter.get('/analytics', async (req, res, next) => {
         booked: { current: curCalls.booked, trendPct: trendPct(curCalls.booked, prevCalls.booked) },
         transferred: { current: curCalls.transferred, trendPct: trendPct(curCalls.transferred, prevCalls.transferred) },
         conversionRate: curCalls.total > 0 ? Math.round((curCalls.booked / curCalls.total) * 100) : null,
+        minutes: { current: Math.round(curMinutes), trendPct: trendPct(curMinutes, prevMinutes) },
+      },
+      estimatedCost: {
+        configured: costConfigured,
+        current: Math.round(curCost * 100) / 100,
+        trendPct: trendPct(curCost, prevCost),
+        twilioRate,
+        geminiRate,
       },
       upcomingBookings,
       topCompanies,
@@ -376,7 +439,7 @@ function validateFaqs(faqs) {
   if (!Array.isArray(faqs)) return [];
   return faqs
     .filter((f) => f?.question && f?.answer)
-    .map((f) => ({ question: String(f.question).trim(), answer: String(f.answer).trim() }));
+    .map((f) => ({ question: String(f.question).trim(), answer: String(f.answer).trim(), category: f.category ? String(f.category).trim() : null }));
 }
 
 // Registers a company with everything it needs to start taking calls immediately —
@@ -419,6 +482,7 @@ platformRouter.post('/businesses', async (req, res, next) => {
       // — "do you take walk-ins," "where do you park," whatever a caller asks that isn't
       // a booking action.
       faqs: validateFaqs(faqs),
+      voice_name: null,
       created_at: new Date(),
       registered_by_platform_admin_id: req.platformAdminId,
     });

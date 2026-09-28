@@ -4,11 +4,22 @@ import { Router } from 'express';
 import { getDb } from './db.js';
 import { verifyCompanyAdmin, LoginError } from './loginHelpers.js';
 import { areasFor } from './permissions.js';
+import { generateSecret, verifyTotp, otpauthUrl } from './mfa.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
 
 export const authRouter = Router();
+
+// Second factor (ROADMAP.md §12, plan.md §11 item 9) — issued in place of a real token
+// when verifyCompanyAdmin reports mfaEnabled, redeemed at POST /mfa/verify-login below.
+// Short-lived: it's only good for completing the login that just started.
+function signMfaToken(adminId, businessId) {
+  return jwt.sign({ role: 'mfa_pending', adminId, businessId }, JWT_SECRET, { expiresIn: '5m' });
+}
+function signSessionToken(adminId, businessId) {
+  return jwt.sign({ role: 'business', adminId, businessId }, JWT_SECRET, { expiresIn: '12h' });
+}
 
 // Company admin login, kept as its own endpoint for direct API use (and by the unified
 // /api/login in src/routes/unifiedLogin.js, which the dashboard actually calls now so
@@ -19,13 +30,38 @@ authRouter.post('/login', async (req, res, next) => {
     const { email, password } = req.body ?? {};
     if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
-    const result = await verifyCompanyAdmin(email.toLowerCase(), password);
+    const result = await verifyCompanyAdmin(email.toLowerCase(), password, req.ip);
     if (!result) return res.status(401).json({ error: 'invalid credentials' });
 
-    const token = jwt.sign({ role: 'business', ...result }, JWT_SECRET, { expiresIn: '12h' });
-    res.json({ token });
+    if (result.mfaEnabled) return res.json({ mfaRequired: true, mfaToken: signMfaToken(result.adminId, result.businessId) });
+    res.json({ token: signSessionToken(result.adminId, result.businessId) });
   } catch (err) {
     if (err instanceof LoginError) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+// Second step of an MFA-gated login — exchanges the short-lived mfaToken from /login
+// plus a live TOTP code for a real session token.
+authRouter.post('/mfa/verify-login', async (req, res, next) => {
+  try {
+    const { mfaToken, code } = req.body ?? {};
+    if (!mfaToken || !code) return res.status(400).json({ error: 'mfaToken and code are required' });
+
+    let payload;
+    try {
+      payload = jwt.verify(mfaToken, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'invalid or expired login — please log in again' });
+    }
+    if (payload.role !== 'mfa_pending') return res.status(401).json({ error: 'invalid token for this endpoint' });
+
+    const db = await getDb();
+    const admin = await db.collection('admins').findOne({ _id: payload.adminId });
+    if (!admin?.mfa_enabled || !verifyTotp(admin.mfa_secret, code)) return res.status(401).json({ error: 'invalid code' });
+
+    res.json({ token: signSessionToken(payload.adminId, payload.businessId) });
+  } catch (err) {
     next(err);
   }
 });
@@ -93,9 +129,9 @@ export function requireOwner(req, res, next) {
 authRouter.get('/me', requireAuth, async (req, res, next) => {
   try {
     const db = await getDb();
-    const admin = await db.collection('admins').findOne({ _id: req.adminId }, { projection: { name: 1, email: 1 } });
+    const admin = await db.collection('admins').findOne({ _id: req.adminId }, { projection: { name: 1, email: 1, mfa_enabled: 1 } });
     if (!admin) return res.status(404).json({ error: 'admin not found' });
-    res.json({ name: admin.name ?? null, email: admin.email, role: req.admin.role, areas: req.admin.areas });
+    res.json({ name: admin.name ?? null, email: admin.email, role: req.admin.role, areas: req.admin.areas, mfaEnabled: !!admin.mfa_enabled });
   } catch (err) {
     next(err);
   }
@@ -115,6 +151,53 @@ authRouter.patch('/password', requireAuth, async (req, res, next) => {
 
     const password_hash = await bcrypt.hash(newPassword, 10);
     await db.collection('admins').updateOne({ _id: req.adminId }, { $set: { password_hash } });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// MFA enrollment: generates a secret and stores it *pending* (mfa_enabled stays false)
+// until /mfa/enroll/confirm proves the admin actually captured it in an authenticator app
+// — otherwise a dropped response here would lock the admin out with a secret they never saw.
+authRouter.post('/mfa/enroll', requireAuth, async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const admin = await db.collection('admins').findOne({ _id: req.adminId }, { projection: { email: 1 } });
+    const secret = generateSecret();
+    await db.collection('admins').updateOne({ _id: req.adminId }, { $set: { mfa_secret_pending: secret } });
+    res.json({ secret, otpauthUrl: otpauthUrl(admin.email, 'Booking', secret) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.post('/mfa/enroll/confirm', requireAuth, async (req, res, next) => {
+  try {
+    const { code } = req.body ?? {};
+    const db = await getDb();
+    const admin = await db.collection('admins').findOne({ _id: req.adminId }, { projection: { mfa_secret_pending: 1 } });
+    if (!admin?.mfa_secret_pending) return res.status(400).json({ error: 'no MFA enrollment in progress — call /mfa/enroll first' });
+    if (!verifyTotp(admin.mfa_secret_pending, code)) return res.status(401).json({ error: 'invalid code' });
+
+    await db.collection('admins').updateOne(
+      { _id: req.adminId },
+      { $set: { mfa_enabled: true, mfa_secret: admin.mfa_secret_pending }, $unset: { mfa_secret_pending: '' } }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.post('/mfa/disable', requireAuth, async (req, res, next) => {
+  try {
+    const { password } = req.body ?? {};
+    const db = await getDb();
+    const admin = await db.collection('admins').findOne({ _id: req.adminId });
+    if (!password || !(await bcrypt.compare(password, admin.password_hash))) return res.status(401).json({ error: 'incorrect password' });
+
+    await db.collection('admins').updateOne({ _id: req.adminId }, { $unset: { mfa_enabled: '', mfa_secret: '', mfa_secret_pending: '' } });
     res.json({ ok: true });
   } catch (err) {
     next(err);

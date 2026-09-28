@@ -12,9 +12,11 @@ async function dueBookings(hoursAhead, sentField) {
   const now = Date.now();
   const from = new Date(now + (hoursAhead * 60 - WINDOW_MINUTES) * 60_000);
   const to = new Date(now + hoursAhead * 60 * 60_000);
+  // is_test excluded — an onboarding test-call booking must never trigger a real reminder
+  // SMS/email to whatever number/address was used while testing.
   return withSystemAccess((c) =>
     c('bookings')
-      .find({ status: 'confirmed', [sentField]: null, start_time: { $gte: from, $lte: to } })
+      .find({ status: 'confirmed', is_test: { $ne: true }, [sentField]: null, start_time: { $gte: from, $lte: to } })
       .limit(100)
       .toArray()
   );

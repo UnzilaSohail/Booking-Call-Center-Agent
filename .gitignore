@@ -4,3 +4,4 @@ node_modules/
 dashboard/.next/
 dashboard/.env.local
 .local_mongo_data/
+backups/

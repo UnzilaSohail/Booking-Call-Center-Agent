@@ -152,7 +152,13 @@ function escapeRegex(s) {
 // q: free-text search over customer name/phone — the "customer calls asking about their
 // appointment" lookup, separate from the calendar's date-range view.
 export async function listBookings(businessId, { from, to, q, status } = {}) {
-  const filter = { start_time: { $gte: from ? new Date(from) : new Date(0), $lte: to ? new Date(to) : new Date('2100-01-01') } };
+  // Onboarding test-call bookings carry is_test:true and must never show up on the real
+  // calendar/bookings list — this is a dashboard-facing read with no caller that
+  // legitimately wants test data mixed in.
+  const filter = {
+    is_test: { $ne: true },
+    start_time: { $gte: from ? new Date(from) : new Date(0), $lte: to ? new Date(to) : new Date('2100-01-01') },
+  };
   if (status) filter.status = status;
   if (q) {
     const pattern = escapeRegex(q);
@@ -190,6 +196,12 @@ export async function createBooking(businessId, { customerName, phone, customerE
   if (!customerName || !phone || !serviceId || !startTime) {
     throw new BookingError(400, 'customerName, phone, serviceId and startTime are required');
   }
+  // Bookings made from an onboarding test call carry createdVia:'test'. They still take a
+  // real slot lock (so testing a double-booking scenario is meaningful) but must never
+  // reach Google Calendar or trigger a real SMS/email — sync_status:'skipped' keeps them
+  // out of the sync worker's pending queue entirely (src/calendar/sync-worker.js only
+  // polls pending/failed), and is_test excludes them from every dashboard-facing read below.
+  const isTest = createdVia === 'test';
 
   const service = await withTenant(businessId, (col) => col('services').findOne({ _id: serviceId }));
   if (!service) throw new BookingError(404, 'service not found');
@@ -238,8 +250,9 @@ export async function createBooking(businessId, { customerName, phone, customerE
     status: 'confirmed',
     google_event_id: null,
     created_via: createdVia || 'dashboard',
+    is_test: isTest,
     created_at: new Date(),
-    sync_status: 'pending',
+    sync_status: isTest ? 'skipped' : 'pending',
     sync_attempts: 0,
     sync_error: null,
     confirmation_sent_at: null,
@@ -390,11 +403,11 @@ export async function getDashboardStats(businessId) {
 
   return withTenant(businessId, async (col) => {
     const [todayCount, yesterdayCount, weekCount, lastWeekCount, totalUpcoming, serviceCount, staffCount] = await Promise.all([
-      col('bookings').countDocuments({ status: 'confirmed', start_time: { $gte: todayStart, $lt: todayEnd } }),
-      col('bookings').countDocuments({ status: 'confirmed', start_time: { $gte: yesterdayStart, $lt: todayStart } }),
-      col('bookings').countDocuments({ status: 'confirmed', start_time: { $gte: todayStart, $lt: weekEnd } }),
-      col('bookings').countDocuments({ status: 'confirmed', start_time: { $gte: lastWeekStart, $lt: todayStart } }),
-      col('bookings').countDocuments({ status: 'confirmed', start_time: { $gte: now } }),
+      col('bookings').countDocuments({ status: 'confirmed', is_test: { $ne: true }, start_time: { $gte: todayStart, $lt: todayEnd } }),
+      col('bookings').countDocuments({ status: 'confirmed', is_test: { $ne: true }, start_time: { $gte: yesterdayStart, $lt: todayStart } }),
+      col('bookings').countDocuments({ status: 'confirmed', is_test: { $ne: true }, start_time: { $gte: todayStart, $lt: weekEnd } }),
+      col('bookings').countDocuments({ status: 'confirmed', is_test: { $ne: true }, start_time: { $gte: lastWeekStart, $lt: todayStart } }),
+      col('bookings').countDocuments({ status: 'confirmed', is_test: { $ne: true }, start_time: { $gte: now } }),
       col('services').countDocuments({}),
       col('staff').countDocuments({}),
     ]);
@@ -407,10 +420,14 @@ export async function getDashboardStats(businessId) {
 }
 
 // Call-in lookup path (plan.md §6): caller gives a phone number instead of a booking id.
-export async function findUpcomingBookingsByPhone(businessId, phone) {
+// isTest scopes this to the onboarding test call's own test bookings when true, so a test
+// call can exercise reschedule/cancel against the test booking it just made — real calls
+// (isTest: false, the default) never see test bookings, and a test call never sees real
+// customer bookings either.
+export async function findUpcomingBookingsByPhone(businessId, phone, { isTest = false } = {}) {
   const bookings = await withTenant(businessId, (col) =>
     col('bookings')
-      .find({ phone, status: 'confirmed', start_time: { $gt: new Date() } })
+      .find({ phone, status: 'confirmed', is_test: isTest, start_time: { $gt: new Date() } })
       .sort({ start_time: 1 })
       .limit(5)
       .toArray()

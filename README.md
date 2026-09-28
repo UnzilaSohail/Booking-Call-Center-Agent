@@ -9,7 +9,8 @@ Calendar. Admins manage the same bookings from a dashboard. Full design rational
 
 ```
 src/                  Express API + voice pipeline + background workers (the backend)
-  routes/             REST endpoints (auth, services/staff/hours, bookings, calendar, phone number)
+  routes/             REST endpoints (auth, services/staff/hours, bookings, calendar, phone number,
+                       knowledge base, onboarding status/go-live/test-call trigger)
   services/           bookingService.js — shared logic used by both the REST API and the voice agent
   voice/              Twilio Media Streams <-> Gemini Live bridge, audio resampling, tool definitions
   calendar/           Google Calendar OAuth + the sync worker that mirrors bookings
@@ -17,6 +18,7 @@ src/                  Express API + voice pipeline + background workers (the bac
   webhooks/           Twilio inbound-call webhook
 db/                   schema.js (index definitions) + migrate.js
 dashboard/            Next.js admin dashboard (separate app, separate package.json)
+  app/onboarding/     Guided onboarding wizard (see "Guided onboarding" below)
 test/                 node:test unit tests
 scripts/              standalone scripts (e.g. the concurrency load test)
 ```
@@ -107,6 +109,15 @@ be aware of what's built vs. what's untestable from here:
   explicitly ("test call quality/latency under real phone network conditions, not just
   localhost") — do that before relying on this in production.
 
+## Guided onboarding
+
+A new company admin's first stop after logging in is `/onboarding` — a checklist covering
+contact verification (email + phone), services, staff, calendar connection, phone number,
+knowledge base, AI voice selection, a real test call, and a final go-live step. Everything else
+the checklist points at (services/staff/calendar/phone/FAQs) already has its own Settings UI —
+`src/routes/onboarding.js` only owns what's genuinely new: contact verification, voice choice,
+the test-call trigger, and go-live. None of it is a hard gate on using the rest of the dashboard.
+
 ## Tenant isolation
 
 Postgres's Row-Level Security is gone along with Postgres — there's no DB-enforced
@@ -121,12 +132,33 @@ part" costs when moving off Postgres.
 
 ## Background workers
 
-`npm start` runs two interval-based pollers in-process (not separate deploys — see
+`npm start` runs three interval-based pollers in-process (not separate deploys — see
 plan.md §8's "simple job queue" note):
 - Calendar sync (`src/calendar/sync-worker.js`, every 15s): mirrors confirmed/cancelled
   bookings to Google Calendar, retrying failures up to 10 attempts.
 - Reminders (`src/notifications/reminder-worker.js`, every 5 min): sends the 24h/1h
   reminder SMS/email for upcoming bookings.
+- Recording retention (`src/services/retentionWorker.js`, hourly): for any business with
+  `recording_retention_days` set, nulls out `call_logs.recording_url`/`transcript` past
+  that window (outcome/duration/summary are kept — see plan.md §11 item 5).
+
+## Security (plan.md §11)
+
+- **Call recording**: started via Twilio's REST API per call (`src/webhooks/twilio.js`),
+  off by default in behavior only in the sense that a business can disable it
+  (`recording_enabled`, Settings); the recording-consent disclosure line is always spoken.
+- **MFA**: TOTP, company-admin login only (`src/mfa.js`, `src/auth.js` `/mfa/*`) — enroll
+  from Settings, no third-party auth provider or new dependency.
+- **Audit logs**: every authenticated mutating request is logged (`src/auditLog.js`),
+  viewable at `/audit-log` in the dashboard or `GET /api/audit-logs`.
+- **Suspicious login alerts**: 5 failed attempts in 15 minutes, or a successful login from
+  a new IP, emails the business's contact address (`src/loginHelpers.js`).
+- **Backup/recovery**: `npm run backup-db` / `npm run restore-db` wrap `mongodump`/
+  `mongorestore` — requires the MongoDB Database Tools installed. Not scheduled by this
+  repo; wire it into whatever cron/Task Scheduler the host already has.
+- **Payment failure alerts** (`src/webhooks/stripe.js`) are a stub — there is no live
+  payment flow yet (plan.md §3 confirmed "no payment/deposit at booking"), so this just
+  gives ROADMAP.md §16 somewhere to send failures once deposits actually ship.
 
 ## Known open items from plan.md §10
 

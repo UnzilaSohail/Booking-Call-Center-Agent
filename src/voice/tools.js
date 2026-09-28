@@ -186,8 +186,10 @@ function idempotencyKeyFor(callSid, { serviceId, staffId, startTime, phone }) {
 }
 
 // Returns handlers bound to one call's business + call_sid, called by the Gemini session
-// wrapper (src/voice/geminiSession.js) whenever the model emits a functionCall.
-export function createToolHandlers(business, callSid) {
+// wrapper (src/voice/geminiSession.js) whenever the model emits a functionCall. isTest
+// marks bookings created via the onboarding test call so they never reach Google Calendar,
+// SMS/email, or the real dashboard views.
+export function createToolHandlers(business, callSid, { isTest = false } = {}) {
   return {
     async check_availability({ serviceName, date, staffName }) {
       const serviceId = await resolveServiceId(business.id, serviceName);
@@ -211,7 +213,7 @@ export function createToolHandlers(business, callSid) {
         const { booking } = await createBooking(business.id, {
           customerName, phone, serviceId, staffId, locationId, startTime,
           idempotencyKey: idempotencyKeyFor(callSid, { serviceId, staffId, startTime, phone }),
-          createdVia: 'call',
+          createdVia: isTest ? 'test' : 'call',
         });
         return { bookingId: booking.id, startTime: booking.start_time, status: 'confirmed' };
       } catch (err) {
@@ -232,7 +234,7 @@ export function createToolHandlers(business, callSid) {
     },
 
     async find_upcoming_bookings({ phone }) {
-      const bookings = await findUpcomingBookingsByPhone(business.id, phone);
+      const bookings = await findUpcomingBookingsByPhone(business.id, phone, { isTest });
       return {
         bookings: bookings.map((b) => ({ bookingId: b.id, service: b.service_name, startTime: b.start_time })),
       };

@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  AlertTriangle, Box, CalendarDays, CalendarRange, Crown, DollarSign, Minus, TrendingDown, TrendingUp, Users,
+  AlertTriangle, Bot, Box, CalendarDays, CalendarRange, Crown, DollarSign, Minus, Moon, TrendingDown, TrendingUp, Users,
 } from 'lucide-react';
 import RequireAuth from '../components/RequireAuth';
 import Avatar from '../components/Avatar';
@@ -99,7 +99,6 @@ function HomeInner() {
   const [staffList, setStaffList] = useState([]);
   const [modal, setModal] = useState(null);
   const [error, setError] = useState(null);
-
   function load() {
     api.getStats().then(setStats).catch((e) => setError(e.message));
     api.getAnalytics().then(setAnalytics).catch(() => {});
@@ -188,6 +187,14 @@ function HomeInner() {
         <StatCard
           icon={Users} iconColor={WARNING} iconBg={WARNING_SOFT}
           label="Team members" value={stats?.staffCount ?? '—'}
+        />
+        <StatCard
+          icon={Bot} iconColor={SUCCESS} iconBg={SUCCESS_SOFT}
+          label="AI-booked value" value={analytics ? `$${analytics.aiAttributedBookingValue.toLocaleString()}` : '—'}
+        />
+        <StatCard
+          icon={Moon} iconColor={INFO} iconBg={INFO_SOFT}
+          label="After-hours calls" value={analytics?.calls.afterHours ?? '—'}
         />
         {openExceptions !== null && (
           <Link href="/exceptions" style={{ textDecoration: 'none', color: 'inherit' }}>

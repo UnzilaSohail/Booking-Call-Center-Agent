@@ -18,6 +18,35 @@ import { DEFAULT_VOICE } from '../routes/onboarding.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const MODEL = process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live';
+// Plain text model for the one-shot post-call summary/intent below — same fast-moving-name
+// caveat as MODEL above, just a text endpoint instead of Live.
+const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-flash-latest';
+
+const INTENTS = ['booking', 'reschedule', 'cancellation', 'inquiry', 'complaint', 'other'];
+
+// AI call summary + caller intent (ROADMAP.md §7, plan.md §11 items 2-3) — one Gemini
+// call returns both, called from twilioBridge.js once the transcript is final. Never
+// throws; a summarization failure shouldn't affect call handling, which is already over
+// by the time this runs.
+export async function summarizeCall(transcript) {
+  if (!transcript?.trim()) return { summary: null, intent: null };
+  try {
+    const response = await ai.models.generateContent({
+      model: TEXT_MODEL,
+      contents: `Summarize this phone call transcript between an AI receptionist and a caller in one short sentence, and classify the caller's main intent as exactly one of: ${INTENTS.join(', ')}.\nRespond with only JSON: {"summary": "...", "intent": "..."}\n\nTranscript:\n${transcript.slice(0, 8000)}`,
+      config: { responseMimeType: 'application/json' },
+    });
+    const text = response.text ?? response.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const parsed = JSON.parse(text);
+    return {
+      summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 500) : null,
+      intent: INTENTS.includes(parsed.intent) ? parsed.intent : null,
+    };
+  } catch (err) {
+    console.error('call summarization failed:', err.message);
+    return { summary: null, intent: null };
+  }
+}
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -32,7 +61,9 @@ function resolveKnowledge(business) {
 // Whether the business is open right now, in its own timezone — distinct from
 // check_availability's per-day hours lookup, this is "is anyone there *at this moment*"
 // so the agent can greet accordingly instead of behaving as if a human just picked up.
-function isOpenNow(business) {
+// Exported so src/webhooks/twilio.js can stamp call_logs.is_after_hours with the exact
+// same check the system prompt already uses (ROADMAP.md §8 "After-hours calls").
+export function isOpenNow(business) {
   const hours = business.hours ?? [];
   if (!hours.length) return null; // hours not configured — don't claim either way
   const now = DateTime.now().setZone(business.timezone);
@@ -66,7 +97,7 @@ export function formatSystemInstruction(business, services, staff) {
   const k = resolveKnowledge(business);
   const faqs = k.faqs ?? [];
   const faqText = faqs.length
-    ? faqs.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join('\n')
+    ? faqs.map((f) => (f.category ? `[${f.category}]\nQ: ${f.question}\nA: ${f.answer}` : `Q: ${f.question}\nA: ${f.answer}`)).join('\n')
     : null;
   const pronunciation = k.pronunciation ?? [];
   const pronunciationText = pronunciation.length
@@ -110,9 +141,9 @@ ${staff.length ? `- If the caller names a specific staff member for the transfer
 - Keep responses short; this is a voice call, not a document.`;
 }
 
-export async function startGeminiSession({ business, callSid, onAudio, onTranscript, onTransferToHuman, onBookingCreated, onEnded }) {
+export async function startGeminiSession({ business, callSid, isTest = false, onAudio, onTranscript, onTransferToHuman, onBookingCreated, onEnded }) {
   const systemInstruction = await buildSystemInstruction(business);
-  const handlers = createToolHandlers(business, callSid);
+  const handlers = createToolHandlers(business, callSid, { isTest });
 
   const session = await ai.live.connect({
     model: MODEL,
@@ -154,6 +185,16 @@ export async function startGeminiSession({ business, callSid, onAudio, onTranscr
               }
               if (call.name === 'transfer_to_human' && !response.error) onTransferToHuman?.(response.reason, response.transferPhoneNumber, response.category);
               if (call.name === 'create_booking' && !response.error) onBookingCreated?.(response.bookingId);
+              // Failed-action record — every tool call the model made that didn't go
+              // through, whether from a thrown error above or a handler's own validation
+              // (tools.js returning {error: ...} directly), so a business can see what the
+              // agent tried and couldn't do, not just what it did.
+              if (response.error) {
+                withTenant(business.id, (c) => c('call_logs').updateOne(
+                  { call_sid: callSid },
+                  { $push: { failed_actions: { tool: call.name, args: call.args ?? {}, error: response.error, at: new Date() } } }
+                )).catch((err) => console.error(`failed to record failed action for call ${callSid}:`, err.message));
+              }
               responses.push({ id: call.id, name: call.name, response });
             }
             session.sendToolResponse({ functionResponses: responses });

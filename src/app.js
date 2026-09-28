@@ -19,7 +19,10 @@ import { calendarRouter, calendarOAuthRouter } from './routes/calendar.js';
 import { phoneNumberRouter } from './routes/phoneNumber.js';
 import { callLogsRouter } from './routes/callLogs.js';
 import { exceptionsRouter } from './routes/exceptions.js';
+import { auditLogsRouter } from './routes/auditLogs.js';
 import { twilioWebhookRouter } from './webhooks/twilio.js';
+import { stripeWebhookRouter } from './webhooks/stripe.js';
+import { auditLogger } from './auditLog.js';
 
 export const app = express();
 
@@ -34,6 +37,7 @@ app.use(cors({ origin: allowedOrigins ?? true }));
 // arrive with no bearer token, so they parse their own body and must not sit behind
 // the app-wide express.json()/requireAuth chain below.
 app.use(twilioWebhookRouter);
+app.use(stripeWebhookRouter);
 app.use('/api', calendarOAuthRouter);
 
 app.use(express.json());
@@ -49,6 +53,11 @@ app.use('/api/auth', authRouter);
 // legitimate company-admin ones) before they ever reach their own route/auth below.
 app.use('/api/platform', platformAuthRouter);
 app.use('/api/platform', requirePlatformAuth, platformRouter);
+// Runs exactly once per company-admin request, ahead of the repeated requireAuth calls
+// below — auditLogger attaches one 'finish' listener per request, so it can't sit inside
+// the repeated-per-router chain (it would double/triple-log a request that falls through
+// several unmatched routers before finding its match).
+app.use('/api', requireAuth, auditLogger);
 // Each router applies its own requireArea(...) gate per-route internally
 // (src/permissions.js) rather than here — these routers all share the '/api' prefix, so
 // a gate applied at this mount level would run for every /api/* request regardless of
@@ -66,6 +75,7 @@ app.use('/api', requireAuth, calendarRouter);
 app.use('/api', requireAuth, phoneNumberRouter);
 app.use('/api', requireAuth, callLogsRouter);
 app.use('/api', requireAuth, exceptionsRouter);
+app.use('/api', requireAuth, auditLogsRouter);
 
 // Centralized error handler — every route above forwards unexpected errors via next(err).
 app.use((err, req, res, next) => {

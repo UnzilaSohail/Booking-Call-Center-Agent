@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  Building2, CalendarDays, CalendarRange, CheckCircle2, Minus, PhoneCall,
+  Building2, CalendarDays, CalendarRange, CheckCircle2, DollarSign, Minus, PhoneCall,
   TrendingDown, TrendingUp, UserCheck2, XCircle,
 } from 'lucide-react';
 import RequirePlatformAuth from '../../components/RequirePlatformAuth';
@@ -166,7 +166,19 @@ function OverviewInner() {
           label="Active companies" value={analytics?.activeCompanies ?? '—'}
           pct={analytics?.companiesTrendPct} context="new signups"
         />
+        <StatCard
+          icon={DollarSign} iconColor={DANGER} iconBg={DANGER_SOFT}
+          label="Est. call cost"
+          value={!analytics ? '—' : (analytics.estimatedCost.configured ? `$${analytics.estimatedCost.current.toFixed(2)}` : 'Not set')}
+          pct={analytics?.estimatedCost.configured ? analytics.estimatedCost.trendPct : undefined}
+          context="vs previous 30 days" isGoodUp={false}
+        />
       </div>
+      {analytics && !analytics.estimatedCost.configured && (
+        <p className="muted" style={{ fontSize: 12, marginTop: -10 }}>
+          Est. call cost needs TWILIO_PER_MINUTE_RATE / GEMINI_PER_MINUTE_RATE set in the backend&apos;s .env — it&apos;s your own rate estimate ({analytics.calls.minutes.current} call minutes this period), not fetched from either provider&apos;s real billing.
+        </p>
+      )}
 
       <div className="row" style={{ gap: 18, alignItems: 'stretch' }}>
         <div style={{ flex: 2, minWidth: 320 }}>

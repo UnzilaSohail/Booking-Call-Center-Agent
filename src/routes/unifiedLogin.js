@@ -23,9 +23,14 @@ unifiedLoginRouter.post('/login', async (req, res, next) => {
       return res.json({ token, role: 'platform' });
     }
 
-    const companyResult = await verifyCompanyAdmin(normalizedEmail, password);
+    // MFA is company-admin only (plan.md §11 item 9) — platform admins aren't gated above.
+    const companyResult = await verifyCompanyAdmin(normalizedEmail, password, req.ip);
     if (companyResult) {
-      const token = jwt.sign({ role: 'business', ...companyResult }, JWT_SECRET, { expiresIn: '12h' });
+      if (companyResult.mfaEnabled) {
+        const mfaToken = jwt.sign({ role: 'mfa_pending', adminId: companyResult.adminId, businessId: companyResult.businessId }, JWT_SECRET, { expiresIn: '5m' });
+        return res.json({ mfaRequired: true, mfaToken, role: 'business' });
+      }
+      const token = jwt.sign({ role: 'business', adminId: companyResult.adminId, businessId: companyResult.businessId }, JWT_SECRET, { expiresIn: '12h' });
       return res.json({ token, role: 'business' });
     }
 

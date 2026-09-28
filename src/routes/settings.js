@@ -41,7 +41,7 @@ settingsRouter.get('/business', gate, async (req, res, next) => {
     const db = await getDb();
     const business = await db.collection('businesses').findOne(
       { _id: req.businessId },
-      { projection: { name: 1, industry: 1, timezone: 1, phone_number: 1, reschedule_cutoff_minutes: 1, contact_email: 1, contact_phone: 1, address: 1, faqs: 1, voice_name: 1, min_booking_notice_minutes: 1, max_booking_window_days: 1, transfer_phone_number: 1 } }
+      { projection: { name: 1, industry: 1, timezone: 1, phone_number: 1, reschedule_cutoff_minutes: 1, contact_email: 1, contact_phone: 1, address: 1, faqs: 1, voice_name: 1, min_booking_notice_minutes: 1, max_booking_window_days: 1, transfer_phone_number: 1, status: 1, deleted_at: 1, recording_enabled: 1, recording_retention_days: 1 } }
     );
     res.json({
       name: business.name,
@@ -57,6 +57,14 @@ settingsRouter.get('/business', gate, async (req, res, next) => {
       minBookingNoticeMinutes: business.min_booking_notice_minutes ?? 0,
       maxBookingWindowDays: business.max_booking_window_days ?? null,
       transferPhoneNumber: business.transfer_phone_number ?? '',
+      status: business.status ?? 'active',
+      deletedAt: business.deleted_at ?? null,
+      // ROADMAP.md §7 "Call recording" / "Recording retention settings" — recordingEnabled
+      // defaults true (matches the always-on disclosure line in webhooks/twilio.js);
+      // recordingRetentionDays null means "keep forever" (src/services/retentionWorker.js
+      // skips a business with no value set).
+      recordingEnabled: business.recording_enabled !== false,
+      recordingRetentionDays: business.recording_retention_days ?? null,
     });
   } catch (err) {
     next(err);
@@ -65,7 +73,7 @@ settingsRouter.get('/business', gate, async (req, res, next) => {
 
 settingsRouter.patch('/business', gate, async (req, res, next) => {
   try {
-    const { name, industry, timezone, rescheduleCutoffMinutes, contactEmail, contactPhone, address, minBookingNoticeMinutes, maxBookingWindowDays, transferPhoneNumber } = req.body ?? {};
+    const { name, industry, timezone, rescheduleCutoffMinutes, contactEmail, contactPhone, address, minBookingNoticeMinutes, maxBookingWindowDays, transferPhoneNumber, recordingEnabled, recordingRetentionDays } = req.body ?? {};
     const updates = {};
     if (name !== undefined) {
       if (!name) return res.status(400).json({ error: 'name cannot be empty' });
@@ -98,10 +106,49 @@ settingsRouter.patch('/business', gate, async (req, res, next) => {
       updates.max_booking_window_days = maxBookingWindowDays;
     }
     if (transferPhoneNumber !== undefined) updates.transfer_phone_number = transferPhoneNumber || null;
+    if (recordingEnabled !== undefined) updates.recording_enabled = !!recordingEnabled;
+    if (recordingRetentionDays !== undefined) {
+      if (recordingRetentionDays !== null && (!Number.isFinite(recordingRetentionDays) || recordingRetentionDays <= 0)) {
+        return res.status(400).json({ error: 'recordingRetentionDays must be null (keep forever) or a positive number' });
+      }
+      updates.recording_retention_days = recordingRetentionDays;
+    }
     if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'nothing to update' });
 
     const db = await getDb();
     await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: updates });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Self-service delete — soft, not the platform admin's hard delete
+// (src/routes/platform.js DELETE /businesses/:id, which actually wipes everything). This
+// just flags the business as deleted; requireAuth (src/auth.js) deliberately does NOT
+// block on this status, so the admin can still log in and hit restore below. No data is
+// touched, so undo is a one-field flip.
+// ponytail: doesn't stop the voice agent from still answering calls while "deleted" —
+// add a status check in src/webhooks/twilio.js findBusinessByPhoneNumber path if that
+// matters before this ships to real users.
+settingsRouter.delete('/business', gate, async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { name: 1 } });
+    const { confirmName } = req.body ?? {};
+    if (confirmName !== business.name) return res.status(400).json({ error: 'confirmName must exactly match the business name' });
+
+    await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { status: 'deleted', deleted_at: new Date() } });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+settingsRouter.post('/business/restore', gate, async (req, res, next) => {
+  try {
+    const db = await getDb();
+    await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { status: 'active' }, $unset: { deleted_at: '' } });
     res.json({ ok: true });
   } catch (err) {
     next(err);

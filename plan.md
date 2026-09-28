@@ -143,6 +143,7 @@ Reschedule/cancel follow the same shape: look up booking by phone/booking-id →
 4. **Voice pipeline (the big one)** — Twilio Media Streams WebSocket handler bridged to a Gemini Live session (audio resampling both directions), with the four tools pointed at the Phase 1 API. Get one call working end-to-end first; turn-taking/interruption comes largely for free from Gemini Live, so this phase is mostly the audio bridge + tool wiring, not custom VAD/barge-in logic.
 5. **Notifications** — SMS/email confirmation + reminder cron.
 6. **Hardening** — load-test concurrent booking attempts on the same slot, verify only one wins; test call quality/latency under real phone network conditions, not just localhost.
+7. **Guided onboarding** — setup checklist covering contact verification, services/staff/calendar/phone/knowledge base, AI voice selection, and a real test call before go-live.
 
 ## 9. Resolved decisions
 
@@ -166,3 +167,30 @@ Reschedule/cancel follow the same shape: look up booking by phone/booking-id →
 - Pricing/plan tiers for the SaaS itself (e.g. per-tenant call volume limits) — not needed for an MVP but worth deciding before onboarding a real second tenant.
 
 Defaults if you don't have a strong preference: Gemini Live end-to-end (no separate STT vendor), Google Calendar only, English only, inbound-only — all cheap to change now, expensive after Phase 4.
+
+## 11. Requested feature set (2026-09-25)
+
+Twelve items requested, all already tracked in ROADMAP.md (§7 Call Records, §8 Dashboard,
+§9 Exception Management, §12 Security) — this just schedules them. Each reuses an
+existing pattern in the codebase rather than introducing a new one; see the "Why lazy"
+column for the shortcut taken and its ceiling.
+
+| # | Feature | Where it lands | Why lazy |
+|---|---------|-----------------|----------|
+| 1 | Call recording | `src/webhooks/twilio.js` starts a Twilio REST recording per call; `/webhooks/twilio/recording-status` stores the URL on `call_logs` | Twilio's own recording, not a custom audio capture off the Media Stream |
+| 2 | AI call summary | `src/voice/geminiSession.js` `summarizeCall()`, called from `twilioBridge.js` on call end | One extra Gemini text call over the transcript already being collected |
+| 3 | Caller intent | Same call as #2 — summary + intent returned together as one JSON response | Free once #2 exists; no separate classifier |
+| 4 | Call duration | Already implemented (`call_logs.duration_seconds`, `twilioBridge.js`) | Nothing to build |
+| 5 | Recording retention settings | `businesses.recording_retention_days` (Settings), swept by `src/services/retentionWorker.js` | Same interval-poller shape as the existing reminder/sync workers; nulls `transcript`/`recording_url` past the cutoff, keeps outcome/duration for reporting |
+| 6 | After-hours calls | `isOpenNow()` already existed (geminiSession.js) and already changes agent behavior; this only adds `call_logs.is_after_hours` so it's visible in Calls/Dashboard | The hard part (agent behavior when closed) was already done |
+| 7 | AI-attributed booking value | `analyticsService.js` — revenue aggregate split by `created_via: 'call'` | `created_via` already exists on every booking |
+| 8 | Payment failure alerts | `src/webhooks/stripe.js` (signature verified by hand via `node:crypto`, no `stripe` SDK dependency) + `payment_failure` exception type in `exceptions.js` | **Stub, not wired to a live payment flow** — plan.md §9 confirms no payment/deposit exists yet (ROADMAP §16, growth tier). This is the alert rail so it's ready the day deposits ship; it does nothing until `STRIPE_WEBHOOK_SECRET` is set and something starts sending it events |
+| 9 | Multi-factor authentication | `src/mfa.js` (RFC 6238 TOTP, `node:crypto` only) + enroll/verify endpoints in `auth.js`, login branch in `unifiedLogin.js`/`auth.js` | No new dependency (`otplib`/`speakeasy`) — TOTP is ~30 lines of HMAC. No QR image generation either — the secret is shown as text for manual entry into an authenticator app; add QR rendering if that's genuinely a UX problem |
+| 10 | Audit logs | `src/auditLog.js` middleware logs every authenticated mutating request (`method`, `path`, `admin_id`) to `audit_logs`; `GET /api/audit-logs` | One generic middleware beats instrumenting every route by hand |
+| 11 | Backup and recovery | `scripts/backupDb.js` / `scripts/restoreDb.js` wrapping `mongodump`/`mongorestore` | Native Mongo tooling, not a custom export format or cloud-storage integration |
+| 12 | Suspicious login alerts | `src/loginHelpers.js` — 5 failed attempts/15min or a login from a new IP emails the business's contact address | IP-change is the whole "new location" signal, no geo-IP lookup/dependency |
+
+Deliberately not built as part of this pass: MFA for platform admins (company-admin login
+only), QR-code enrollment, backup scheduling/upload (the scripts run by hand or from
+whatever cron/Task Scheduler the host already has), and anything payment-flow-shaped
+beyond the alert webhook in #8.

@@ -24,6 +24,9 @@ const TYPES = {
   calendar_sync: { collection: 'bookings', nested: true, retryable: true },
   sms_delivery: { collection: 'bookings', nested: true, retryable: true },
   email_delivery: { collection: 'bookings', nested: true, retryable: true },
+  // Written by src/webhooks/stripe.js — see plan.md §11 item 8 for why this exists ahead
+  // of any actual payment flow.
+  payment_failure: { collection: 'payment_failures', nested: false },
 };
 
 function normalizeFlat(type, doc, { summary, detail }) {
@@ -60,7 +63,7 @@ function normalizeNested(type, booking, { summary, detail }) {
 }
 
 export async function listExceptions(businessId, status) {
-  const [failedBookings, callbacks, voicemails, lowConfidenceCalls, failingBookings] = await Promise.all([
+  const [failedBookings, callbacks, voicemails, lowConfidenceCalls, failingBookings, paymentFailures] = await Promise.all([
     withTenant(businessId, (c) => c('failed_bookings').find(status === 'open' ? { resolved_at: null } : { resolved_at: { $ne: null } }).toArray()),
     withTenant(businessId, (c) => c('callback_requests').find({ status: status === 'open' ? 'pending' : 'resolved' }).toArray()),
     withTenant(businessId, (c) => c('voicemails').find({ status: status === 'open' ? 'open' : 'resolved' }).toArray()),
@@ -71,6 +74,7 @@ export async function listExceptions(businessId, status) {
     withTenant(businessId, (c) => c('bookings').find({
       $or: [{ sync_status: 'failed' }, { confirmation_sms_error: { $ne: null } }, { confirmation_email_error: { $ne: null } }],
     }).toArray()),
+    withTenant(businessId, (c) => c('payment_failures').find(status === 'open' ? { resolved_at: null } : { resolved_at: { $ne: null } }).toArray()),
   ]);
 
   const items = [
@@ -89,6 +93,10 @@ export async function listExceptions(businessId, status) {
     ...lowConfidenceCalls.map((d) => normalizeFlat('low_confidence_call', d, {
       summary: d.transfer_category === 'angry_customer' ? `Angry-customer escalation on a call from ${d.phone}` : `Low-confidence transfer on a call from ${d.phone}`,
       detail: (d.outcome ?? '').replace(/^transferred:\s*/, ''),
+    })),
+    ...paymentFailures.map((d) => normalizeFlat('payment_failure', d, {
+      summary: `Payment failed${d.amount ? ` (${(d.amount / 100).toFixed(2)} ${(d.currency || '').toUpperCase()})` : ''}`,
+      detail: d.error_message,
     })),
   ];
 

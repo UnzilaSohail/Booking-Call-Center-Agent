@@ -6,6 +6,7 @@ import express, { Router } from 'express';
 import twilio from 'twilio';
 import { findBusinessByPhoneNumber } from '../services/bookingService.js';
 import { upsertCustomer, markRecordingAcknowledged, setSmsOptIn } from '../services/customerService.js';
+import { isOpenNow } from '../voice/geminiSession.js';
 import { withTenant, withSystemAccess, newId, serialize } from '../db.js';
 
 export const twilioWebhookRouter = Router();
@@ -48,6 +49,10 @@ async function respondWithVoiceAgent(res, req, business, { isTest = false } = {}
       booking_id: null,
       outcome: 'in_progress',
       is_test: isTest,
+      // ROADMAP.md §8 "After-hours calls" — same isOpenNow() check the system prompt
+      // already uses (src/voice/geminiSession.js) to change agent behavior, just stamped
+      // on the log so it's visible in Calls/Dashboard too.
+      is_after_hours: isOpenNow(business) === false,
       created_at: new Date(),
     })
   );
@@ -60,6 +65,22 @@ async function respondWithVoiceAgent(res, req, business, { isTest = false } = {}
   if (!isTest && req.body.From) {
     upsertCustomer(business.id, { phone: req.body.From }).catch((err) => console.error('customer upsert failed on inbound call:', err.message));
     markRecordingAcknowledged(business.id, req.body.From).catch((err) => console.error('consent record failed on inbound call:', err.message));
+  }
+
+  // Call recording (ROADMAP.md §7, plan.md §11 item 1) — a real Twilio REST recording of
+  // the call, not a custom capture off the Media Stream. Started here (not blocking the
+  // TwiML response) since the call already exists by the time this webhook fires; the
+  // recording lands via /webhooks/twilio/recording-status once it's done. Off by default
+  // per business via recording_enabled (src/routes/settings.js), and skipped for test
+  // calls the same way consent-tracking is above.
+  if (!isTest && business.recording_enabled !== false) {
+    const client = twilioClient();
+    const base = process.env.PUBLIC_HTTPS_URL || `https://${req.headers.host}`;
+    client?.calls(req.body.CallSid).recordings.create({
+      recordingChannels: 'dual',
+      recordingStatusCallback: `${base}/webhooks/twilio/recording-status`,
+      recordingStatusCallbackEvent: ['completed'],
+    }).catch((err) => console.error(`failed to start recording for call ${req.body.CallSid}:`, err.message));
   }
 
   const streamUrl = process.env.PUBLIC_WSS_URL || `wss://${req.headers.host}/voice/stream`;
@@ -155,22 +176,49 @@ twilioWebhookRouter.post('/voice/transfer-result', async (req, res) => {
   const { VoiceResponse } = twilio.twiml;
   const twiml = new VoiceResponse();
   const status = req.body.DialCallStatus;
+  const dialDurationSeconds = req.body.DialCallDuration ? Number(req.body.DialCallDuration) : null;
 
+  const business = await findBusinessByPhoneNumber(req.body.To);
   if (status !== 'completed') {
-    const business = await findBusinessByPhoneNumber(req.body.To);
     if (business) {
       await withTenant(business.id, (c) => Promise.all([
         c('callback_requests').insertOne({
           _id: newId(), call_sid: req.body.CallSid, phone: req.body.From,
           preferred_time: null, reason: req.query.reason || 'transfer not answered', status: 'pending', created_at: new Date(),
         }),
-        c('call_logs').updateOne({ call_sid: req.body.CallSid }, { $set: { outcome: 'transfer_failed: callback created' } }),
+        c('call_logs').updateOne(
+          { call_sid: req.body.CallSid },
+          { $set: { outcome: 'transfer_failed: callback created', 'transfer.status': 'failed', 'transfer.resolvedAt': new Date(), 'transfer.dialStatus': status ?? null } }
+        ),
       ]));
     }
     twiml.say("Sorry, no one is available to take your call right now. We'll have someone call you back as soon as possible.");
+  } else if (business) {
+    await withTenant(business.id, (c) => c('call_logs').updateOne(
+      { call_sid: req.body.CallSid },
+      { $set: { 'transfer.status': 'answered', 'transfer.resolvedAt': new Date(), 'transfer.durationSeconds': dialDurationSeconds } }
+    ));
   }
   twiml.hangup();
   res.type('text/xml').send(twiml.toString());
+});
+
+// Fires once the call recording started above (respondWithVoiceAgent) finishes
+// processing — matched by CallSid, same as the sms-status callback below matches by
+// MessageSid, so no business_id/tenant lookup is needed to find the row.
+twilioWebhookRouter.post('/webhooks/twilio/recording-status', async (req, res) => {
+  if (!verifyTwilioSignature(req)) {
+    console.error('rejected recording-status webhook: bad Twilio signature');
+    return res.status(403).send('invalid signature');
+  }
+  const { CallSid, RecordingSid, RecordingUrl, RecordingDuration } = req.body;
+  if (CallSid && RecordingUrl) {
+    await withSystemAccess((c) => c('call_logs').updateOne(
+      { call_sid: CallSid },
+      { $set: { recording_sid: RecordingSid ?? null, recording_url: RecordingUrl, recording_duration_seconds: RecordingDuration ? Number(RecordingDuration) : null } }
+    ));
+  }
+  res.sendStatus(204);
 });
 
 const SMS_OPT_OUT_KEYWORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];

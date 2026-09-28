@@ -57,8 +57,20 @@ export const api = {
   getMe: () => request('/api/auth/me', { tokenStore: companyTokenStore }),
   changePassword: (payload) => request('/api/auth/password', { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
 
+  // MFA (ROADMAP.md §12) — enroll returns a secret + otpauth URL for manual entry into
+  // an authenticator app (no QR image rendered client-side, see plan.md §11 item 9).
+  mfaEnroll: () => request('/api/auth/mfa/enroll', { method: 'POST', tokenStore: companyTokenStore }),
+  mfaEnrollConfirm: (code) => request('/api/auth/mfa/enroll/confirm', { method: 'POST', body: { code }, tokenStore: companyTokenStore }),
+  mfaDisable: (password) => request('/api/auth/mfa/disable', { method: 'POST', body: { password }, tokenStore: companyTokenStore }),
+  // No tokenStore — this exchanges a short-lived mfaToken from login, not a session token.
+  mfaVerifyLogin: (mfaToken, code) => request('/api/auth/mfa/verify-login', { method: 'POST', body: { mfaToken, code } }),
+
+  listAuditLogs: () => request('/api/audit-logs', { tokenStore: companyTokenStore }),
+
   getBusiness: () => request('/api/business', { tokenStore: companyTokenStore }),
   updateBusiness: (payload) => request('/api/business', { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
+  deleteBusiness: (confirmName) => request('/api/business', { method: 'DELETE', body: { confirmName }, tokenStore: companyTokenStore }),
+  restoreBusiness: () => request('/api/business/restore', { method: 'POST', tokenStore: companyTokenStore }),
 
   signup: (payload) => request('/api/signup', { method: 'POST', body: payload }),
 
@@ -132,7 +144,11 @@ export const api = {
   getPhoneNumber: () => request('/api/phone-number', { tokenStore: companyTokenStore }),
   provisionPhoneNumber: (payload) => request('/api/phone-number/provision', { method: 'POST', body: payload, tokenStore: companyTokenStore }),
 
-  listCallLogs: (from, to) => request(`/api/call-logs?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`, { tokenStore: companyTokenStore }),
+  listCallLogs: ({ from, to, phone, outcome } = {}) => {
+    const params = {};
+    for (const [k, v] of Object.entries({ from, to, phone, outcome })) if (v) params[k] = v;
+    return request(`/api/call-logs?${new URLSearchParams(params)}`, { tokenStore: companyTokenStore });
+  },
 
   listCustomers: (q) => request(`/api/customers${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: companyTokenStore }),
   getCustomer: (id) => request(`/api/customers/${id}`, { tokenStore: companyTokenStore }),
@@ -170,6 +186,7 @@ export const platformApi = {
   listCompanies: (q) => request(`/api/platform/businesses${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: platformTokenStore }),
   getCompany: (id) => request(`/api/platform/businesses/${id}`, { tokenStore: platformTokenStore }),
   setCompanyStatus: (id, status) => request(`/api/platform/businesses/${id}/status`, { method: 'PATCH', body: { status }, tokenStore: platformTokenStore }),
+  deleteCompany: (id, confirmName) => request(`/api/platform/businesses/${id}`, { method: 'DELETE', body: { confirmName }, tokenStore: platformTokenStore }),
   resetAdminPassword: (adminId, newPassword) => request(`/api/platform/admins/${adminId}/password`, { method: 'PATCH', body: { newPassword }, tokenStore: platformTokenStore }),
   registerCompany: (payload) => request('/api/platform/businesses', { method: 'POST', body: payload, tokenStore: platformTokenStore }),
   getStats: () => request('/api/platform/stats', { tokenStore: platformTokenStore }),

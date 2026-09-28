@@ -29,6 +29,8 @@ function BusinessProfileSection() {
         minBookingNoticeMinutes: Number(form.minBookingNoticeMinutes) || 0,
         maxBookingWindowDays: form.maxBookingWindowDays === '' ? null : Number(form.maxBookingWindowDays),
         transferPhoneNumber: form.transferPhoneNumber,
+        recordingEnabled: form.recordingEnabled,
+        recordingRetentionDays: form.recordingRetentionDays === '' ? null : Number(form.recordingRetentionDays),
       });
       toast.success('Business profile saved');
     } catch (err) {
@@ -107,6 +109,19 @@ function BusinessProfileSection() {
           <label>Human transfer number (fallback)</label>
           <input value={form.transferPhoneNumber} onChange={(e) => setForm({ ...form, transferPhoneNumber: e.target.value })} placeholder="Where calls go when the AI hands off, if no department/staff/location number applies" />
         </div>
+        <div className="row" style={{ alignItems: 'flex-end' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14 }}>
+            <input type="checkbox" style={{ width: 'auto' }} checked={form.recordingEnabled} onChange={(e) => setForm({ ...form, recordingEnabled: e.target.checked })} />
+            Record calls
+          </label>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Recording &amp; transcript retention (days, blank = keep forever)</label>
+            <input type="number" min={1} value={form.recordingRetentionDays ?? ''} onChange={(e) => setForm({ ...form, recordingRetentionDays: e.target.value })} />
+          </div>
+        </div>
+        <p className="muted" style={{ fontSize: 12, marginTop: -6, marginBottom: 14 }}>
+          Callers are always told calls may be recorded. A retention window nulls out old recordings/transcripts on a schedule (src/services/retentionWorker.js) — call outcomes and durations are kept either way.
+        </p>
         {error && <p className="error-text">{error}</p>}
         <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving...' : 'Save profile'}</button>
       </form>
@@ -229,6 +244,113 @@ function ChangePasswordSection() {
         <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving...' : 'Change'}</button>
       </form>
       {error && <p className="error-text">{error}</p>}
+    </div>
+  );
+}
+
+// MFA (ROADMAP.md §12, plan.md §11 item 9) — TOTP only, no QR image rendered here; the
+// secret is shown as text for manual entry into an authenticator app.
+function MfaSection() {
+  const toast = useToast();
+  const [me, setMe] = useState(null);
+  const [enrollment, setEnrollment] = useState(null); // { secret, otpauthUrl }
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.getMe().then(setMe).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function startEnroll() {
+    setBusy(true);
+    setError(null);
+    try {
+      setEnrollment(await api.mfaEnroll());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmEnroll(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.mfaEnrollConfirm(code);
+      toast.success('Two-factor authentication enabled');
+      setEnrollment(null);
+      setCode('');
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disable(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.mfaDisable(password);
+      toast.success('Two-factor authentication disabled');
+      setPassword('');
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!me) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+
+  return (
+    <div className="card">
+      <h2>Two-factor authentication</h2>
+      {me.mfaEnabled ? (
+        <>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: -8 }}>Enabled — a code from your authenticator app is required at login.</p>
+          <form onSubmit={disable} className="row" style={{ alignItems: 'flex-end' }}>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Current password</label>
+              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            </div>
+            <button type="submit" className="danger" disabled={busy}>{busy ? 'Disabling...' : 'Disable'}</button>
+          </form>
+        </>
+      ) : enrollment ? (
+        <form onSubmit={confirmEnroll}>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: -8 }}>
+            Add an account in your authenticator app (Google Authenticator, Authy, 1Password, ...) using this key, then enter the 6-digit code it shows.
+          </p>
+          <div className="field">
+            <label>Secret key</label>
+            <input readOnly value={enrollment.secret} style={{ fontFamily: 'ui-monospace, monospace' }} onFocus={(e) => e.target.select()} />
+          </div>
+          <div className="field">
+            <label>6-digit code</label>
+            <input inputMode="numeric" pattern="\d{6}" maxLength={6} required value={code} onChange={(e) => setCode(e.target.value)} />
+          </div>
+          {error && <p className="error-text">{error}</p>}
+          <div className="row">
+            <button type="submit" className="primary" disabled={busy}>{busy ? 'Verifying...' : 'Enable'}</button>
+            <button type="button" className="ghost" onClick={() => setEnrollment(null)}>Cancel</button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: -8 }}>Not enabled. Require a 6-digit authenticator code in addition to your password at login.</p>
+          <button className="primary" onClick={startEnroll} disabled={busy}>{busy ? 'Starting...' : 'Set up two-factor authentication'}</button>
+        </>
+      )}
+      {error && !enrollment && <p className="error-text">{error}</p>}
     </div>
   );
 }
@@ -673,6 +795,89 @@ function PhoneNumberSection() {
   );
 }
 
+// Self-service delete/restore — a soft flag only (src/routes/config.js DELETE
+// /business), not the platform admin's hard delete which actually wipes data. Staying
+// logged in while deleted is what makes undo a one-click "Restore" instead of a
+// forgot-password-style recovery flow.
+function DeleteAccountSection() {
+  const toast = useToast();
+  const [business, setBusiness] = useState(null);
+  const [confirmName, setConfirmName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.getBusiness().then(setBusiness).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function del(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteBusiness(confirmName);
+      toast.success('Account deleted — you can restore it any time from here');
+      setConfirmName('');
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restore() {
+    setBusy(true);
+    try {
+      await api.restoreBusiness();
+      toast.success('Account restored');
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!business) return null;
+
+  if (business.status === 'deleted') {
+    return (
+      <div className="card" style={{ borderColor: 'var(--danger)' }}>
+        <h2>Account deleted</h2>
+        <p className="muted" style={{ fontSize: 12.5 }}>
+          {business.name} was deleted{business.deletedAt ? ` on ${new Date(business.deletedAt).toLocaleString()}` : ''}.
+          Your data hasn&apos;t been touched — restore any time.
+        </p>
+        <button className="primary" onClick={restore} disabled={busy}>{busy ? 'Restoring...' : 'Restore account'}</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card" style={{ borderColor: 'var(--danger)' }}>
+      <h2>Delete account</h2>
+      <p className="muted" style={{ fontSize: 12, marginTop: -8 }}>
+        Deactivates {business.name}. This is reversible — you can restore it from this same
+        page any time. To permanently erase all data instead, contact the platform.
+      </p>
+      <form onSubmit={del} className="row" style={{ alignItems: 'center' }}>
+        <input
+          placeholder={`Type "${business.name}" to confirm`}
+          value={confirmName}
+          onChange={(e) => setConfirmName(e.target.value)}
+          style={{ width: 260 }}
+        />
+        <button type="submit" className="danger" disabled={busy || confirmName !== business.name}>
+          <Trash2 size={15} /> {busy ? 'Deleting...' : 'Delete account'}
+        </button>
+      </form>
+      {error && <p className="error-text" style={{ marginTop: 4 }}>{error}</p>}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <RequireAuth area="settings">
@@ -689,6 +894,8 @@ export default function SettingsPage() {
         <CalendarConnectSection />
         <PhoneNumberSection />
         <ChangePasswordSection />
+        <MfaSection />
+        <DeleteAccountSection />
       </div>
     </RequireAuth>
   );

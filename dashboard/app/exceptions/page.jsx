@@ -14,6 +14,7 @@ const TYPE_LABELS = {
   calendar_sync: 'Calendar sync',
   sms_delivery: 'SMS delivery',
   email_delivery: 'Email delivery',
+  payment_failure: 'Payment failure',
 };
 
 // Unified "needs staff attention" queue (ROADMAP.md §9) — src/routes/exceptions.js

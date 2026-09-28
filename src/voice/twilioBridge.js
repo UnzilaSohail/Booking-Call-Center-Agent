@@ -4,7 +4,7 @@
 // this handler speaks that protocol directly (no Twilio server-side SDK needed for it).
 import { WebSocketServer } from 'ws';
 import { twilioPayloadToGeminiPCM, geminiPCMToTwilioPayload } from './audio.js';
-import { startGeminiSession } from './geminiSession.js';
+import { startGeminiSession, summarizeCall } from './geminiSession.js';
 import { transferCallToHuman } from '../webhooks/twilio.js';
 import { getDb, withTenant, newId, serialize } from '../db.js';
 
@@ -29,6 +29,7 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
     let fromNumber = null;
     let business = null;
     let gemini = null;
+    let isTest = false;
     const transcript = [];
 
     // plan.md §6 "Dead air / silence handling": Gemini Live's own VAD handles normal
@@ -63,6 +64,9 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
             callSid = msg.start.callSid;
             fromNumber = msg.start.customParameters?.from ?? null;
             const businessId = msg.start.customParameters?.businessId;
+            // Set by the onboarding test-call webhook (src/webhooks/twilio.js
+            // /voice/test-call) — real inbound calls never carry this parameter.
+            isTest = msg.start.customParameters?.isTest === 'true';
 
             const db = await getDb();
             const foundBusiness = await db.collection('businesses').findOne({ _id: businessId });
@@ -76,6 +80,7 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
             gemini = await startGeminiSession({
               business,
               callSid,
+              isTest,
               onAudio: (base64Pcm24k, opts) => {
                 if (ws.readyState !== ws.OPEN) return;
                 if (opts?.interrupted) {
@@ -105,8 +110,13 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
                 // transfer_category feeds the exceptions queue's "low-confidence call
                 // queue" (ROADMAP.md §9) — set once here regardless of whether the
                 // redirect itself succeeds, since either way the call needed escalating.
+                // transfer is a structured record alongside it — /voice/transfer-result
+                // (src/webhooks/twilio.js) fills in transfer.status/resolvedAt once the
+                // dial attempt actually finishes.
+                const transferRecord = { reason, targetPhone: transferPhoneNumber ?? null, requestedAt: new Date(), status: redirected ? 'redirected' : 'failed' };
+
                 if (redirected) {
-                  await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200), transfer_category: category ?? null } }));
+                  await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200), transfer_category: category ?? null, transfer: transferRecord } }));
                   return;
                 }
 
@@ -115,7 +125,7 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
                 // request_callback tool call would (ROADMAP.md §5 "Callback creation
                 // when staff are unavailable"), then end gracefully like before.
                 await withTenant(business.id, (c) => Promise.all([
-                  c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200), transfer_category: category ?? null } }),
+                  c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: `transferred: ${reason}`.slice(0, 200), transfer_category: category ?? null, transfer: transferRecord } }),
                   fromNumber
                     ? c('callback_requests').insertOne({ _id: newId(), call_sid: callSid, phone: fromNumber, preferred_time: null, reason, status: 'pending', created_at: new Date(), assigned_to: null, resolved_at: null, resolved_by: null, resolution_notes: null })
                     : Promise.resolve(),
@@ -143,11 +153,20 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
           case 'stop': {
             gemini?.close();
             if (business) {
+              const transcriptText = transcript.join('\n');
               await withTenant(business.id, async (c) => {
                 const current = await c('call_logs').findOne({ call_sid: callSid });
                 const outcome = current?.outcome && current.outcome !== 'in_progress' ? current.outcome : 'completed';
-                await c('call_logs').updateOne({ call_sid: callSid }, { $set: { transcript: transcript.join('\n'), outcome } });
+                const endedAt = new Date();
+                const durationSeconds = current?.created_at ? Math.round((endedAt - new Date(current.created_at)) / 1000) : null;
+                await c('call_logs').updateOne({ call_sid: callSid }, { $set: { transcript: transcriptText, outcome, ended_at: endedAt, duration_seconds: durationSeconds } });
               });
+              // AI call summary + caller intent (ROADMAP.md §7) — after the row above so a
+              // slow/failed Gemini call never delays the outcome/duration write callers rely on.
+              const { summary, intent } = await summarizeCall(transcriptText);
+              if (summary || intent) {
+                await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { summary, intent } }));
+              }
             }
             break;
           }

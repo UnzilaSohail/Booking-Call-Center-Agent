@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, getToken } from '../lib/api';
+import { api, getToken, clearToken } from '../lib/api';
 import Sidebar from './Sidebar';
 
 // Client-side gate only: this is a UX convenience, not a security boundary — every
@@ -19,13 +19,21 @@ export default function RequireAuth({ children, area }) {
       router.replace('/login');
       return;
     }
-    if (!area) {
-      setReady(true);
-      return;
-    }
+    // Always validated against the server, even on pages with no `area` gate — a token
+    // that's merely present but expired/invalid (a stale one left in localStorage from a
+    // previous session, or one whose admin got suspended) would otherwise render the page
+    // and leave every API call underneath it failing with "invalid or expired token"
+    // instead of just sending the admin back to log in.
     api.getMe()
-      .then((me) => setAllowed((me.areas ?? []).includes(area)))
-      .catch(() => {})
+      .then((me) => setAllowed(!area || (me.areas ?? []).includes(area)))
+      .catch((err) => {
+        if (err.status === 401) {
+          clearToken();
+          router.replace('/login');
+          return;
+        }
+        setAllowed(true); // fail open on a transient/network error, not an auth one
+      })
       .finally(() => setReady(true));
   }, [router, area]);
 
