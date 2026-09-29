@@ -149,6 +149,11 @@ export async function startGeminiSession({ business, callSid, isTest = false, on
     model: MODEL,
     config: {
       responseModalities: [Modality.AUDIO],
+      // Audio-only responses carry no text parts on their own — without these two,
+      // Gemini never sends transcript text at all, so call_logs.transcript stayed empty
+      // for every call. Output covers the agent's side, input covers the caller's.
+      outputAudioTranscription: {},
+      inputAudioTranscription: {},
       systemInstruction: { parts: [{ text: systemInstruction }] },
       tools: [{ functionDeclarations: toolDeclarations }],
       // Per-business AI voice, set via onboarding (src/routes/onboarding.js POST
@@ -168,8 +173,10 @@ export async function startGeminiSession({ business, callSid, isTest = false, on
             ?? message.serverContent?.modelTurn?.parts?.find((p) => p.inlineData?.mimeType?.startsWith('audio/'))?.inlineData?.data;
           if (audioChunk) onAudio(audioChunk);
 
-          const text = message.serverContent?.modelTurn?.parts?.find((p) => p.text)?.text;
-          if (text) onTranscript?.('agent', text);
+          const agentText = message.serverContent?.outputTranscription?.text;
+          if (agentText) onTranscript?.('agent', agentText);
+          const callerText = message.serverContent?.inputTranscription?.text;
+          if (callerText) onTranscript?.('caller', callerText);
 
           const functionCalls = message.toolCall?.functionCalls;
           if (functionCalls?.length) {
