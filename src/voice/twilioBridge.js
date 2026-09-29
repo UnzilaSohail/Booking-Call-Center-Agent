@@ -154,12 +154,16 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
             gemini?.close();
             if (business) {
               const transcriptText = transcript.join('\n');
+              // duration_seconds feeds voice-minute usage billing (ROADMAP.md §11) —
+              // reuses startedAt, already tracked in this closure for the silence/
+              // max-duration watchdog above, so this is the one place a call's real
+              // wall-clock length is known.
+              const endedAt = new Date();
+              const duration_seconds = Math.round((endedAt - startedAt) / 1000);
               await withTenant(business.id, async (c) => {
                 const current = await c('call_logs').findOne({ call_sid: callSid });
                 const outcome = current?.outcome && current.outcome !== 'in_progress' ? current.outcome : 'completed';
-                const endedAt = new Date();
-                const durationSeconds = current?.created_at ? Math.round((endedAt - new Date(current.created_at)) / 1000) : null;
-                await c('call_logs').updateOne({ call_sid: callSid }, { $set: { transcript: transcriptText, outcome, ended_at: endedAt, duration_seconds: durationSeconds } });
+                await c('call_logs').updateOne({ call_sid: callSid }, { $set: { transcript: transcriptText, outcome, ended_at: endedAt, duration_seconds } });
               });
               // AI call summary + caller intent (ROADMAP.md §7) — after the row above so a
               // slow/failed Gemini call never delays the outcome/duration write callers rely on.

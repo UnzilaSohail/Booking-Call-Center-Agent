@@ -5,6 +5,7 @@ import { attachTwilioMediaStreamServer } from './voice/twilioBridge.js';
 import { startSyncWorker } from './calendar/sync-worker.js';
 import { startReminderWorker } from './notifications/reminder-worker.js';
 import { startRetentionWorker } from './services/retentionWorker.js';
+import { startBillingWorker } from './billing/worker.js';
 
 const port = process.env.PORT || 3000;
 
@@ -18,12 +19,14 @@ httpServer.listen(port, () => console.log(`listening on :${port}`));
 const stopSyncWorker = startSyncWorker();
 const stopReminderWorker = startReminderWorker();
 const stopRetentionWorker = startRetentionWorker();
+const stopBillingWorker = startBillingWorker();
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     stopSyncWorker();
     stopReminderWorker();
     stopRetentionWorker();
+    stopBillingWorker();
     httpServer.close(() => process.exit(0));
   });
 }

@@ -19,8 +19,9 @@ test('staff gets bookings and calls only', () => {
   assert.equal(hasArea({ role: 'staff' }, 'team'), false);
 });
 
-test('billing role grants nothing yet (§11 not built)', () => {
-  assert.deepEqual(areasFor({ role: 'billing' }), []);
+test('billing role grants only the billing area (ROADMAP.md §11)', () => {
+  assert.deepEqual(areasFor({ role: 'billing' }), ['billing']);
+  assert.equal(hasArea({ role: 'billing' }, 'bookings'), false);
 });
 
 test('custom role uses its own permissions array, not a fixed set', () => {

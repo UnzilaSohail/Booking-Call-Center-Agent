@@ -46,7 +46,7 @@ async function sendGated(business, booking, smsText, emailSubject, emailText) {
     console.log(`SMS skipped for ${booking.phone} — opted out`);
   } else {
     try {
-      const sid = await sendSms(booking.phone, smsText);
+      const sid = await sendSms(business.id, booking.phone, smsText);
       updates.confirmation_sms_sid = sid;
       updates.confirmation_sms_error = null;
     } catch (err) {
