@@ -103,6 +103,9 @@ export default function LoginPage() {
         <p className="muted" style={{ marginTop: 4, fontSize: 12.5 }}>
           New business? <Link href="/signup">Sign up</Link>
         </p>
+        <p className="muted" style={{ marginTop: 4, fontSize: 12.5 }}>
+          Looking to book an appointment? <Link href="/find">Find a business</Link>
+        </p>
       </form>
     </div>
   );

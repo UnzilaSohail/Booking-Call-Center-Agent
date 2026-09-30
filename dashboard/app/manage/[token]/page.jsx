@@ -79,7 +79,7 @@ function ManageInner() {
           <>
             <div className="stack" style={{ gap: 4, marginBottom: 18, fontSize: 14 }}>
               <div><strong>{data.businessName}</strong></div>
-              <div>{data.serviceName} — {DateTime.formatDateTime(data.booking.startTime)}</div>
+              <div>{data.serviceName} — {DateTime.formatDateTime(data.booking.startTime, data.timezone)}</div>
               <div className="muted" style={{ fontSize: 12.5 }}>
                 <span className={`badge ${data.booking.status === 'confirmed' ? 'success' : 'neutral'}`}>{data.booking.status}</span>
               </div>
@@ -114,7 +114,7 @@ function ManageInner() {
                         onClick={() => setSelectedSlot(slot)}
                         style={selectedSlot === slot ? { background: 'var(--ink)', color: 'var(--ink-text)', borderColor: 'var(--ink)' } : undefined}
                       >
-                        {DateTime.formatTime(slot)}
+                        {DateTime.formatTime(slot, data.timezone)}
                       </button>
                     ))}
                   </div>

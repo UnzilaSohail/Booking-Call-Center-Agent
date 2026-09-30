@@ -3,7 +3,7 @@
 Written test cases with the code that runs them. Use cases: `USE_CASES.md`. Open defects found by these tests: `KNOWN_GAPS.md`.
 
 **Status legend:** `Pass` = automated, ran green on 2026-09-30 · `Gap` = automated, written to fail until the gap is fixed (shows as `todo`, does not fail the suite) ·
-`Planned` = designed, waiting for the feature (Plan 1 public booking / Plan 4 reliability) · `Manual` = human checklist (UAT).
+`Planned` = designed, waiting for the feature · `Manual` = human checklist (UAT).
 
 ## How to run
 
@@ -19,7 +19,7 @@ Without `MONGODB_URI` the database tests skip cleanly and only the pure tests ru
 
 ## Latest run — 2026-09-30, local replica set
 
-`npm test` on 2026-10-01, after the team and the invite-email UI work's fixes: **110 tests, 109 pass, 0 fail, 1 gap (todo)**. Only MT-06 (KG-09) is still open. On 2026-09-30 the first run was 96 tests, 90 pass, 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server, `/health` still OK (173 ms).
+`npm test` on 2026-10-01, after the team and the invite-email UI work's fixes: **135 tests, 134 pass, 0 fail, 1 gap (todo)** after the public booking page and directory were added (25 new tests). Only MT-06 (KG-09) is still open. On 2026-09-30 the first run was 96 tests, 90 pass, 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server, `/health` still OK (173 ms).
 Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual booking won 14, and every round ended with exactly one booking.
 
 ## RC — Race conditions and overlaps (`test/raceConditions.test.js`)
@@ -74,31 +74,37 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 | CC-04 | `MAX_CONCURRENT_CALLS` reached | "All lines busy" message + callback | Planned (Plan 4, Jira 27f) |
 | CC-05 | N real phones at once | Each call answered, no cross-talk, quota respected | Manual (UAT-04, teammate) |
 
-## PB — Public web booking (Plan 1) — Planned
-| ID | Scenario | Expected |
-|---|---|---|
-| PB-01 | New customer books via `/book/<slug>` | Booking + customer created, confirmation shown |
-| PB-02 | Returning phone customer books via web | Same customer id |
-| PB-03 | Stylist list for a service | Only staff who offer it |
-| PB-04 | Staff that does not offer the service submitted directly | Refused |
-| PB-05 | "Any available" | A free eligible staff assigned; retried on conflict |
-| PB-06 | 20 parallel posts for one slot | One winner |
-| PB-07 | Double submit with same key | One booking |
-| PB-08 | Time outside opening hours | Refused |
-| PB-09 | Suspended business | 404, no data |
-| PB-10 | Honeypot filled | Rejected silently |
-| PB-11 | Rate limit and daily cap | 429 after the limit |
-| PB-12 | Source badge | Booking marked `web`, shown in dashboard |
+## PB, DR, SL — Public booking page, directory, booking links (`test/publicBooking.test.js`)
+Real HTTP against the Express app and real Mongo; each run creates its own businesses (an "ABC Salon" in Tampa and Miami, an "ABC Dentist", one with no services).
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| PB-01 | Guest books end to end (info, services, availability, booking) | 201, booking `created_via: web`, customer created with the consent wording stored, manage link returned | Pass |
+| PB-02 | Returning phone customer books on web with the number typed differently | Still one customer record, existing name kept | Pass |
+| PB-03 | Stylist list for a service; a stylist who does not offer it is submitted | Only staff who offer it are listed; direct submit gets 400 | Pass |
+| PB-04 | "Any available" when the first stylist is busy | Next free stylist is booked; availability drops the slot once all are busy | Pass |
+| PB-05 | "Any available" with everyone busy | 409 "no longer available" | Pass |
+| PB-06 | 8 simultaneous bookings for one slot | 1 success, 7 conflicts, 1 booking row | Pass |
+| PB-07 | Double submit with the same idempotency key | One booking, same id returned | Pass |
+| PB-08 | Time outside opening hours, or not a date | 409 / 400 | Pass |
+| PB-09 | Unknown, suspended, deleted, or switched-off page | Identical 404 on page, services and booking | Pass |
+| PB-10 | Honeypot filled | Looks like success, nothing booked | Pass |
+| PB-11 | Booking attempts per IP | 429 on the 11th | Pass |
+| PB-12 | Consent: unticked box, and a ticked box on a customer who sent STOP | Unticked opts that channel out; STOP is never undone | Pass |
+| PB-13 | Bad name, phone, email, missing service | 400 | Pass |
+| PB-14 | Service belonging to another business | Not booked | Pass |
+| DR-01 | Listed and ready business vs one with no services | Only the ready one appears | Pass |
+| DR-02 | Two "ABC Salon"s | Both returned, told apart by city and street address | Pass |
+| DR-03 | Service-word search, category filter, city filter (case-insensitive) | Only matching businesses | Pass |
+| DR-04 | Unlisted, hidden by platform, suspended, go-live not done | Hidden from search; direct link still works (except suspended) | Pass |
+| DR-05 | Categories and cities endpoints | Counts of live businesses only | Pass |
+| DR-06 | Public responses | No customer data, emails or raw ids | Pass |
+| SL-01 | Slug rules | Lowercase, 3-40 chars, no double hyphens, reserved words rejected | Pass |
+| SL-02 | Name collision | `abc-salon`, then `abc-salon-tampa`, then `abc-salon-2` | Pass |
+| SL-03 | Unique index and backfill | Duplicate rejected; old businesses get a slug | Pass |
+| SL-04 | Owner changes booking link | Taken = 409, reserved/invalid = 400, old link stops working | Pass |
+| SL-05 | Listing categories | Only the fixed list, at most 3 | Pass |
 
-## DR — Directory (Plan 1) — Planned
-| ID | Scenario | Expected |
-|---|---|---|
-| DR-01 | Search by name | Matching listed businesses only |
-| DR-02 | Two same-name businesses | Distinguished by city and address |
-| DR-03 | Category + city filter | Only that category in that city |
-| DR-04 | Service-word search | Businesses offering the service |
-| DR-05 | Unlisted business | Not in search; direct link works |
-| DR-06 | Wrong business | Name and address on every step and message |
+Checked by hand in the browser pane (2026-10-01): Settings card, `/find` (card, empty state), `/book/<slug>` golden path with the stylist filter, "Bookings > Booked via: Web", phone width 375px with no horizontal scroll.
 
 ## EM — Email and invites (`test/emailInvite.test.js`)
 Run against the real Express app over HTTP with no email/SMS provider configured (skips itself if a provider is configured).

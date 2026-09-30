@@ -68,6 +68,8 @@ export const api = {
   listAuditLogs: () => request('/api/audit-logs', { tokenStore: companyTokenStore }),
 
   getBusiness: () => request('/api/business', { tokenStore: companyTokenStore }),
+  getListing: () => request('/api/business/listing', { tokenStore: companyTokenStore }),
+  updateListing: (payload) => request('/api/business/listing', { method: 'PUT', body: payload, tokenStore: companyTokenStore }),
   updateBusiness: (payload) => request('/api/business', { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
   deleteBusiness: (confirmName) => request('/api/business', { method: 'DELETE', body: { confirmName }, tokenStore: companyTokenStore }),
   restoreBusiness: () => request('/api/business/restore', { method: 'POST', tokenStore: companyTokenStore }),
@@ -176,6 +178,18 @@ export const myBookingApi = {
   getAvailability: (token, date) => request(`/api/my-booking/${token}/availability?${new URLSearchParams({ date })}`),
   reschedule: (token, startTime) => request(`/api/my-booking/${token}/reschedule`, { method: 'POST', body: { startTime } }),
   cancel: (token) => request(`/api/my-booking/${token}/cancel`, { method: 'POST' }),
+};
+
+// Public directory and booking page (docs/customer/PUBLIC_BOOKING_API.md) — no login at all.
+export const publicApi = {
+  directory: (params) => request(`/api/public/directory?${new URLSearchParams(params)}`),
+  categories: () => request('/api/public/directory/categories'),
+  cities: () => request('/api/public/directory/cities'),
+  business: (slug) => request(`/api/public/${slug}`),
+  services: (slug) => request(`/api/public/${slug}/services`),
+  staff: (slug, serviceId) => request(`/api/public/${slug}/staff?${new URLSearchParams({ serviceId })}`),
+  availability: (slug, params) => request(`/api/public/${slug}/availability?${new URLSearchParams(params)}`),
+  book: (slug, body) => request(`/api/public/${slug}/bookings`, { method: 'POST', body }),
 };
 
 // Team-invite acceptance (ROADMAP.md §10) — token-authenticated via the URL itself

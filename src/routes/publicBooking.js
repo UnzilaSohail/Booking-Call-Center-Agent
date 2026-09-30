@@ -180,7 +180,8 @@ publicBookingRouter.get('/public/:slug/availability', loadBusiness, async (req, 
     const id = req.business._id;
     const candidates = await candidatesFor(id, serviceId, staffId);
     const results = await Promise.all(candidates.map((s) => getAvailability(id, { serviceId, date, staffId: s?._id })));
-    const slots = [...new Set(results.flatMap((r) => r.slots))].sort();
+    const now = Date.now();
+    const slots = [...new Set(results.flatMap((r) => r.slots))].filter((s) => new Date(s).getTime() > now).sort();
     res.json({ slots, durationMinutes: results[0]?.durationMinutes ?? null, timezone: req.business.timezone });
   } catch (err) {
     handleError(err, res, next);
@@ -215,6 +216,7 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
     if (!body.serviceId || !DateTime.fromISO(String(body.startTime ?? ''), { zone: 'utc' }).isValid) {
       return res.status(400).json({ error: 'serviceId and a valid startTime are required' });
     }
+    if (new Date(body.startTime).getTime() <= Date.now()) return res.status(409).json({ error: 'that time has already passed, please pick another' });
     if (tooMany(`phone:${b._id}:${phone}`, 5, 60 * 60_000)) return res.status(429).json({ error: 'too many bookings for this phone number, try again later' });
     if (tooMany(`cap:${b._id}`, DAILY_CAP, 24 * 60 * 60_000)) return res.status(429).json({ error: 'online booking is full for today, please call instead' });
 

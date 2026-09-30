@@ -87,7 +87,7 @@ function BookingsInner() {
         )}
         {!loading && results.length > 0 && (
           <table>
-            <thead><tr><th>When</th><th>Customer</th><th>Phone</th><th>Service</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>When</th><th>Customer</th><th>Phone</th><th>Service</th><th>Booked via</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {results.map((b) => (
                 <tr key={b.id} style={{ cursor: b.status === 'confirmed' ? 'pointer' : 'default' }} onClick={() => b.status === 'confirmed' && setModal({ mode: 'edit', booking: b })}>
@@ -95,6 +95,7 @@ function BookingsInner() {
                   <td>{b.customer_name}</td>
                   <td>{b.phone}</td>
                   <td>{b.service_name}</td>
+                  <td><span className="badge neutral">{{ call: 'Phone', web: 'Web', dashboard: 'Dashboard' }[b.created_via] ?? 'Dashboard'}</span></td>
                   <td><StatusBadge status={b.status} /></td>
                   <td><DeliveryBadge booking={b} /></td>
                 </tr>

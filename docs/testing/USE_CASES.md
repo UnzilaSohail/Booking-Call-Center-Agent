@@ -6,28 +6,28 @@ Each use case lists the test cases that cover it (see `TEST_CASES.md`).
 
 Actors: **Caller** (phones a business), **Customer** (uses the web page), **Staff** (dashboard), **Owner**, **AI agent**, **Platform admin**, **Teammate** (server/ops).
 
-## A. Customer books on the web without calling — Planned (Plan 1)
+## A. Customer books on the web without calling — Built, awaiting deploy
 | ID | Use case | Expected | Tests |
 |---|---|---|---|
 | UC-A1 | New customer opens a business link and books | Booking and customer created, confirmation on screen + SMS/email with manage link | PB-01 |
 | UC-A2 | Returning customer (known from earlier phone calls) books on the web with the same phone | Matched to the same customer record, history unified, no pre-fill | MT-03, PB-02 |
-| UC-A3 | Customer chooses a specific stylist ("Jessica") | Only staff who offer the service are listed; booking assigned to Jessica | PB-03, PB-04 |
-| UC-A4 | Customer chooses "Any available" | Server assigns a free eligible staff member; conflicts retried | PB-05 |
+| UC-A3 | Customer chooses a specific stylist ("Jessica") | Only staff who offer the service are listed; booking assigned to Jessica | PB-03 |
+| UC-A4 | Customer chooses "Any available" | Server assigns a free eligible staff member; conflicts retried | PB-04, PB-05 |
 | UC-A5 | Two customers pick the same slot together | One booking; the other sees "just taken" and fresh slots | PB-06, RC-02 |
 | UC-A6 | Customer double-clicks or the browser retries | One booking (idempotency key) | PB-07, RC-11 |
 | UC-A7 | Customer submits a time outside opening hours | Refused | PB-08, VB-07 |
 | UC-A8 | Business is suspended or closed | Friendly message, no data leaked | PB-09 |
 | UC-A9 | Bot or spam submits the form | Honeypot and rate limits stop it; daily cap protects SMS spend | PB-10, PB-11 |
 
-## B. Customer finds the right business — Planned (Plan 1)
+## B. Customer finds the right business — Built, awaiting deploy
 | ID | Use case | Expected | Tests |
 |---|---|---|---|
 | UC-B1 | Customer searches "ABC Salon" | Only that business (and same-name ones) listed with city/address | DR-01, DR-02 |
 | UC-B2 | Two "ABC Salon"s in different cities | Told apart by city and address on the result cards | DR-02 |
 | UC-B3 | Customer searches category "Dentist" in a city | Only listed dentists in that city | DR-03 |
-| UC-B4 | Customer searches a service word ("teeth cleaning") | Businesses offering it, customer picks one before seeing slots | DR-04 |
-| UC-B5 | Business is not listed | Not in search, direct link still works | DR-05 |
-| UC-B6 | Customer booked the wrong business | Business name + address on every screen and message; free cancel via manage link | DR-06, UAT-12 |
+| UC-B4 | Customer searches a service word ("teeth cleaning") | Businesses offering it, customer picks one before seeing slots | DR-03 |
+| UC-B5 | Business is not listed | Not in search, direct link still works | DR-04 |
+| UC-B6 | Customer booked the wrong business | Business name + address on every screen and message; free cancel via manage link | UAT-12 (header checked in the browser) |
 
 ## C. Caller books by phone — Live
 | ID | Use case | Expected | Tests |
