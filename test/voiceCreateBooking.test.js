@@ -68,12 +68,12 @@ describe('voice booking tools', { skip }, () => {
     assert.ok(res.bookingId);
   });
 
-  it('VB-07 booking at a time outside opening hours is refused', { todo: 'KG-02: createBooking/voice do not re-check hours (fix under Jira 28b)' }, async () => {
+  it('VB-07 booking at a time outside opening hours is refused', async () => {
     const res = await voice().create_booking({ serviceName: 'haircut', staffName: 'Jessica', startTime: at(12, '23'), customerName: 'Late', phone: '+15550100008' });
     assert.ok(res.error, 'a 23:00 booking must be rejected when the business closes at 18:00');
   });
 
-  it('VB-08 a misheard staff name is an error, not a silent booking with nobody assigned', { todo: 'KG-04: resolveStaffId returns null on no match (fix under Jira 28a)' }, async () => {
+  it('VB-08 a misheard staff name is an error, not a silent booking with nobody assigned', async () => {
     const res = await voice().create_booking({ serviceName: 'haircut', staffName: 'Zzzyx', startTime: at(13, '14'), customerName: 'Who', phone: '+15550100009' });
     assert.ok(res.error, 'unknown staff name must not create a booking');
   });

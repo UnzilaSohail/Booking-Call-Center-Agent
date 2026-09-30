@@ -111,7 +111,7 @@ describe('booking race conditions', { skip }, () => {
     await book(at(11, '14', '45'));
   });
 
-  it('RC-07 start times off the 5-minute grid still collide (14:02 vs 14:00)', { todo: 'KG-01: slot locks are not grid-aligned (fix under Jira 28d)' }, async () => {
+  it('RC-07 start times off the 5-minute grid still collide (14:02 vs 14:00)', async () => {
     await book(at(12, '14', '00'));
     await assert.rejects(book(at(12, '14', '02')), (e) => e.status === 409);
   });
@@ -182,7 +182,7 @@ describe('booking race conditions', { skip }, () => {
     await book(startTime, { staff: 'Jessica' }); // documented behaviour (KG-03): separate lock namespace
   });
 
-  it('RC-14 a cancelled booking cannot be rescheduled', { todo: 'KG-06: rescheduleBooking does not check status (fix under Jira 28e)' }, async () => {
+  it('RC-14 a cancelled booking cannot be rescheduled', async () => {
     const a = await book(at(20, '14'));
     await cancelBooking(t.businessId, a.booking.id);
     await assert.rejects(rescheduleBooking(t.businessId, a.booking.id, at(20, '16')));

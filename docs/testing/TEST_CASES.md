@@ -19,7 +19,7 @@ Without `MONGODB_URI` the database tests skip cleanly and only the pure tests ru
 
 ## Latest run — 2026-09-30, local replica set
 
-`npm test`: **96 tests, 90 pass, 0 fail, 6 gaps (todo)**. The 31 new tests: 25 pass, 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server, `/health` still OK (173 ms).
+`npm test` on 2026-10-01, after the team's fixes: **103 tests, 102 pass, 0 fail, 1 gap (todo)**. Only MT-06 (KG-09) is still open. On 2026-09-30 the first run was 96 tests, 90 pass, 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server, `/health` still OK (173 ms).
 Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual booking won 14, and every round ended with exactly one booking.
 
 ## RC — Race conditions and overlaps (`test/raceConditions.test.js`)
@@ -31,7 +31,7 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 | RC-04 | Overlapping ranges | 60-min massage 14:00 vs haircut 14:30, and vs haircut 13:45 | Exactly one wins each time | Pass |
 | RC-05 | Back-to-back | 14:00-14:30 and 14:30-15:00 together | Both succeed | Pass |
 | RC-06 | Buffer time | Colour 30 min + 15 min buffer at 14:00, then 14:30 and 14:45 | 14:30 refused, 14:45 accepted | Pass |
-| RC-07 | Off-grid start | Book 14:00 then 14:02, same staff | Second refused (KG-01) | Gap |
+| RC-07 | Off-grid start | Book 14:00 then 14:02, same staff | Second refused (KG-01, fixed 2026-09-30) | Pass |
 | RC-08a | Cancel then rebook | Book, cancel, book the same slot | Locks released, rebook succeeds | Pass |
 | RC-08b | Cancel racing a booking | Cancel and a new booking at the same moment | Never two confirmed; locks exist exactly when a confirmed booking does | Pass |
 | RC-09 | Reschedule into a taken slot | Move B onto A's slot | 409; B keeps its original time and locks | Pass |
@@ -39,7 +39,7 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 | RC-11 | Same idempotency key x10 | Ten parallel retries | All answered, one booking, one real insert | Pass |
 | RC-12 | Two businesses, same time | Same start and staff name in both | Both succeed; each lists only its own | Pass |
 | RC-13 | No-staff vs named staff | Two no-staff bookings, then a named one | No-staff pair collides; named one allowed (KG-03, documented limitation) | Pass |
-| RC-14 | Reschedule a cancelled booking | Cancel then reschedule | Refused (KG-06) | Gap |
+| RC-14 | Reschedule a cancelled booking | Cancel then reschedule | Refused (KG-06, fixed 2026-09-30) | Pass |
 | RC-15 | Availability follows bookings | Slot listed, book, slot gone, cancel, slot back | As described | Pass |
 | RC-16 | 60 parallel bookings on distinct slots | One staff, 60 half-hour slots | No false conflicts (211 ms) | Pass |
 
@@ -52,8 +52,8 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 | VB-04 | Reschedule into a taken slot | "new slot no longer available"; original kept | Pass |
 | VB-05 | Business has no hours saved | `check_availability` returns no slots (the 2026-09-29 incident) | Pass |
 | VB-06 | Book a slot returned by `check_availability` | Booked | Pass |
-| VB-07 | Booking at 23:00 when closing at 18:00 | Refused (KG-02) | Gap |
-| VB-08 | Misheard staff name | Error, not an unassigned booking (KG-04) | Gap |
+| VB-07 | Booking at 23:00 when closing at 18:00 | Refused (KG-02, fixed 2026-09-30) | Pass |
+| VB-08 | Misheard staff name | Error, not an unassigned booking (KG-04, fixed 2026-09-30) | Pass |
 
 ## MT — Multi-tenant and customer identity (`test/multiTenant.test.js`)
 | ID | Scenario | Expected | Status |
@@ -62,7 +62,7 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 | MT-02 | Salon reads a dentist booking by id | Nothing returned | Pass |
 | MT-03 | Old customer (created by a call) books again | Same customer record, no duplicate | Pass |
 | MT-04 | `+1 (555) 020-0004` vs `+15550200004` | Same normalised number | Pass |
-| MT-05 | `5550200005` vs `+15550200005` | Same customer (KG-08) | Gap |
+| MT-05 | `5550200005` vs `+15550200005` | Same customer (KG-08, fixed 2026-09-30) | Pass |
 | MT-06 | 10 simultaneous first-time upserts | One record, no errors (KG-09) | Gap |
 
 ## CC — Concurrent calls

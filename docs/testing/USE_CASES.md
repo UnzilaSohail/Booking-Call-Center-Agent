@@ -34,7 +34,7 @@ Actors: **Caller** (phones a business), **Customer** (uses the web page), **Staf
 |---|---|---|---|
 | UC-C1 | Caller books an available slot | Booking created, confirmation sent | VB-06, UAT-01 |
 | UC-C2 | Caller wants a slot that was just taken | Agent explains and offers alternatives; the miss is logged for staff | VB-01, RC-01 |
-| UC-C3 | Caller asks for a named stylist | Booking assigned to that staff member; unknown name is an error | VB-08 (gap) |
+| UC-C3 | Caller asks for a named stylist | Booking assigned to that staff member; unknown name is an error | VB-08 |
 | UC-C4 | Caller reschedules | Moves atomically; if the new slot is taken the old one is kept | VB-04, RC-09 |
 | UC-C5 | Caller cancels | Slot freed for others | RC-08a |
 | UC-C6 | Caller asks a question | Answered from the published knowledge base | UAT-05 |
@@ -68,7 +68,7 @@ Actors: **Caller** (phones a business), **Customer** (uses the web page), **Staf
 |---|---|---|---|
 | UC-F1 | Same person books at a salon and a dentist | Two independent customer records | MT-01 |
 | UC-F2 | One business reads another's data | Impossible even by id | MT-02, RC-12 |
-| UC-F3 | Same number in different formats | One customer | MT-04, MT-05 (gap) |
+| UC-F3 | Same number in different formats | One customer | MT-04, MT-05 |
 | UC-F4 | Simultaneous first-time customer creation | One record, no errors | MT-06 (gap) |
 
 ## G. Notifications and team — mixed
