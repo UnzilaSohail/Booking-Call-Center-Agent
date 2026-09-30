@@ -18,7 +18,11 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500;1,600&display=swap" rel="stylesheet" />
       </head>
-      <body>
+      {/* suppressHydrationWarning: browser extensions (Grammarly, etc.) inject their own
+          attributes onto <body> before React hydrates — a real mismatch, but a harmless
+          one, so this silences just that noise without disabling hydration warnings
+          elsewhere. https://react.dev/link/hydration-mismatch */}
+      <body suppressHydrationWarning>
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
