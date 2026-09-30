@@ -3,13 +3,22 @@
 // gets consolidated, keyed by phone number the same way bookings/call_logs already are.
 import { withTenant, newId, serialize, serializeAll } from '../db.js';
 
-// Pure — strips everything but a leading + and digits, so "+1 (555) 123-4567" and
-// "5551234567" dedupe to the same customer within a business.
+// Pure — strips formatting down to E.164 (leading + and digits only), so
+// "+1 (555) 123-4567" and "555-123-4567" dedupe to the same customer within a business.
+// KG-08/18b: a number typed without a country code (a caller reading out their own
+// ten-digit number) used to normalise differently from the same number with +1 already
+// on it, so a returning customer typing it on the web looked like a brand-new one.
+// Defaults to NANP (+1) when no country code was given — this system's numbers are
+// US/Canada-first (plan.md §3); a number that already carries a country code (a leading
+// + typed by the caller, or 11+ digits starting with 1) passes through unchanged.
 export function normalizePhone(phone) {
   if (!phone) return '';
   const trimmed = phone.trim();
-  const plus = trimmed.startsWith('+') ? '+' : '';
-  return plus + trimmed.replace(/\D/g, '');
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) return '';
+  if (trimmed.startsWith('+')) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  return `+${digits}`;
 }
 
 // Called from both createBooking (src/services/bookingService.js) and the Twilio inbound

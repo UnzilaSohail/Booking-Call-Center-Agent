@@ -6,10 +6,17 @@ import assert from 'node:assert/strict';
 import { client, getDb, newId } from '../src/db.js';
 import { normalizePhone, upsertCustomer, listCustomers, toCsv, importCsv } from '../src/services/customerService.js';
 
-test('normalizePhone strips formatting but keeps a leading +', () => {
+test('normalizePhone strips formatting and keeps a leading +', () => {
   assert.equal(normalizePhone('+1 (555) 123-4567'), '+15551234567');
-  assert.equal(normalizePhone('555.123.4567'), '5551234567');
   assert.equal(normalizePhone(''), '');
+});
+
+// KG-08/18b: a bare ten-digit number defaults to NANP (+1) so it normalises the same as
+// the +1-prefixed form of the same number — a returning customer typing it on the web
+// must match the same customer record a phone call already created.
+test('normalizePhone assumes +1 for a bare ten-digit number', () => {
+  assert.equal(normalizePhone('555.123.4567'), '+15551234567');
+  assert.equal(normalizePhone('5550200005'), normalizePhone('+15550200005'));
 });
 
 test('customer upsert/dedupe/CSV', { skip: !process.env.MONGODB_URI && 'MONGODB_URI not set' }, async () => {

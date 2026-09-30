@@ -54,7 +54,7 @@ describe('multi-tenant separation and customer identity', { skip }, () => {
     assert.equal(normalizePhone('+1 (555) 020-0004'), normalizePhone('+15550200004'));
   });
 
-  it('MT-05 a number typed without country code matches the stored +1 number', { todo: 'KG-08: no country-code normalisation (fix under Jira 18b)' }, () => {
+  it('MT-05 a number typed without country code matches the stored +1 number', () => {
     assert.equal(normalizePhone('5550200005'), normalizePhone('+15550200005'));
   });
 
