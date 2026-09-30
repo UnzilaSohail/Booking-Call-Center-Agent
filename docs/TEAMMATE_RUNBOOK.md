@@ -38,21 +38,37 @@ Confirm `PUBLIC_DASHBOARD_URL` in the backend's `.env` matches the dashboard's r
 URL (it's used to build reschedule/cancel and team-invite links sent in messages — a wrong
 value produces working-but-wrong links, not an error).
 
-## 4. Email (SendGrid) — Jira 29k/29l/29m
+## 4. Email (Gmail SMTP or SendGrid) — Jira 29k/29l/29m
 
-Team invites and verification codes are silently skipped without this
-(`docs/notifications/email.js` — `sendEmail` now returns `{sent, reason}` so the dashboard
-can show *why*, but nothing fixes the missing key itself).
+Team invites and verification codes are silently skipped without one of these configured
+(`src/notifications/email.js` — `sendEmail` now returns `{sent, reason}` so the dashboard
+can show *why*, but nothing fixes a missing provider itself). Gmail is tried first if set,
+falling back to SendGrid.
 
+**Gmail SMTP (faster to set up — self-service, no account/verification wait):**
+1. On the sending Gmail account: Google Account > Security > 2-Step Verification (must be
+   on) > App Passwords > generate one.
+2. Set `GMAIL_USER` (the Gmail address) and `GMAIL_APP_PASSWORD` (the generated password,
+   not the account's login password) in `/var/www/booking-call-center/.env`.
+3. `pm2 restart booking-backend --update-env`, then send a real test invite.
+4. Gmail has a ~500/day sending limit on a regular account — fine for invites/verification
+   codes at this scale; move to SendGrid below if that's ever actually hit.
+
+**SendGrid (more scalable, more setup):**
 1. Create a SendGrid API key (Mail Send scope) and verify a sender address.
-2. Set `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, and confirm `PUBLIC_DASHBOARD_URL` in
-   `/var/www/booking-call-center/.env`.
-3. `pm2 restart booking-backend --update-env`
-4. Send a real test invite from the dashboard's Team page. If it still doesn't arrive,
-   check SPF/DKIM on the sending domain (Jira 29n) before assuming the key is bad.
-5. If the dashboard isn't deployed yet or the invitee still doesn't get it: run
-   `npm run make-invite-link -- <email>` on the server to print the link directly and
-   send it by hand (Jira 29h).
+2. Set `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` in `.env` (leave `GMAIL_USER` unset so
+   this is actually used, since Gmail is tried first).
+3. `pm2 restart booking-backend --update-env`, then send a real test invite. If it still
+   doesn't arrive, check SPF/DKIM on the sending domain (Jira 29n) before assuming the key
+   is bad.
+
+**Either way**, also confirm `PUBLIC_DASHBOARD_URL` in `.env` matches the dashboard's real
+public URL (it's used to build reschedule/cancel and team-invite links sent in messages —
+a wrong value produces working-but-wrong links, not an error).
+
+If the dashboard isn't deployed yet, or an invitee still doesn't get the email: run
+`npm run make-invite-link -- <email>` on the server to print the link directly and send it
+by hand (Jira 29h) — works regardless of email provider status.
 
 ## 5. Twilio (31h, 31i)
 
