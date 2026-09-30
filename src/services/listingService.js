@@ -7,10 +7,16 @@
 //
 // Pure — no DB access — so it's directly unit-testable, same convention as
 // computeOnboardingStatus (src/routes/onboarding.js).
+export const LISTING_CATEGORIES = [
+  'hair-salon', 'barber', 'nail-salon', 'spa-massage', 'dentist', 'doctor', 'physiotherapy',
+  'fitness', 'home-services', 'restaurant', 'professional-services', 'other',
+];
+
 export function isListingEligible(business, { serviceCount }) {
   return (
     business.onboarding_completed_at != null &&
-    (business.status ?? 'active') !== 'suspended' &&
+    (business.status ?? 'active') === 'active' && // not suspended, not deleted
+
     serviceCount > 0 &&
     (business.hours?.length ?? 0) > 0
   );

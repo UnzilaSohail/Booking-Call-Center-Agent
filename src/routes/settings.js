@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { getDb, withTenant, serializeAll } from '../db.js';
 import { requireArea, requireOwner } from '../auth.js';
-import { isListingEligible } from '../services/listingService.js';
+import { isListingEligible, LISTING_CATEGORIES } from '../services/listingService.js';
+import { validateSlug } from '../services/slug.js';
 
 export const settingsRouter = Router();
 
@@ -211,12 +212,14 @@ settingsRouter.get('/business/listing', gate, async (req, res, next) => {
   try {
     const db = await getDb();
     const [business, serviceCount] = await Promise.all([
-      db.collection('businesses').findOne({ _id: req.businessId }, { projection: { listing: 1, onboarding_completed_at: 1, status: 1, hours: 1 } }),
+      db.collection('businesses').findOne({ _id: req.businessId }, { projection: { listing: 1, onboarding_completed_at: 1, status: 1, hours: 1, slug: 1, booking_page_enabled: 1 } }),
       db.collection('services').countDocuments({ business_id: req.businessId }),
     ]);
     const listing = business?.listing ?? {};
     const eligible = isListingEligible(business, { serviceCount });
     res.json({
+      slug: business?.slug ?? null,
+      bookingPageEnabled: business?.booking_page_enabled !== false,
       listed: listing.listed === true,
       hiddenByPlatform: listing.hidden_by_platform === true,
       categories: listing.categories ?? [],
@@ -236,12 +239,18 @@ const MAX_CATEGORIES = 3;
 
 settingsRouter.put('/business/listing', gate, async (req, res, next) => {
   try {
-    const { listed, categories, city, region, country, description } = req.body ?? {};
+    const { listed, categories, city, region, country, description, slug, bookingPageEnabled } = req.body ?? {};
     const updates = {};
+    if (bookingPageEnabled !== undefined) updates.booking_page_enabled = !!bookingPageEnabled;
+    if (slug !== undefined) {
+      const slugError = validateSlug(slug);
+      if (slugError) return res.status(400).json({ error: slugError });
+      updates.slug = slug;
+    }
     if (listed !== undefined) updates['listing.listed'] = !!listed;
     if (categories !== undefined) {
-      if (!Array.isArray(categories) || categories.length > MAX_CATEGORIES || !categories.every((c) => typeof c === 'string')) {
-        return res.status(400).json({ error: `categories must be an array of at most ${MAX_CATEGORIES} strings` });
+      if (!Array.isArray(categories) || categories.length > MAX_CATEGORIES || !categories.every((c) => LISTING_CATEGORIES.includes(c))) {
+        return res.status(400).json({ error: `categories must be at most ${MAX_CATEGORIES} of: ${LISTING_CATEGORIES.join(', ')}` });
       }
       updates['listing.categories'] = categories;
     }
@@ -252,7 +261,12 @@ settingsRouter.put('/business/listing', gate, async (req, res, next) => {
     if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'nothing to update' });
 
     const db = await getDb();
-    await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: updates });
+    try {
+      await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: updates });
+    } catch (err) {
+      if (err.code === 11000) return res.status(409).json({ error: 'that booking link is already taken' });
+      throw err;
+    }
     res.json({ ok: true });
   } catch (err) {
     next(err);

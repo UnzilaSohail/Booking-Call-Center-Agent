@@ -5,6 +5,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { getDb, newId, withTenant, serializeAll } from '../db.js';
 import { initialBillingFields, getPlan } from '../billing/plans.js';
+import { uniqueSlug } from '../services/slug.js';
 import { computeUsage, computeInvoiceAmounts } from '../services/billingService.js';
 
 export const platformRouter = Router();
@@ -501,6 +502,7 @@ platformRouter.post('/businesses', async (req, res, next) => {
     await db.collection('businesses').insertOne({
       _id: businessId,
       name: businessName,
+      slug: await uniqueSlug(db, businessName),
       industry: industry || null,
       timezone: timezone || 'UTC',
       contact_email: contactEmail || null,

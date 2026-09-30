@@ -82,6 +82,19 @@ export async function setSmsOptIn(businessId, phone, optedIn) {
   );
 }
 
+// Public booking page (docs/customer/PUBLIC_BOOKING_API.md): stores what the customer ticked
+// and the wording they saw. A ticked box never re-enables an existing STOP — it only
+// leaves consent as it was; an unticked box opts that channel out.
+export async function recordWebConsent(businessId, { phone, name, email, sms, emailOk, text }) {
+  const customer = await upsertCustomer(businessId, { phone, name, email });
+  if (!customer) return null;
+  const set = { 'consent.lastWeb': { at: new Date(), sms: !!sms, email: !!emailOk, text: text ?? null }, updated_at: new Date() };
+  if (!sms) set['consent.smsOptIn'] = false;
+  if (!emailOk) set['consent.emailOptIn'] = false;
+  await withTenant(businessId, (c) => c('customers').updateOne({ _id: customer.id }, { $set: set }));
+  return customer;
+}
+
 // Checked before every send in src/notifications/notify.js — "Opt-out management"
 // (ROADMAP.md §6) only means something if consent is actually enforced, not just
 // stored. No customer record yet reads as "not explicitly opted out" (a fresh

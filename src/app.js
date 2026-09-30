@@ -6,6 +6,7 @@ import { unifiedLoginRouter } from './routes/unifiedLogin.js';
 import { platformRouter } from './routes/platform.js';
 import { signupRouter } from './routes/signup.js';
 import { myBookingRouter } from './routes/myBooking.js';
+import { publicBookingRouter } from './routes/publicBooking.js';
 import { acceptInviteRouter } from './routes/acceptInvite.js';
 import { onboardingRouter } from './routes/onboarding.js';
 import { locationsRouter } from './routes/locations.js';
@@ -26,6 +27,10 @@ import { stripeWebhookRouter } from './webhooks/stripe.js';
 import { auditLogger } from './auditLog.js';
 
 export const app = express();
+
+// Behind nginx: take the client IP from X-Forwarded-For so the public endpoints' rate
+// limits see visitors, not the proxy.
+app.set('trust proxy', 1);
 
 // The dashboard (its own Next.js app, its own origin/port) talks to this API entirely
 // via fetch() with a Bearer token — no cookies involved, so a permissive CORS policy
@@ -49,6 +54,7 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/api', unifiedLoginRouter);
 app.use('/api', signupRouter);
 app.use('/api', myBookingRouter);
+app.use('/api', publicBookingRouter);
 app.use('/api', acceptInviteRouter);
 app.use('/api/auth', authRouter);
 // Scoped to /api/platform specifically — requirePlatformAuth must not be mounted at the

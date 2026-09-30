@@ -14,6 +14,8 @@
 //    in the same transaction as the booking. Two concurrent overlapping bookings collide
 //    on that _id and Mongo's default unique _id index rejects the loser — this file just
 //    needs the collection to exist, no extra index required.
+import { backfillSlugs } from '../src/services/slug.js';
+
 export async function ensureIndexes(db) {
   // partialFilterExpression, not `sparse` — a plain sparse index still indexes (and
   // therefore uniquely constrains) an explicit `null`, and every business starts with
@@ -23,6 +25,13 @@ export async function ensureIndexes(db) {
     { phone_number: 1 },
     { unique: true, partialFilterExpression: { phone_number: { $type: 'string' } } }
   );
+
+  // Public booking page name (/book/<slug>); partial for the same reason as phone_number.
+  await db.collection('businesses').createIndex(
+    { slug: 1 },
+    { unique: true, partialFilterExpression: { slug: { $type: 'string' } } }
+  );
+  await backfillSlugs(db);
 
   await db.collection('admins').createIndex({ email: 1 }, { unique: true });
   await db.collection('admins').createIndex({ business_id: 1 });

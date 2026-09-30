@@ -10,6 +10,7 @@ import { generateCode, hashCode, CODE_TTL_MS } from '../verification.js';
 import { sendEmail } from '../notifications/email.js';
 import { sendSms } from '../notifications/sms.js';
 import { initialBillingFields } from '../billing/plans.js';
+import { uniqueSlug } from '../services/slug.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -52,6 +53,7 @@ signupRouter.post('/signup', async (req, res, next) => {
     await db.collection('businesses').insertOne({
       _id: businessId,
       name: businessName,
+      slug: await uniqueSlug(db, businessName),
       industry: industry || null,
       timezone: timezone || 'UTC',
       contact_email: ownerEmail.toLowerCase(),
