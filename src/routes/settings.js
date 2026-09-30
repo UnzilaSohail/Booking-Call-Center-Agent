@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { getDb } from '../db.js';
-import { requireArea } from '../auth.js';
+import { getDb, withTenant, serializeAll } from '../db.js';
+import { requireArea, requireOwner } from '../auth.js';
+import { isListingEligible } from '../services/listingService.js';
 
 export const settingsRouter = Router();
 
@@ -123,6 +124,28 @@ settingsRouter.patch('/business', gate, async (req, res, next) => {
   }
 });
 
+// Self-service data export (ROADMAP.md §12 "Data export") — every tenant-scoped
+// collection this business owns, as one JSON file, so a business can get its own data
+// out without asking the platform. Owner-only: this is a full export of customer PII
+// (names, phones, transcripts), not something any team member should be able to pull.
+const EXPORT_COLLECTIONS = ['services', 'staff', 'bookings', 'customers', 'call_logs', 'failed_bookings', 'voicemails', 'callback_requests', 'staff_time_off'];
+
+settingsRouter.get('/business/export', gate, requireOwner, async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { password_hash: 0, google_refresh_token: 0 } });
+    const data = await withTenant(req.businessId, async (c) => {
+      const entries = await Promise.all(EXPORT_COLLECTIONS.map((name) => c(name).find({}).toArray().then((rows) => [name, serializeAll(rows)])));
+      return Object.fromEntries(entries);
+    });
+
+    res.setHeader('Content-Disposition', `attachment; filename="${req.businessId}-export.json"`);
+    res.json({ exportedAt: new Date().toISOString(), business, ...data });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Self-service delete — soft, not the platform admin's hard delete
 // (src/routes/platform.js DELETE /businesses/:id, which actually wipes everything). This
 // just flags the business as deleted; requireAuth (src/auth.js) deliberately does NOT
@@ -175,6 +198,62 @@ settingsRouter.put('/business/holidays', gate, async (req, res, next) => {
     const db = await getDb();
     await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { holidays: normalized } });
     res.json(normalized);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Directory listing opt-in (Jira 16b/16c/16j, docs/plans/PLAN_1_CUSTOMER.md §1A) — the
+// owner's toggle + profile fields. `eligible`/`live` are computed, not stored: `live`
+// reflects the actual opt-in rule right now, so the Settings UI can show "on, but not
+// visible yet — add a service" instead of a toggle that silently does nothing.
+settingsRouter.get('/business/listing', gate, async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const [business, serviceCount] = await Promise.all([
+      db.collection('businesses').findOne({ _id: req.businessId }, { projection: { listing: 1, onboarding_completed_at: 1, status: 1, hours: 1 } }),
+      db.collection('services').countDocuments({ business_id: req.businessId }),
+    ]);
+    const listing = business?.listing ?? {};
+    const eligible = isListingEligible(business, { serviceCount });
+    res.json({
+      listed: listing.listed === true,
+      hiddenByPlatform: listing.hidden_by_platform === true,
+      categories: listing.categories ?? [],
+      city: listing.city ?? '',
+      region: listing.region ?? '',
+      country: listing.country ?? '',
+      description: listing.description ?? '',
+      eligible,
+      live: listing.listed === true && listing.hidden_by_platform !== true && eligible,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const MAX_CATEGORIES = 3;
+
+settingsRouter.put('/business/listing', gate, async (req, res, next) => {
+  try {
+    const { listed, categories, city, region, country, description } = req.body ?? {};
+    const updates = {};
+    if (listed !== undefined) updates['listing.listed'] = !!listed;
+    if (categories !== undefined) {
+      if (!Array.isArray(categories) || categories.length > MAX_CATEGORIES || !categories.every((c) => typeof c === 'string')) {
+        return res.status(400).json({ error: `categories must be an array of at most ${MAX_CATEGORIES} strings` });
+      }
+      updates['listing.categories'] = categories;
+    }
+    if (city !== undefined) updates['listing.city'] = city || null;
+    if (region !== undefined) updates['listing.region'] = region || null;
+    if (country !== undefined) updates['listing.country'] = country || null;
+    if (description !== undefined) updates['listing.description'] = description || null;
+    if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'nothing to update' });
+
+    const db = await getDb();
+    await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: updates });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

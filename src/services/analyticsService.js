@@ -80,6 +80,12 @@ export async function getAnalytics(businessId) {
           booked: { $sum: { $cond: [{ $ne: ['$booking_id', null] }, 1, 0] } },
           transferred: { $sum: { $cond: [{ $regexMatch: { input: { $ifNull: ['$outcome', ''] }, regex: /^transferred/ } }, 1, 0] } },
           afterHours: { $sum: { $cond: ['$is_after_hours', 1, 0] } },
+          // ROADMAP.md §8 "Calls answered"/"Missed calls": a call_logs row only exists
+          // once Twilio connects the Media Stream (src/webhooks/twilio.js), so "missed"
+          // here means the AI never actually got to help the caller — it failed before
+          // engaging (KG-07: Gemini unavailable, or MAX_CONCURRENT_CALLS busy), not a
+          // classic unanswered ring (Twilio itself handles that before we're involved).
+          missed: { $sum: { $cond: [{ $regexMatch: { input: { $ifNull: ['$outcome', ''] }, regex: /^failed:/ } }, 1, 0] } },
         } },
       ]).toArray(),
 
@@ -98,8 +104,8 @@ export async function getAnalytics(businessId) {
     const prevRevenue = prevRevenueRows[0] ?? { revenue: 0 };
     const aiValue = aiValueRows[0] ?? { value: 0, count: 0 };
     const callsByPeriod = Object.fromEntries(callRows.map((r) => [r._id, r]));
-    const calls = callsByPeriod.current ?? { total: 0, booked: 0, transferred: 0, afterHours: 0 };
-    const prevCalls = callsByPeriod.previous ?? { total: 0, booked: 0, transferred: 0, afterHours: 0 };
+    const calls = callsByPeriod.current ?? { total: 0, booked: 0, transferred: 0, afterHours: 0, missed: 0 };
+    const prevCalls = callsByPeriod.previous ?? { total: 0, booked: 0, transferred: 0, afterHours: 0, missed: 0 };
     const prevConversionRate = prevCalls.total > 0 ? Math.round((prevCalls.booked / prevCalls.total) * 100) : null;
 
     // Fill in zero-count days so the trend chart doesn't have gaps for quiet days.
@@ -132,6 +138,9 @@ export async function getAnalytics(businessId) {
       byStaff: staffRows.map((r) => ({ name: r._id, count: r.count })),
       calls: {
         total: calls.total,
+        answered: calls.total - (calls.missed ?? 0),
+        missed: calls.missed ?? 0,
+        missedTrendPct: trendPct(calls.missed ?? 0, prevCalls.missed ?? 0),
         booked: calls.booked,
         transferred: calls.transferred,
         afterHours: calls.afterHours ?? 0,
