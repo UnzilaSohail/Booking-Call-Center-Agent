@@ -151,6 +151,26 @@ export async function transferCallToHuman(callSid, phoneNumber, reason) {
   }
 }
 
+// KG-07/27c: when Gemini Live fails to start (bad key, quota, model 404) the caller must
+// not be left in silence until the 15-minute call cap — end the live call gracefully
+// instead, same REST-redirect idiom as transferCallToHuman above. Never throws, so a
+// caller (src/voice/twilioBridge.js) can always fall through to closing the media stream.
+export async function endCallWithMessage(callSid, message) {
+  const client = twilioClient();
+  if (!client) return false;
+  const { VoiceResponse } = twilio.twiml;
+  const twiml = new VoiceResponse();
+  twiml.say(message);
+  twiml.hangup();
+  try {
+    await client.calls(callSid).update({ twiml: twiml.toString() });
+    return true;
+  } catch (err) {
+    console.error(`graceful end failed for call ${callSid}:`, err.message);
+    return false;
+  }
+}
+
 // What the human hears alone, before being bridged to the caller — Twilio requests this
 // once they answer the transfer call.
 twilioWebhookRouter.post('/voice/transfer-whisper', (req, res) => {

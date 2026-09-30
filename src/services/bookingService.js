@@ -41,7 +41,7 @@ function timeOnDay(day, timeStr) {
   return day.set({ hour: h, minute: m });
 }
 
-export async function getAvailability(businessId, { serviceId, date, staffId, excludeBookingId }) {
+export async function getAvailability(businessId, { serviceId, date, staffId, excludeBookingId, excludeExistingBookings = false }) {
   const business = await getBusiness(businessId);
   const zone = business.timezone;
 
@@ -92,7 +92,11 @@ export async function getAvailability(businessId, { serviceId, date, staffId, ex
   // booking's own current slot must not count as "busy" against itself — otherwise
   // its own time would wrongly look unavailable (worst case, a fully-booked day would
   // show zero options even though the booking's own slot is trivially free for it).
-  const existing = await withTenant(businessId, (col) =>
+  // excludeExistingBookings: used by isSlotOffered below, which only needs to know
+  // whether a time falls inside open hours/staff hours/breaks/time off — an existing
+  // booking on that exact slot is already caught by the atomic slot-lock in
+  // createBooking itself, with its own specific error and failed_bookings log entry.
+  const existing = excludeExistingBookings ? [] : await withTenant(businessId, (col) =>
     col('bookings')
       .find({
         status: 'confirmed',
@@ -177,6 +181,14 @@ export async function listBookings(businessId, { from, to, q, status } = {}) {
 }
 
 const SLOT_GRANULARITY_MINUTES = 5;
+const SLOT_GRANULARITY_MS = SLOT_GRANULARITY_MINUTES * 60_000;
+
+// KG-01: floor to the 5-minute grid before locking, so an off-grid start (14:02) locks
+// the same slot as the grid-aligned booking it actually collides with (14:00) instead of
+// its own unaligned slot that nothing else ever lands on.
+function floorToGrid(date) {
+  return new Date(Math.floor(date.getTime() / SLOT_GRANULARITY_MS) * SLOT_GRANULARITY_MS);
+}
 
 // The actual "no two overlapping bookings" guarantee (plan.md §4/§6), replacing
 // Postgres's EXCLUDE USING gist (see db/schema.js for the full rationale). A booking's
@@ -186,10 +198,23 @@ const SLOT_GRANULARITY_MINUTES = 5;
 function slotLockIds(businessId, staffId, startDate, endDate) {
   const ids = [];
   const staffKey = staffId || 'none';
-  for (let t = startDate.getTime(); t < endDate.getTime(); t += SLOT_GRANULARITY_MINUTES * 60_000) {
+  for (let t = floorToGrid(startDate).getTime(); t < endDate.getTime(); t += SLOT_GRANULARITY_MS) {
     ids.push(`${businessId}:${staffKey}:${new Date(t).toISOString()}`);
   }
   return ids;
+}
+
+// KG-02/28c: the hard backstop behind check_availability — re-derives the same slot list
+// and checks the requested start is actually in it, so a caller can't book a time
+// check_availability never offered (closed hours, holiday, staff time off, etc.).
+// Voice-only by design (28b): the dashboard stays permissive so staff can override.
+export async function isSlotOffered(businessId, { serviceId, staffId, startTime }) {
+  const start = DateTime.fromISO(startTime, { zone: 'utc' });
+  if (!start.isValid) return false;
+  const business = await getBusiness(businessId);
+  const date = start.setZone(business.timezone).toISODate();
+  const { slots } = await getAvailability(businessId, { serviceId, date, staffId, excludeExistingBookings: true });
+  return slots.some((s) => DateTime.fromISO(s).toMillis() === start.toMillis());
 }
 
 export async function createBooking(businessId, { customerName, phone, customerEmail, serviceId, staffId, locationId, startTime, idempotencyKey, createdVia }) {
@@ -315,6 +340,11 @@ export function assertWithinChangeCutoff(business, booking) {
 export async function rescheduleBooking(businessId, bookingId, startTime) {
   const current = await withTenant(businessId, (col) => col('bookings').findOne({ _id: bookingId }));
   if (!current) throw new BookingError(404, 'booking not found');
+  // KG-06/28e: a cancelled (or otherwise non-confirmed) booking has already freed its
+  // locks — rescheduling it would re-lock a slot for a booking nobody sees as active.
+  if (current.status !== 'confirmed') {
+    throw new BookingError(422, `cannot reschedule a ${current.status} booking`);
+  }
 
   const service = await withTenant(businessId, (col) => col('services').findOne({ _id: current.service_id }));
   const start = DateTime.fromISO(startTime, { zone: 'utc' });

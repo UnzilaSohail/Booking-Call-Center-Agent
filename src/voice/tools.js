@@ -3,7 +3,7 @@
 // src/services/bookingService.js) so a call and a dashboard edit can never diverge.
 import {
   BookingError, getAvailability, createBooking, rescheduleBooking, cancelBooking,
-  findUpcomingBookingsByPhone, assertWithinChangeCutoff,
+  findUpcomingBookingsByPhone, assertWithinChangeCutoff, isSlotOffered,
 } from '../services/bookingService.js';
 import { withTenant, newId } from '../db.js';
 import { sendSms } from '../notifications/sms.js';
@@ -207,15 +207,27 @@ export function createToolHandlers(business, callSid, { isTest = false } = {}) {
     async create_booking({ serviceName, staffName, locationName, startTime, customerName, phone }) {
       const serviceId = await resolveServiceId(business.id, serviceName);
       if (!serviceId) return { error: `no service found matching "${serviceName}"` };
-      const staffId = await resolveStaffId(business.id, staffName);
+      // KG-04/28a: a name that doesn't match any staff must be an error, not a silent
+      // unassigned booking — the caller asked for a specific person.
+      let staffId = null;
+      if (staffName) {
+        staffId = await resolveStaffId(business.id, staffName);
+        if (!staffId) return { error: `no staff member found matching "${staffName}"` };
+      }
       const locationId = await resolveLocationId(business.id, locationName);
+      // KG-02/28b: re-check the requested time against the same slots check_availability
+      // would offer right now — a stale slot (hours changed, day now full) is refused
+      // here instead of silently booking outside business hours.
+      if (!(await isSlotOffered(business.id, { serviceId, staffId, startTime }))) {
+        return { error: 'that time is not available — call check_availability again for current slots' };
+      }
       try {
         const { booking } = await createBooking(business.id, {
           customerName, phone, serviceId, staffId, locationId, startTime,
           idempotencyKey: idempotencyKeyFor(callSid, { serviceId, staffId, startTime, phone }),
           createdVia: isTest ? 'test' : 'call',
         });
-        return { bookingId: booking.id, startTime: booking.start_time, status: 'confirmed' };
+        return { bookingId: booking.id, startTime: booking.start_time, status: booking.status };
       } catch (err) {
         if (err instanceof BookingError) {
           // A caller who wanted a slot that didn't work out is a real lost booking, not

@@ -12,10 +12,20 @@ function ensureConfigured() {
   return true;
 }
 
+// Returns {sent, reason} instead of throwing/swallowing silently (Jira 29b) — callers
+// that need the caller (e.g. team invites, KG "Aiza's invite never arrived") to know
+// whether the email actually went out, not just whether the request completed.
 export async function sendEmail(to, subject, text) {
-  if (!to || !ensureConfigured()) {
-    console.warn('Email not sent (SendGrid not configured or no address):', to, subject);
-    return;
+  if (!to) return { sent: false, reason: 'no recipient address' };
+  if (!ensureConfigured()) {
+    console.warn('Email not sent (SendGrid not configured):', to, subject);
+    return { sent: false, reason: 'SendGrid not configured' };
   }
-  await sgMail.send({ to, from: fromEmail, subject, text });
+  try {
+    await sgMail.send({ to, from: fromEmail, subject, text });
+    return { sent: true, reason: null };
+  } catch (err) {
+    console.error('SendGrid send failed:', err.message);
+    return { sent: false, reason: err.message };
+  }
 }

@@ -13,7 +13,8 @@
     "local-db": "node scripts/localMongo.js",
     "local-tunnel": "node scripts/localTunnel.js",
     "backup-db": "node scripts/backupDb.js",
-    "restore-db": "node scripts/restoreDb.js"
+    "restore-db": "node scripts/restoreDb.js",
+    "make-invite-link": "node scripts/makeInviteLink.mjs"
   },
   "repository": {
     "type": "git",
