@@ -28,6 +28,9 @@ function ensureGmail() {
   return true;
 }
 
+// Read at call time so tests can toggle it.
+export const emailConfigured = () => Boolean((process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) || (process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM_EMAIL));
+
 // Returns {sent, reason} instead of throwing/swallowing silently (Jira 29b) — callers
 // that need the caller (e.g. team invites, KG "Aiza's invite never arrived") to know
 // whether the email actually went out, not just whether the request completed.

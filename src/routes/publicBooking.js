@@ -104,7 +104,7 @@ publicBookingRouter.get('/public/directory/cities', async (req, res, next) => {
 
 // ---- one business ----------------------------------------------------------------------
 
-async function loadBusiness(req, res, next) {
+export async function loadBusiness(req, res, next) {
   try {
     const db = await getDb();
     const business = await db.collection('businesses').findOne({ slug: req.params.slug, status: 'active', booking_page_enabled: { $ne: false } });
@@ -237,7 +237,7 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
           staffId: staff?._id, startTime: body.startTime, idempotencyKey, createdVia: 'web',
         });
         return res.status(201).json({
-          booking: { id: booking.id, startTime: booking.start_time, endTime: booking.end_time, serviceName: service.name, staffName: staff?.name ?? null },
+          booking: { id: booking.id, reference: booking.reference, startTime: booking.start_time, endTime: booking.end_time, serviceName: service.name, staffName: staff?.name ?? null },
           business: { name: b.name, address: b.address ?? null, city: b.listing?.city ?? null, timezone: b.timezone, phone: b.contact_phone ?? null },
           manageUrl: `${process.env.PUBLIC_DASHBOARD_URL || 'http://localhost:3002'}/manage/${signManageToken(b._id, booking.id, booking.start_time)}`,
         });

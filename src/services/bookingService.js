@@ -1,11 +1,17 @@
 // Shared booking logic used by both the REST API (src/routes/bookings.js) and the voice
 // agent's tool calls (src/voice/tools.js), so the two entry points plan.md describes as
 // needing "same source of truth" can never drift apart.
+import { randomInt } from 'node:crypto';
 import { DateTime } from 'luxon';
 import { client, getDb, withTenant, newId, serialize, serializeAll } from '../db.js';
 import { busyIntervals } from '../calendar/google.js';
 import { sendBookingConfirmation } from '../notifications/notify.js';
 import { upsertCustomer } from './customerService.js';
+
+// Short code a customer can read out or quote ("my booking is K7P2QX"). No 0/O/1/I/L so it
+// survives being read over the phone. Not unique-enforced: 31^6 is ~887M per business.
+const REF_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const makeReference = () => Array.from({ length: 6 }, () => REF_ALPHABET[randomInt(REF_ALPHABET.length)]).join('');
 
 export class BookingError extends Error {
   constructor(status, message) {
@@ -166,7 +172,7 @@ export async function listBookings(businessId, { from, to, q, status } = {}) {
   if (status) filter.status = status;
   if (q) {
     const pattern = escapeRegex(q);
-    filter.$or = [{ customer_name: { $regex: pattern, $options: 'i' } }, { phone: { $regex: pattern, $options: 'i' } }];
+    filter.$or = [{ customer_name: { $regex: pattern, $options: 'i' } }, { phone: { $regex: pattern, $options: 'i' } }, { reference: { $regex: `^${pattern}$`, $options: 'i' } }];
   }
 
   const bookings = await withTenant(businessId, (col) =>
@@ -273,6 +279,7 @@ export async function createBooking(businessId, { customerName, phone, customerE
     start_time: startDate,
     end_time: endDate,
     status: 'confirmed',
+    reference: makeReference(),
     google_event_id: null,
     created_via: createdVia || 'dashboard',
     is_test: isTest,

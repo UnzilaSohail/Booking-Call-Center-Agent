@@ -29,22 +29,11 @@ export async function upsertCustomer(businessId, { phone, name, email }) {
   if (!normalized) return null;
 
   return withTenant(businessId, async (c) => {
-    const existing = await c('customers').findOne({ phone: normalized });
-    if (existing) {
-      const updates = {};
-      if (name && !existing.name) updates.name = name;
-      if (email && !existing.email) updates.email = email;
-      if (Object.keys(updates).length) {
-        updates.updated_at = new Date();
-        await c('customers').updateOne({ _id: existing._id }, { $set: updates });
-      }
-      return serialize({ ...existing, ...updates });
-    }
-
+    // One atomic upsert (KG-09): simultaneous first-time calls for one phone used to race a
+    // find-then-insert and the losers threw a duplicate-key error. phone and business_id come
+    // from the filter, so they are not repeated in $setOnInsert.
     const doc = {
       _id: newId(),
-      business_id: businessId,
-      phone: normalized,
       name: name || null,
       email: email || null,
       notes: null,
@@ -54,8 +43,16 @@ export async function upsertCustomer(businessId, { phone, name, email }) {
       created_at: new Date(),
       updated_at: new Date(),
     };
-    await c('customers').insertOne(doc);
-    return serialize(doc);
+    const existing = await c('customers').findOneAndUpdate({ phone: normalized }, { $setOnInsert: doc }, { upsert: true, returnDocument: 'after' });
+    // Never overwrite a known name/email with a blank one; only fill gaps.
+    const updates = {};
+    if (name && !existing.name) updates.name = name;
+    if (email && !existing.email) updates.email = email;
+    if (Object.keys(updates).length) {
+      updates.updated_at = new Date();
+      await c('customers').updateOne({ _id: existing._id }, { $set: updates });
+    }
+    return serialize({ ...existing, ...updates });
   });
 }
 
@@ -127,7 +124,7 @@ export async function getCustomerDetail(businessId, id) {
 
   return {
     ...serialize(customer),
-    bookings: serializeAll(bookings).map((b) => ({ id: b.id, serviceId: b.service_id, startTime: b.start_time, status: b.status, confirmationSentAt: b.confirmation_sent_at })),
+    bookings: serializeAll(bookings).map((b) => ({ id: b.id, serviceId: b.service_id, startTime: b.start_time, status: b.status, confirmationSentAt: b.confirmation_sent_at, createdVia: b.created_via ?? 'dashboard', reference: b.reference ?? null })),
     calls: serializeAll(calls).map((l) => ({ id: l.id, createdAt: l.created_at, outcome: l.outcome })),
   };
 }
@@ -154,6 +151,54 @@ export async function updateCustomer(businessId, id, { name, email, notes, tags,
   }
   const updated = await withTenant(businessId, (c) => c('customers').findOneAndUpdate({ _id: id }, { $set: updates }, { returnDocument: 'after' }));
   return updated ? serialize(updated) : null;
+}
+
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Possible duplicates (Jira 18k/18m): the same person who came back with a different phone.
+// Same email is a strong signal; the same name alone is weak (two different "John Smith"s),
+// so it is returned labelled as such and the staff member decides.
+export async function findDuplicates(businessId, id) {
+  const me = await withTenant(businessId, (c) => c('customers').findOne({ _id: id }));
+  if (!me) return null;
+  const exact = (v) => ({ $regex: `^${escapeRegex(v.trim())}$`, $options: 'i' });
+  const or = [];
+  if (me.email) or.push({ email: exact(me.email) });
+  if (me.name) or.push({ name: exact(me.name) });
+  if (!or.length) return [];
+  const rows = await withTenant(businessId, (c) => c('customers').find({ _id: { $ne: id }, $or: or }).limit(20).toArray());
+  return rows.map((r) => ({
+    ...serialize(r),
+    matchedOn: me.email && r.email?.toLowerCase() === me.email.toLowerCase() ? 'email' : 'name',
+  }));
+}
+
+// Folds `fromId` into `intoId` (Jira 18l): bookings and calls move to the surviving phone number,
+// tags/notes/name/email fill gaps, and consent keeps the MOST restrictive answer so a merge can
+// never re-enable messages someone opted out of. The duplicate record is then deleted.
+// ponytail: sequential writes, not one transaction; a crash mid-way leaves both records and a
+// re-run finishes the job (every step is idempotent).
+export async function mergeCustomers(businessId, fromId, intoId) {
+  if (fromId === intoId) return { error: 'pick a different customer to merge', status: 400 };
+  const [from, into] = await withTenant(businessId, (c) => Promise.all([c('customers').findOne({ _id: fromId }), c('customers').findOne({ _id: intoId })]));
+  if (!from || !into) return { error: 'customer not found', status: 404 };
+
+  const moved = await withTenant(businessId, async (c) => {
+    const bookings = await c('bookings').updateMany({ phone: from.phone }, { $set: { phone: into.phone } });
+    const calls = await c('call_logs').updateMany({ phone: from.phone }, { $set: { phone: into.phone } });
+    const set = { updated_at: new Date() };
+    if (!into.name && from.name) set.name = from.name;
+    if (!into.email && from.email) set.email = from.email;
+    const notes = [into.notes, from.notes].filter(Boolean);
+    if (notes.length) set.notes = notes.join('\n');
+    set['consent.smsOptIn'] = into.consent?.smsOptIn !== false && from.consent?.smsOptIn !== false;
+    set['consent.emailOptIn'] = into.consent?.emailOptIn !== false && from.consent?.emailOptIn !== false;
+    set['consent.recordingAcknowledged'] = !!(into.consent?.recordingAcknowledged || from.consent?.recordingAcknowledged);
+    await c('customers').updateOne({ _id: intoId }, { $set: set, ...(from.tags?.length ? { $addToSet: { tags: { $each: from.tags } } } : {}) });
+    await c('customers').deleteOne({ _id: fromId });
+    return { bookings: bookings.modifiedCount, calls: calls.modifiedCount };
+  });
+  return { ok: true, ...moved };
 }
 
 const CSV_COLUMNS = ['name', 'phone', 'email', 'tags'];

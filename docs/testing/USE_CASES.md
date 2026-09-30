@@ -69,7 +69,7 @@ Actors: **Caller** (phones a business), **Customer** (uses the web page), **Staf
 | UC-F1 | Same person books at a salon and a dentist | Two independent customer records | MT-01 |
 | UC-F2 | One business reads another's data | Impossible even by id | MT-02, RC-12 |
 | UC-F3 | Same number in different formats | One customer | MT-04, MT-05 |
-| UC-F4 | Simultaneous first-time customer creation | One record, no errors | MT-06 (gap) |
+| UC-F4 | Simultaneous first-time customer creation | One record, no errors | MT-06 |
 
 ## G. Notifications and team — mixed
 | ID | Use case | Expected | Tests |

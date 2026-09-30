@@ -1,7 +1,7 @@
 // Customer directory (ROADMAP.md §4) — CRUD + CSV import/export over
 // src/services/customerService.js.
 import { Router } from 'express';
-import { listCustomers, getCustomerDetail, updateCustomer, toCsv, importCsv } from '../services/customerService.js';
+import { listCustomers, getCustomerDetail, updateCustomer, toCsv, importCsv, findDuplicates, mergeCustomers } from '../services/customerService.js';
 import { requireArea } from '../auth.js';
 
 export const customersRouter = Router();
@@ -42,6 +42,27 @@ customersRouter.get('/customers/:id', gate, async (req, res, next) => {
     const customer = await getCustomerDetail(req.businessId, req.params.id);
     if (!customer) return res.status(404).json({ error: 'customer not found' });
     res.json(customer);
+  } catch (err) {
+    next(err);
+  }
+});
+
+customersRouter.get('/customers/:id/duplicates', gate, async (req, res, next) => {
+  try {
+    const found = await findDuplicates(req.businessId, req.params.id);
+    if (!found) return res.status(404).json({ error: 'customer not found' });
+    res.json(found);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Body: { fromId } = the duplicate to fold into :id (the one that survives).
+customersRouter.post('/customers/:id/merge', gate, async (req, res, next) => {
+  try {
+    const result = await mergeCustomers(req.businessId, req.body?.fromId, req.params.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.json(result);
   } catch (err) {
     next(err);
   }

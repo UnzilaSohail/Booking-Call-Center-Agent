@@ -1,6 +1,6 @@
-# Customer portal "My appointments" (stage 2, not built)
+# Customer portal "My appointments" (built 2026-10-01, waiting for SMS/email on the server)
 
-Spec only. Jira parent 19. Blocked until SMS (Twilio registration) and/or email (Gmail or SendGrid) is working on the server, because the customer proves who they are with a one-time code.
+Jira parent 19. Built and tested (`src/routes/customerPortal.js`, `src/customerAuth.js`, page `/my/<slug>`, tests CP-01..CP-17). It cannot be used for real until SMS (Twilio registration) and/or email (Gmail or SendGrid) works on the server, because the customer proves who they are with a one-time code. Until then the page says "sign-in codes are not available right now, please call <business>". Not built: SMS deep link to the portal (19t), SMS-delivery smoke test (teammate).
 
 ## Why a code
 Showing someone's full appointment history from just a phone number would expose private data. So access is: enter phone (or email) for that business, receive a 6-digit code (SMS) or a link (email), get a short session.

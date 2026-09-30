@@ -58,7 +58,7 @@ describe('multi-tenant separation and customer identity', { skip }, () => {
     assert.equal(normalizePhone('5550200005'), normalizePhone('+15550200005'));
   });
 
-  it('MT-06 ten simultaneous first-time upserts for one phone create one customer and none of them throw', { todo: 'KG-09: upsertCustomer is find-then-insert, losers hit a duplicate-key error' }, async () => {
+  it('MT-06 ten simultaneous first-time upserts for one phone create one customer and none of them throw', async () => {
     const phone = '+15550200006';
     const results = await Promise.allSettled(Array.from({ length: 10 }, () => upsertCustomer(salon.businessId, { phone, name: 'Racer' })));
     assert.equal(await db.collection('customers').countDocuments({ business_id: salon.businessId, phone }), 1, 'still exactly one record');

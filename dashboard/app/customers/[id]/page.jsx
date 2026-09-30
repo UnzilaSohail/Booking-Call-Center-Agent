@@ -1,11 +1,58 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, X } from 'lucide-react';
 import RequireAuth from '../../../components/RequireAuth';
 import { api } from '../../../lib/api';
 import { useToast } from '../../../lib/Toast';
 import { DateTime } from '../../../lib/datetime';
+
+// Staff review of "same person, new phone" (Jira 18k/18l/18m). Same email is a strong match;
+// same name alone is weak, so it is labelled. Merging folds the other record into this one.
+function DuplicatesCard({ id, onMerged }) {
+  const toast = useToast();
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(null);
+  useEffect(() => { api.getDuplicates(id).then(setRows).catch(() => setRows([])); }, [id]);
+  if (!rows?.length) return null;
+
+  async function merge(d) {
+    if (!window.confirm(`Merge ${d.name || d.phone} (${d.phone}) into this customer? Their bookings and calls move here and their record is deleted.`)) return;
+    setBusy(d.id);
+    try {
+      await api.mergeCustomer(id, d.id);
+      toast.success('Merged');
+      setRows((r) => r.filter((x) => x.id !== d.id));
+      onMerged();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2>Possible duplicates</h2>
+      <p className="muted" style={{ marginTop: 0 }}>Other records that look like the same person, for example after they booked from a new phone.</p>
+      <table>
+        <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Matched on</th><th></th></tr></thead>
+        <tbody>
+          {rows.map((d) => (
+            <tr key={d.id}>
+              <td><Link href={`/customers/${d.id}`}>{d.name || '(no name)'}</Link></td>
+              <td>{d.phone}</td>
+              <td>{d.email || '—'}</td>
+              <td><span className={`badge ${d.matchedOn === 'email' ? 'success' : 'warning'}`}>{d.matchedOn === 'email' ? 'same email' : 'same name only'}</span></td>
+              <td><button type="button" onClick={() => merge(d)} disabled={busy === d.id}>{busy === d.id ? 'Merging...' : 'Merge into this customer'}</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function CustomerDetailInner() {
   const { id } = useParams();
@@ -145,17 +192,21 @@ function CustomerDetailInner() {
         <button className="primary" onClick={save} disabled={saving} style={{ marginTop: 10 }}>{saving ? 'Saving...' : 'Save'}</button>
       </div>
 
+      <DuplicatesCard id={id} onMerged={load} />
+
       <div className="card">
         <h2>Booking history</h2>
         {customer.bookings.length === 0 && <p className="muted">No bookings yet.</p>}
         {customer.bookings.length > 0 && (
           <table>
-            <thead><tr><th>When</th><th>Service</th><th>Status</th><th>Confirmed</th></tr></thead>
+            <thead><tr><th>When</th><th>Service</th><th>Ref</th><th>Booked via</th><th>Status</th><th>Confirmed</th></tr></thead>
             <tbody>
               {customer.bookings.map((b) => (
                 <tr key={b.id}>
                   <td>{DateTime.formatDateTime(b.startTime)}</td>
                   <td>{serviceName(b.serviceId)}</td>
+                  <td>{b.reference ?? '—'}</td>
+                  <td><span className="badge neutral">{{ call: 'Phone', web: 'Web', dashboard: 'Dashboard' }[b.createdVia] ?? 'Dashboard'}</span></td>
                   <td><span className={`badge ${b.status === 'confirmed' ? 'success' : 'neutral'}`}>{b.status}</span></td>
                   <td>{b.confirmationSentAt ? DateTime.formatDateTime(b.confirmationSentAt) : '—'}</td>
                 </tr>

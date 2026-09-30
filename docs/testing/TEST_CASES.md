@@ -19,7 +19,7 @@ Without `MONGODB_URI` the database tests skip cleanly and only the pure tests ru
 
 ## Latest run — 2026-09-30, local replica set
 
-`npm test` on 2026-10-01, after the team and the invite-email UI work's fixes: **135 tests, 134 pass, 0 fail, 1 gap (todo)** after the public booking page and directory were added (25 new tests). Only MT-06 (KG-09) is still open. On 2026-09-30 the first run was 96 tests, 90 pass, 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server, `/health` still OK (173 ms).
+`npm test` on 2026-10-01 after the customer portal, merge and moderation work: **156 tests, 156 pass, 0 fail, 0 gap**. MT-06 (KG-09) was fixed with an atomic upsert, so no `todo` is left. On 2026-09-30 the first run was 96 tests, 90 pass, 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server, `/health` still OK (173 ms).
 Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual booking won 14, and every round ended with exactly one booking.
 
 ## RC — Race conditions and overlaps (`test/raceConditions.test.js`)
@@ -63,7 +63,7 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 | MT-03 | Old customer (created by a call) books again | Same customer record, no duplicate | Pass |
 | MT-04 | `+1 (555) 020-0004` vs `+15550200004` | Same normalised number | Pass |
 | MT-05 | `5550200005` vs `+15550200005` | Same customer (KG-08, fixed 2026-09-30) | Pass |
-| MT-06 | 10 simultaneous first-time upserts | One record, no errors (KG-09) | Gap |
+| MT-06 | 10 simultaneous first-time upserts | One record, no errors (KG-09) | Pass |
 
 ## CC — Concurrent calls
 | ID | Scenario | Expected | Status |
@@ -105,6 +105,36 @@ Real HTTP against the Express app and real Mongo; each run creates its own busin
 | SL-05 | Listing categories | Only the fixed list, at most 3 | Pass |
 
 Checked by hand in the browser pane (2026-10-01): Settings card, `/find` (card, empty state), `/book/<slug>` golden path with the stylist filter, "Bookings > Booked via: Web", phone width 375px with no horizontal scroll.
+
+## CP — Customer sign-in and "My appointments" (`test/customerPortal.test.js`)
+Real HTTP. The provider env vars are switched on so the code path runs (the send itself only logs "not sent"), and the stored code hash is replaced by a known one to sign in. Skips itself if a real SMS/email provider is configured.
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| CP-01 | Code requested with no SMS/email provider | 503 "not available right now, please call <business>" | Pass |
+| CP-02 | Known and unknown number | Identical answer; only the real customer gets a code row | Pass |
+| CP-03 | Second request within a minute | Code not replaced | Pass |
+| CP-04 | Right code | Token; works on `/customer/me`; a used code is gone | Pass |
+| CP-05 | Five wrong guesses | Locked, even for the right code | Pass |
+| CP-06 | Expired code | Refused | Pass |
+| CP-07 | Sign in by email (any letter case) | Works | Pass |
+| CP-08 | Customer token on company routes, company token on customer routes, no/garbage token | All 401 | Pass |
+| CP-09 | Appointment list | Own upcoming and past only; not another customer, not another business | Pass |
+| CP-10 | Reschedule | Moves; closed hours 409; past time 400 | Pass |
+| CP-11 | Someone else's appointment id | 404 on cancel, reschedule and availability; nothing changed | Pass |
+| CP-12 | Cancel | Goes to history; second cancel 400 | Pass |
+| CP-13 | Change inside the cutoff window | Refused, `canChange: false` | Pass |
+| CP-14 | Edit name, email, SMS/email preferences | Saved; bad input 400 | Pass |
+| CP-15 | Export and delete request | Only own data; one pending request in the owner's Exceptions queue | Pass |
+| CP-16 | Code requests per number and per IP | 429 after the limit | Pass |
+| CP-17 | Booking reference code | 6 unambiguous characters; Bookings search finds it | Pass |
+
+## DU, PH — Duplicates, merge, directory moderation (`test/customerMerge.test.js`)
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| DU-01 | Same person on a new phone | Found by email; same name alone is flagged "name" (weak); other businesses ignored | Pass |
+| DU-02 | Merge | Bookings and calls move, gaps filled, tags joined, STOP on either record survives, duplicate deleted | Pass |
+| DU-03 | Bad merges | Self 400, unknown 404, another business's customer 404 | Pass |
+| PH-01 | Platform admin hides and restores a listing | Company token 401, bad body 400, hidden flag set and shown in the company detail | Pass |
 
 ## EM — Email and invites (`test/emailInvite.test.js`)
 Run against the real Express app over HTTP with no email/SMS provider configured (skips itself if a provider is configured).

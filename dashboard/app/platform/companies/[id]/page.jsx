@@ -151,6 +151,17 @@ function CompanyDetailInner() {
   const load = () => platformApi.getCompany(id).then(setCompany).catch((e) => setError(e instanceof ApiError ? e.message : 'failed to load'));
   useEffect(() => { load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function toggleListing() {
+    try {
+      const hide = !company.listing.hiddenByPlatform;
+      await platformApi.setCompanyListingHidden(id, hide);
+      toast.success(hide ? `${company.name} hidden from the directory` : `${company.name} is visible in the directory again`);
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
   async function toggleStatus() {
     setTogglingStatus(true);
     try {
@@ -209,6 +220,20 @@ function CompanyDetailInner() {
             Suspending blocks every admin at this company from logging in (existing sessions included) without deleting any data. Use it for billing holds or abuse, not for offboarding.
           </p>
         </div>
+      </div>
+
+      <div className="card">
+        <h2>Public directory</h2>
+        <p style={{ marginTop: 0 }}>
+          Booking link: <code>/book/{company.slug ?? '—'}</code>{' '}
+          {company.listing.hiddenByPlatform
+            ? <span className="badge danger">Hidden by the platform</span>
+            : <span className={`badge ${company.listing.listed ? 'success' : 'neutral'}`}>{company.listing.listed ? 'Listed by the owner' : 'Not listed'}</span>}
+        </p>
+        <button className={company.listing.hiddenByPlatform ? 'primary' : 'danger'} onClick={toggleListing}>
+          {company.listing.hiddenByPlatform ? 'Show in directory again' : 'Hide from directory'}
+        </button>
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Hiding removes the company from search on /find only. Its booking link and account keep working. Use it for misleading listings.</p>
       </div>
 
       <div className="card">

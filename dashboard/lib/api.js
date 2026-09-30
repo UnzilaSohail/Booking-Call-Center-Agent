@@ -156,6 +156,8 @@ export const api = {
 
   listCustomers: (q) => request(`/api/customers${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: companyTokenStore }),
   getCustomer: (id) => request(`/api/customers/${id}`, { tokenStore: companyTokenStore }),
+  getDuplicates: (id) => request(`/api/customers/${id}/duplicates`, { tokenStore: companyTokenStore }),
+  mergeCustomer: (id, fromId) => request(`/api/customers/${id}/merge`, { method: 'POST', body: { fromId }, tokenStore: companyTokenStore }),
   updateCustomer: (id, payload) => request(`/api/customers/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
   exportCustomersCsv: () => requestText('/api/customers/export', { tokenStore: companyTokenStore }),
   importCustomersCsv: (csv) => request('/api/customers/import', { method: 'POST', body: { csv }, tokenStore: companyTokenStore }),
@@ -192,6 +194,22 @@ export const publicApi = {
   book: (slug, body) => request(`/api/public/${slug}/bookings`, { method: 'POST', body }),
 };
 
+// Customer portal (docs/customer/PORTAL_SPEC.md): sign in per business with a code sent to the
+// customer's phone/email; the token is the customer's own (role:customer), never a company token.
+const asToken = (t) => ({ get: () => t });
+export const customerApi = {
+  requestCode: (slug, body) => request(`/api/public/${slug}/portal/code`, { method: 'POST', body }),
+  verify: (slug, body) => request(`/api/public/${slug}/portal/verify`, { method: 'POST', body }),
+  me: (t) => request('/api/customer/me', { tokenStore: asToken(t) }),
+  updateMe: (t, body) => request('/api/customer/me', { method: 'PATCH', body, tokenStore: asToken(t) }),
+  appointments: (t) => request('/api/customer/appointments', { tokenStore: asToken(t) }),
+  availability: (t, id, date) => request(`/api/customer/appointments/${id}/availability?${new URLSearchParams({ date })}`, { tokenStore: asToken(t) }),
+  reschedule: (t, id, startTime) => request(`/api/customer/appointments/${id}/reschedule`, { method: 'POST', body: { startTime }, tokenStore: asToken(t) }),
+  cancel: (t, id) => request(`/api/customer/appointments/${id}/cancel`, { method: 'POST', tokenStore: asToken(t) }),
+  exportData: (t) => request('/api/customer/export', { tokenStore: asToken(t) }),
+  requestDeletion: (t) => request('/api/customer/delete-request', { method: 'POST', tokenStore: asToken(t) }),
+};
+
 // Team-invite acceptance (ROADMAP.md §10) — token-authenticated via the URL itself
 // (dashboard/app/accept-invite/[token]/page.jsx), same shape as myBookingApi above.
 export const acceptInviteApi = {
@@ -212,6 +230,7 @@ export const platformApi = {
   listCompanies: (q) => request(`/api/platform/businesses${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: platformTokenStore }),
   getCompany: (id) => request(`/api/platform/businesses/${id}`, { tokenStore: platformTokenStore }),
   setCompanyStatus: (id, status) => request(`/api/platform/businesses/${id}/status`, { method: 'PATCH', body: { status }, tokenStore: platformTokenStore }),
+  setCompanyListingHidden: (id, hidden) => request(`/api/platform/businesses/${id}/listing`, { method: 'PATCH', body: { hidden }, tokenStore: platformTokenStore }),
   deleteCompany: (id, confirmName) => request(`/api/platform/businesses/${id}`, { method: 'DELETE', body: { confirmName }, tokenStore: platformTokenStore }),
   resetAdminPassword: (adminId, newPassword) => request(`/api/platform/admins/${adminId}/password`, { method: 'PATCH', body: { newPassword }, tokenStore: platformTokenStore }),
   registerCompany: (payload) => request('/api/platform/businesses', { method: 'POST', body: payload, tokenStore: platformTokenStore }),

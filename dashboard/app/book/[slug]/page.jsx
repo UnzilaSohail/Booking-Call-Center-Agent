@@ -94,7 +94,7 @@ export default function BookPage() {
         {biz && (
           <>
             <div style={{ marginBottom: 16 }}>
-              <div className="muted" style={{ fontSize: 12 }}><Link href="/find">Find a business</Link> &rsaquo; {biz.name}</div>
+              <div className="muted" style={{ fontSize: 12 }}><Link href="/find">Find a business</Link> &rsaquo; {biz.name} &middot; <Link href={`/my/${slug}`}>My appointments</Link></div>
               <h1 style={{ fontSize: 22, margin: '4px 0 2px' }}>{biz.name}</h1>
               {where && <div className="muted" style={{ fontSize: 13 }}>{where}</div>}
               {biz.phone && <div className="muted" style={{ fontSize: 13 }}>{biz.phone}</div>}
@@ -188,7 +188,8 @@ export default function BookPage() {
                   <div className="muted">{result.business.name}{where && <> · {where}</>}</div>
                 </div>
                 <p className="muted" style={{ fontSize: 13, marginTop: 16 }}>We&apos;ll send a confirmation with this link to change or cancel your appointment.</p>
-                <div className="row"><a href={result.manageUrl}><button type="button" className="primary">Change or cancel</button></a></div>
+                {result.booking.reference && <p style={{ fontSize: 13 }}>Your booking reference: <strong>{result.booking.reference}</strong></p>}
+                <div className="row"><a href={result.manageUrl}><button type="button" className="primary">Change or cancel</button></a><Link href={`/my/${slug}`}><button type="button">See all my appointments</button></Link></div>
               </div>
             )}
           </>

@@ -12,6 +12,9 @@ function getClient() {
   return client;
 }
 
+// Read at call time so tests can toggle it.
+export const smsConfigured = () => Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_SMS_FROM);
+
 // Returns the sent message's sid (so callers can track delivery status — see
 // src/webhooks/twilio.js POST /webhooks/twilio/sms-status), or null if it wasn't sent.
 // businessId is optional (verification-code sends during signup aren't billable tenant

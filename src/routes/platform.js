@@ -67,6 +67,8 @@ platformRouter.get('/businesses/:id', async (req, res, next) => {
       contactPhone: business.contact_phone ?? null,
       address: business.address ?? null,
       status: business.status || 'active',
+      slug: business.slug ?? null,
+      listing: { listed: business.listing?.listed === true, hiddenByPlatform: business.listing?.hidden_by_platform === true },
       calendarConnected: business.google_refresh_token != null,
       createdAt: business.created_at,
       admins: admins.map((a) => ({ id: a._id, name: a.name, email: a.email, createdAt: a.created_at })),
@@ -106,6 +108,21 @@ platformRouter.get('/businesses/:id/billing', async (req, res, next) => {
       estimate: amounts,
       invoices: serializeAll(invoices),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Moderation (Jira 16w): take a company out of the public directory, or put it back, without
+// touching its account. The owner's own "listed" choice is left alone; its booking link keeps
+// working. Only the directory listing is affected (src/routes/publicBooking.js).
+platformRouter.patch('/businesses/:id/listing', async (req, res, next) => {
+  try {
+    if (typeof req.body?.hidden !== 'boolean') return res.status(400).json({ error: 'hidden (true/false) is required' });
+    const db = await getDb();
+    const result = await db.collection('businesses').updateOne({ _id: req.params.id }, { $set: { 'listing.hidden_by_platform': req.body.hidden } });
+    if (result.matchedCount === 0) return res.status(404).json({ error: 'company not found' });
+    res.json({ ok: true, hidden: req.body.hidden });
   } catch (err) {
     next(err);
   }

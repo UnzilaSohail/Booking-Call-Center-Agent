@@ -7,6 +7,7 @@ import { platformRouter } from './routes/platform.js';
 import { signupRouter } from './routes/signup.js';
 import { myBookingRouter } from './routes/myBooking.js';
 import { publicBookingRouter } from './routes/publicBooking.js';
+import { customerPortalRouter } from './routes/customerPortal.js';
 import { acceptInviteRouter } from './routes/acceptInvite.js';
 import { onboardingRouter } from './routes/onboarding.js';
 import { locationsRouter } from './routes/locations.js';
@@ -55,6 +56,7 @@ app.use('/api', unifiedLoginRouter);
 app.use('/api', signupRouter);
 app.use('/api', myBookingRouter);
 app.use('/api', publicBookingRouter);
+app.use('/api', customerPortalRouter);
 app.use('/api', acceptInviteRouter);
 app.use('/api/auth', authRouter);
 // Scoped to /api/platform specifically — requirePlatformAuth must not be mounted at the

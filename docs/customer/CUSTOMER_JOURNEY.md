@@ -34,6 +34,18 @@ flowchart LR
 | Verified customer (stage 2) | SMS code or email link | "My appointments": upcoming, past, cancelled, preferences, data export and delete |
 | Staff | Dashboard | Everything for their business; each booking shows where it came from (phone, web, dashboard) |
 
+### Customer or company: who goes through which door
+
+| | Customer | Company staff | Platform admin |
+|---|---|---|---|
+| Entry | `/find`, `/book/<slug>`, `/my/<slug>` | `/login` | `/login` (same form, detected by the backend) |
+| Proves who they are with | Code sent to their own phone or email, for ONE business | Email + password (+ optional 2FA) | Email + password |
+| Token | `role: customer`, bound to one business and one customer | `role: business` | `role: platform` |
+| Works on | `/api/customer/*` and the public endpoints | `/api/*` dashboard endpoints | `/api/platform/*` |
+| Can see | Only their own appointments at that business | Everything for their business | All companies |
+
+Each side rejects the other's token (tests CP-08 and PH-01). The staff `/login` page links to `/find` for customers who land there by mistake; the booking page and its confirmation link to `/my/<slug>`.
+
 ## 3. Salon vs dentist
 
 Every business is its own tenant: own link, services, staff, hours, phone number and customers. The URL picks the tenant and every query is scoped to it. The same person booking a salon and a dentist has **two separate customer profiles**, and nothing crosses over. Hair and facial at the same salon is just the service picker. A stylist ("Jessica") is the staff picker, filtered by the services she performs, or "Any available".
