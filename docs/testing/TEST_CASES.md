@@ -19,7 +19,7 @@ Without `MONGODB_URI` the database tests skip cleanly and only the pure tests ru
 
 ## Latest run — 2026-09-30, local replica set
 
-`npm test` on 2026-10-01, after the team's fixes: **103 tests, 102 pass, 0 fail, 1 gap (todo)**. Only MT-06 (KG-09) is still open. On 2026-09-30 the first run was 96 tests, 90 pass, 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server, `/health` still OK (173 ms).
+`npm test` on 2026-10-01, after the team and the invite-email UI work's fixes: **110 tests, 109 pass, 0 fail, 1 gap (todo)**. Only MT-06 (KG-09) is still open. On 2026-09-30 the first run was 96 tests, 90 pass, 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server, `/health` still OK (173 ms).
 Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual booking won 14, and every round ended with exactly one booking.
 
 ## RC — Race conditions and overlaps (`test/raceConditions.test.js`)
@@ -100,12 +100,17 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 | DR-05 | Unlisted business | Not in search; direct link works |
 | DR-06 | Wrong business | Name and address on every step and message |
 
-## EM — Email and invites (Plan 4) — Planned
-| ID | Scenario | Expected |
-|---|---|---|
-| EM-01 | Invite with SendGrid unset | Response says `emailSent:false` and returns the link; UI warns and offers Copy link |
-| EM-02 | Resend invite | New token, previous link still valid until expiry, owner-only |
-| EM-03 | `sendEmail` result | Returns `{sent:false, reason}` when unconfigured, never throws |
+## EM — Email and invites (`test/emailInvite.test.js`)
+Run against the real Express app over HTTP with no email/SMS provider configured (skips itself if a provider is configured).
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| EM-01 | Invite with no provider | `emailSent:false`, the reason, and a working invite link for the new member | Pass |
+| EM-02 | "Copy link" mode (`sendEmail:false`) | Link returned, no email attempted, no error reported | Pass |
+| EM-03 | Resend | Email attempted; reports why it did not go out | Pass |
+| EM-04 | Manager tries to invite or resend | 403, owner only | Pass |
+| EM-05 | Resend to a member who already accepted | 400 | Pass |
+| EM-06 | `sendEmail` unconfigured | Never throws; `{sent:false, reason}` | Pass |
+| EM-07 | Onboarding verification code, no provider | `delivered:false` plus reason for email and for SMS | Pass |
 
 ## UAT — Manual checklist (browser and real phone; teammate or boss)
 | ID | Step | Expected |
@@ -116,7 +121,7 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 | UAT-04 | Place 5-10 calls at the same time from different phones | All answered, no dead air, each transcript separate |
 | UAT-05 | Open Calls after a call | Transcript shows both caller and agent lines; a question is answered from the knowledge base |
 | UAT-06 | Invite a team member with SendGrid configured | Email arrives with a working link |
-| UAT-07 | Invite with SendGrid unset (after Plan 4) | Warning shown; Copy link works |
+| UAT-07 | Invite with no email provider configured | Orange warning, link shown with Copy link; Resend and Copy link icons on the pending member |
 | UAT-08 | Open `/find` and search for a business (after Plan 1) | Correct business, address visible |
 | UAT-09 | Ask the agent for a human | Transfer or callback as configured |
 | UAT-10 | Stop Gemini access (bad key) on a test server, call | Caller hears a message, callback appears |

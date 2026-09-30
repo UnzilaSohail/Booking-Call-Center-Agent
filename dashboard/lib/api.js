@@ -98,6 +98,8 @@ export const api = {
 
   listTeamMembers: () => request('/api/team-members', { tokenStore: companyTokenStore }),
   inviteTeamMember: (payload) => request('/api/team-members/invite', { method: 'POST', body: payload, tokenStore: companyTokenStore }),
+  // sendEmail:false returns the invite link without emailing it (the "Copy invite link" button).
+  resendInvite: (id, { sendEmail = true } = {}) => request(`/api/team-members/${id}/resend-invite`, { method: 'POST', body: { sendEmail }, tokenStore: companyTokenStore }),
   updateTeamMember: (id, payload) => request(`/api/team-members/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
 
   listExceptions: (status) => request(`/api/exceptions?${new URLSearchParams({ status })}`, { tokenStore: companyTokenStore }),

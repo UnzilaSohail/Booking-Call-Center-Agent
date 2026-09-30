@@ -1,11 +1,12 @@
 'use client';
 import { Fragment, useEffect, useState } from 'react';
-import { CalendarClock, Mail, Pencil, Plus, Trash2, UserX, X } from 'lucide-react';
+import { CalendarClock, Link2, Pencil, Plus, Send, Trash2, UserCheck, UserX, X } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import Avatar from '../../components/Avatar';
 import { api, ApiError } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import { DateTime } from '../../lib/datetime';
+import { copyText } from '../../lib/clipboard';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const ROLES = ['manager', 'receptionist', 'staff', 'billing', 'custom'];
@@ -310,6 +311,9 @@ function TeamMembersSection() {
   const [permissions, setPermissions] = useState([]);
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState(null);
+  // Last invite result ({email, link, emailSent, emailError, linkOnly}) — stays on screen so the
+  // owner can copy the link even when the email could not be sent.
+  const [lastInvite, setLastInvite] = useState(null);
 
   const load = () => api.listTeamMembers().then(setMembers).catch((e) => setError(e.message));
   useEffect(() => { load(); api.getMe().then(setMe).catch(() => {}); }, []);
@@ -321,15 +325,45 @@ function TeamMembersSection() {
     setError(null);
     setInviting(true);
     try {
-      await api.inviteTeamMember({ name, email, role, permissions: role === 'custom' ? permissions : undefined });
+      const res = await api.inviteTeamMember({ name, email, role, permissions: role === 'custom' ? permissions : undefined });
       setName(''); setEmail(''); setRole('receptionist'); setPermissions([]);
-      toast.success(`Invited ${email}`);
+      showInvite(email, res);
       load();
     } catch (err) {
       setError(err.message);
     } finally {
       setInviting(false);
     }
+  }
+
+  function showInvite(toEmail, res) {
+    setLastInvite({ email: toEmail, link: res.inviteLink, emailSent: res.emailSent, emailError: res.emailError });
+    if (res.emailSent) toast.success(`Invite emailed to ${toEmail}`);
+    else toast.warning(`Invite created for ${toEmail}, but the email was not sent. Copy the link below and send it to them.`);
+  }
+
+  async function copyInviteLink(m) {
+    try {
+      const res = await api.resendInvite(m.id, { sendEmail: false });
+      setLastInvite({ email: m.email, link: res.inviteLink, emailSent: false, emailError: null, linkOnly: true });
+      if (await copyText(res.inviteLink)) toast.success('Invite link copied');
+      else toast.warning('Could not copy automatically. Select the link below and copy it.');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  async function resendInvite(m) {
+    try {
+      showInvite(m.email, await api.resendInvite(m.id));
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  async function copyShownLink() {
+    if (await copyText(lastInvite.link)) toast.success('Invite link copied');
+    else toast.warning('Could not copy automatically. Select the link and copy it.');
   }
 
   async function setStatus(id, status) {
@@ -373,10 +407,18 @@ function TeamMembersSection() {
               </td>
               <td><span className={`badge ${m.status === 'suspended' ? 'danger' : m.status === 'invited' ? 'neutral' : 'success'}`}>{m.status}</span></td>
               {isOwner && (
-                <td className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+                <td>
+                  <div className="row" style={{ gap: 4, justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+                  {m.role !== 'owner' && m.status === 'invited' && (
+                    <>
+                      <button className="icon-btn" onClick={() => copyInviteLink(m)} title="Copy invite link" aria-label={`Copy invite link for ${m.email}`}><Link2 size={14} /></button>
+                      <button className="icon-btn" onClick={() => resendInvite(m)} title="Resend invite email" aria-label={`Resend invite email to ${m.email}`}><Send size={14} /></button>
+                    </>
+                  )}
                   {m.role !== 'owner' && (m.status === 'suspended'
-                    ? <button className="icon-btn" onClick={() => setStatus(m.id, 'active')} title="Reactivate"><Mail size={14} /></button>
-                    : <button className="icon-btn" onClick={() => setStatus(m.id, 'suspended')} title="Suspend"><UserX size={14} color="var(--danger)" /></button>)}
+                    ? <button className="icon-btn" onClick={() => setStatus(m.id, 'active')} title="Reactivate" aria-label={`Reactivate ${m.email}`}><UserCheck size={14} /></button>
+                    : <button className="icon-btn" onClick={() => setStatus(m.id, 'suspended')} title="Suspend" aria-label={`Suspend ${m.email}`}><UserX size={14} color="var(--danger)" /></button>)}
+                  </div>
                 </td>
               )}
             </tr>
@@ -410,6 +452,25 @@ function TeamMembersSection() {
             </div>
           )}
         </form>
+      )}
+      {lastInvite && (
+        <div className={`callout ${lastInvite.emailSent || lastInvite.linkOnly ? 'success' : 'warning'}`} role="status" style={{ marginTop: 14 }}>
+          <p>
+            {lastInvite.linkOnly
+              ? <>Invite link for <strong>{lastInvite.email}</strong> (works for 7 days):</>
+              : lastInvite.emailSent
+                ? <>Invitation emailed to <strong>{lastInvite.email}</strong>. You can also share this link directly:</>
+                : <>The invitation for <strong>{lastInvite.email}</strong> was created, but <strong>the email was not sent</strong>. Copy the link below and send it to them yourself (WhatsApp, SMS...). It works for 7 days.</>}
+          </p>
+          {!lastInvite.emailSent && !lastInvite.linkOnly && lastInvite.emailError && (
+            <p className="muted" style={{ fontSize: 12 }}>Reason: {lastInvite.emailError}</p>
+          )}
+          <div className="row" style={{ alignItems: 'center' }}>
+            <input readOnly value={lastInvite.link} onFocus={(e) => e.target.select()} aria-label="Invite link" />
+            <button type="button" className="primary" onClick={copyShownLink}>Copy link</button>
+            <button type="button" className="icon-btn" onClick={() => setLastInvite(null)} title="Dismiss" aria-label="Dismiss"><X size={14} /></button>
+          </div>
+        </div>
       )}
       {error && <p className="error-text">{error}</p>}
     </div>

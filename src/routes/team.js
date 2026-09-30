@@ -182,7 +182,11 @@ teamRouter.post('/team-members/:id/resend-invite', gate, requireOwner, async (re
 
     const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { name: 1 } });
     const link = `${process.env.PUBLIC_DASHBOARD_URL || 'http://localhost:3002'}/accept-invite/${signInviteToken(target._id)}`;
-    const { sent, reason } = await sendEmail(target.email, `You're invited to join ${business.name}`, `You've been invited to join ${business.name} as a ${target.role}. Set your password: ${link}`);
+    // sendEmail:false is the dashboard's "Copy invite link" — hand back the link without emailing it.
+    const shouldEmail = req.body?.sendEmail !== false;
+    const { sent, reason } = shouldEmail
+      ? await sendEmail(target.email, `You're invited to join ${business.name}`, `You've been invited to join ${business.name} as a ${target.role}. Set your password: ${link}`)
+      : { sent: false, reason: null };
 
     res.json({ ok: true, emailSent: sent, emailError: sent ? null : reason, inviteLink: link });
   } catch (err) {

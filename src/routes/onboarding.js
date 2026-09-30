@@ -79,10 +79,21 @@ onboardingRouter.post('/onboarding/verify/send', async (req, res, next) => {
       },
     });
 
-    if (channel === 'email') await sendEmail(destination, 'Verify your email', `Your verification code is ${code}. It expires in 10 minutes.`);
-    else await sendSms(null, destination, `Your verification code is ${code}. It expires in 10 minutes.`);
+    // Jira 29j: say whether the code actually left the building. With no email/SMS provider
+    // configured the request used to answer {ok:true} and the owner waited for a code that
+    // would never arrive.
+    let delivered;
+    let deliveryError = null;
+    if (channel === 'email') {
+      const result = await sendEmail(destination, 'Verify your email', `Your verification code is ${code}. It expires in 10 minutes.`);
+      delivered = result.sent;
+      deliveryError = result.reason;
+    } else {
+      delivered = Boolean(await sendSms(null, destination, `Your verification code is ${code}. It expires in 10 minutes.`));
+      if (!delivered) deliveryError = 'SMS sending is not configured on this server';
+    }
 
-    res.json({ ok: true });
+    res.json({ ok: true, delivered, deliveryError });
   } catch (err) {
     next(err);
   }

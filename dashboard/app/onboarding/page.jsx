@@ -34,7 +34,13 @@ function VerifyContactStep({ status, onChanged }) {
   async function send(channel) {
     setError(null);
     try {
-      await api.sendVerificationCode(channel);
+      const res = await api.sendVerificationCode(channel);
+      if (res.delivered === false) {
+        // Nothing was sent (no provider set up on the server): don't show a code box for a code that can never arrive.
+        setError(`We couldn't send a code to your ${channel} (${res.deliveryError}). Ask whoever manages this server to set up ${channel === 'email' ? 'email' : 'SMS'} sending, then try again.`);
+        toast.warning(`No code was sent to your ${channel}`);
+        return;
+      }
       setPending((p) => ({ ...p, [channel]: true }));
       toast.success(`Code sent to your ${channel}`);
     } catch (err) {
