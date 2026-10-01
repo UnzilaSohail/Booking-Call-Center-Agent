@@ -11,6 +11,10 @@ import { withTenant, newId, serialize, serializeAll } from '../db.js';
 // Defaults to NANP (+1) when no country code was given — this system's numbers are
 // US/Canada-first (plan.md §3); a number that already carries a country code (a leading
 // + typed by the caller, or 11+ digits starting with 1) passes through unchanged.
+// Languages a customer can ask to be contacted in (Jira 18o). Stored only: nothing is translated
+// yet, but staff see it and message templates can key off it later.
+export const LANGUAGES = ['en', 'es', 'fr', 'ar', 'ur', 'hi'];
+
 export function normalizePhone(phone) {
   if (!phone) return '';
   const trimmed = phone.trim();
@@ -38,7 +42,7 @@ export async function upsertCustomer(businessId, { phone, name, email }) {
       email: email || null,
       notes: null,
       tags: [],
-      preferences: { preferredStaffId: null, preferredServiceId: null, preferredContactMethod: null },
+      preferences: { preferredStaffId: null, preferredServiceId: null, preferredContactMethod: null, language: null },
       consent: { recordingAcknowledged: false, smsOptIn: true, emailOptIn: true },
       created_at: new Date(),
       updated_at: new Date(),
@@ -140,6 +144,7 @@ export async function updateCustomer(businessId, id, { name, email, notes, tags,
       preferredStaffId: preferences.preferredStaffId || null,
       preferredServiceId: preferences.preferredServiceId || null,
       preferredContactMethod: preferences.preferredContactMethod || null,
+      language: LANGUAGES.includes(preferences.language) ? preferences.language : null,
     };
   }
   if (consent !== undefined) {

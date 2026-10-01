@@ -170,6 +170,13 @@ function CustomerDetailInner() {
               <option value="call">Call</option>
             </select>
           </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Language</label>
+            <select value={form.preferences?.language ?? ''} onChange={(e) => setForm({ ...form, preferences: { ...form.preferences, language: e.target.value || null } })}>
+              <option value="">Not set</option>
+              {[['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['ar', 'Arabic'], ['ur', 'Urdu'], ['hi', 'Hindi']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
         </div>
 
         <label style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Consent</label>

@@ -22,23 +22,31 @@ async function dueBookings(hoursAhead, sentField) {
   );
 }
 
-async function runLabel(hoursAhead, sentField, label) {
+async function runLabel(hoursAhead, sentField, label, send) {
   const bookings = await dueBookings(hoursAhead, sentField);
   const db = await getDb();
   for (const booking of bookings) {
+    // KG-13/27j: claim the booking atomically BEFORE sending. The sweep used to find-then-send, so
+    // two sweeps overlapping (a second PM2 process, or a slow tick) both texted the customer. Only
+    // the one whose update matches (field still null) goes on; the rest skip.
+    const claim = await withSystemAccess((c) => c('bookings').updateOne({ _id: booking._id, [sentField]: null }, { $set: { [sentField]: new Date() } }));
+    if (claim.modifiedCount === 0) continue;
     try {
       const business = serialize(await db.collection('businesses').findOne({ _id: booking.business_id }));
       const service = await withTenant(booking.business_id, (c) => c('services').findOne({ _id: booking.service_id }));
-      await sendReminder(business, booking, service, label);
+      await send(business, booking, service, label);
     } catch (err) {
       console.error(`reminder (${label}) failed for booking ${booking._id}:`, err.message);
+      // Give the claim back so the next sweep retries, instead of silently never reminding.
+      await withSystemAccess((c) => c('bookings').updateOne({ _id: booking._id }, { $set: { [sentField]: null } })).catch(() => {});
     }
   }
 }
 
-export async function runReminderSweepOnce() {
-  await runLabel(24, 'reminder_24h_sent_at', '24h');
-  await runLabel(1, 'reminder_1h_sent_at', '1h');
+// `send` is injectable so tests can count sends without a real SMS/email provider.
+export async function runReminderSweepOnce({ send = sendReminder } = {}) {
+  await runLabel(24, 'reminder_24h_sent_at', '24h', send);
+  await runLabel(1, 'reminder_1h_sent_at', '1h', send);
 }
 
 export function startReminderWorker(intervalMs = 5 * 60_000) {

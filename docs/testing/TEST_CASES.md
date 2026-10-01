@@ -9,17 +9,20 @@ Written test cases with the code that runs them. Use cases: `USE_CASES.md`. Open
 
 ```bash
 npm run local-db                      # local MongoDB replica set (transactions need a replica set)
-MONGODB_URI="mongodb://127.0.0.1:27117/?replicaSet=rs0" MONGODB_DB_NAME=booking_call_center_test npm run migrate
-MONGODB_URI="mongodb://127.0.0.1:27117/?replicaSet=rs0" MONGODB_DB_NAME=booking_call_center_test npm test
-node --test --test-reporter=spec test/raceConditions.test.js   # one file, readable output
+# put MONGODB_URI=mongodb://127.0.0.1:27117/?replicaSet=rs0 in .env, then:
+npm test                              # uses a SEPARATE database "<name>_test", runs migrate first
+npm test -- test/publicBooking.test.js   # one file
 TEST_VERBOSE=1 npm test               # also print the "SMS/Email not sent" lines that are hidden by default
 node scripts/wsSmoke.js 100 http://localhost:3000              # socket burst against a running server
+npm run load-test:public              # public booking page under load (server running, same MONGODB_URI)
 ```
+`npm test` never touches your real data: `scripts/test.mjs` points the suite at `<MONGODB_DB_NAME>_test`, and `src/db.js` refuses
+any other database name while tests run (override with `TEST_ALLOW_ANY_DB=1`). GitHub Actions runs the same thing on every push (`.github/workflows/ci.yml`).
 Without `MONGODB_URI` the database tests skip cleanly and only the pure tests run. Each test creates its own tenant and deletes it afterwards.
 
 ## Latest run — 2026-09-30, local replica set
 
-`npm test` on 2026-10-01 after the customer portal, merge and moderation work: **156 tests, 156 pass, 0 fail, 0 gap**. MT-06 (KG-09) was fixed with an atomic upsert, so no `todo` is left. On 2026-09-30 the first run was 96 tests, 90 pass, 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server, `/health` still OK (173 ms).
+`npm test` on 2026-10-02 after the recording-token, booking, voice, location and delivery-status work: **191 tests, 191 pass, 0 fail, 0 gap**. On 2026-10-01 it was 156 of 156, and on 2026-09-30 the first run was 96 tests with 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server. Public load test (20 people on one slot: 1 winner, 40 different slots: 40 of 40, 100 availability reads: p95 about 300 ms).
 Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual booking won 14, and every round ended with exactly one booking.
 
 ## RC — Race conditions and overlaps (`test/raceConditions.test.js`)
@@ -135,6 +138,59 @@ Real HTTP. The provider env vars are switched on so the code path runs (the send
 | DU-02 | Merge | Bookings and calls move, gaps filled, tags joined, STOP on either record survives, duplicate deleted | Pass |
 | DU-03 | Bad merges | Self 400, unknown 404, another business's customer 404 | Pass |
 | PH-01 | Platform admin hides and restores a listing | Company token 401, bad body 400, hidden flag set and shown in the company detail | Pass |
+
+## RP — Call recording playback (`test/recordingProxy.test.js`)
+A local fake "Twilio" server stands in for Twilio (it demands Basic auth and honours Range).
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| RP-01 | Recording token | Minted behind login, only for a call that has a recording, scoped to that call, at most 15 minutes | Pass |
+| RP-02 | Playing a recording | Audio streams through; Twilio is called with the account credentials the browser never sees | Pass |
+| RP-03 | Seeking | A Range request is passed on and answered 206 with the right Content-Range | Pass |
+| RP-04 | Wrong links | The login token (old `?token=` style or in the new slot), no token, a token for another call, an expired token: all 401; a token cannot reach another business's call | Pass |
+| RP-05 | Twilio not configured | 503, no crash | Pass |
+
+## BF — Booking and reminder fixes (`test/bookingFixes.test.js`)
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| BF-01 | Same idempotency key after the booking was cancelled (KG-05) | A fresh booking; the cancelled one lets go of the key; a live booking still replays | Pass |
+| BF-02 | Slot locks (KG-14) | Each lock expires a day after the booking ends, reschedule moves it, a TTL index removes it | Pass |
+| BF-03 | Backfill of old locks | Old locks get an expiry, orphans are marked for deletion, running twice does nothing | Pass |
+| BF-04 | Time off over an existing booking (KG-15) | 409 listing who is affected, nothing saved; `force: true` saves it and returns the clashes | Pass |
+| BF-05 | Time off with nothing in the way, or only a cancelled booking | Added straight away; a bad range is still 400 | Pass |
+| BF-06 | Three overlapping reminder sweeps (KG-13) | Each reminder is sent exactly once | Pass |
+| BF-07 | A reminder send fails | The claim is given back and the next sweep retries | Pass |
+
+## VR — Voice bridge (`test/voiceBridge.test.js`)
+A real WebSocket client talks to the real bridge; Gemini and the summary are fakes.
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| VR-01 | mu-law level | Silence reads 0, speech reads far above the threshold | Pass |
+| VR-02 | Dead line (only silent frames) (KG-12) | Hung up after the silence timeout, Gemini session closed, call row finished | Pass |
+| VR-03 | Line with speech | Stays open while the caller talks, closes once they stop | Pass |
+| VR-04 | The agent talking | Counts as an active line | Pass |
+| VR-05 | The server ends the call (21m, KG-10) | Transcript, duration, outcome and summary are still saved | Pass |
+| VR-06 | Restart drain (27l) | Waits for calls in progress, refuses new calls politely (`failed: restarting`), finishes when the last call ends | Pass |
+| VR-07 | Drain runs out of time | Gives up and says so | Pass |
+
+## LC, LG, SM — Locations, language, SMS link (`test/publicLocations.test.js`)
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| LC-01 | Business with two branches | Info lists both; staff list is filtered to the chosen branch (staff with no branch work at all of them) | Pass |
+| LC-02 | "Any available" at a branch | Only that branch's staff count towards availability | Pass |
+| LC-03 | Booking at a branch | A staff member from there, location stored, branch name and address returned | Pass |
+| LC-04 | Wrong staff, unknown location, another business's location | All 400 | Pass |
+| LC-05 | No location given | Works as before | Pass |
+| LG-01 | Language preference | Staff and the customer can set it; unknown values are dropped or refused | Pass |
+| SM-01 | Confirmation SMS | Carries the link to the customer's own appointments page; no link when the business has no booking link | Pass |
+
+## DS — Confirmation delivery status (`test/deliveryStatus.test.js`)
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| DS-01 | Classifying results | sent / failed / not configured, long errors cut | Pass |
+| DS-02 | No providers configured | Both channels recorded as "not configured" with the reason | Pass |
+| DS-03 | Customer gave no email | Not counted as a failure | Pass |
+| DS-04 | Opted-out customer | Recorded as opted out, no error | Pass |
+| DS-05 | Undelivered confirmations | Show up in the Exceptions queue | Pass |
 
 ## EM — Email and invites (`test/emailInvite.test.js`)
 Run against the real Express app over HTTP with no email/SMS provider configured (skips itself if a provider is configured).

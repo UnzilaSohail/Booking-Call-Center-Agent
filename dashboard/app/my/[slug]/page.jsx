@@ -139,7 +139,7 @@ function Appointment({ a, token, biz, onChanged }) {
 }
 
 function Details({ me, token, onSaved }) {
-  const [form, setForm] = useState({ name: me.name ?? '', email: me.email ?? '', smsOptIn: me.smsOptIn, emailOptIn: me.emailOptIn });
+  const [form, setForm] = useState({ name: me.name ?? '', email: me.email ?? '', smsOptIn: me.smsOptIn, emailOptIn: me.emailOptIn, language: me.language ?? '' });
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
   async function save(e) {
@@ -151,6 +151,13 @@ function Details({ me, token, onSaved }) {
     <form onSubmit={save}>
       <div className="field"><label htmlFor="n">Name</label><input id="n" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
       <div className="field"><label htmlFor="e">Email</label><input id="e" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+      <div className="field">
+        <label htmlFor="lang">Preferred language</label>
+        <select id="lang" value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })}>
+          <option value="">No preference</option>
+          {[['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['ar', 'Arabic'], ['ur', 'Urdu'], ['hi', 'Hindi']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </div>
       <label style={{ display: 'flex', gap: 8, marginBottom: 6 }}><input type="checkbox" style={{ width: 'auto' }} checked={form.smsOptIn} onChange={(e) => setForm({ ...form, smsOptIn: e.target.checked })} /> Text me confirmations and reminders</label>
       <label style={{ display: 'flex', gap: 8, marginBottom: 12 }}><input type="checkbox" style={{ width: 'auto' }} checked={form.emailOptIn} onChange={(e) => setForm({ ...form, emailOptIn: e.target.checked })} /> Email me confirmations and reminders</label>
       {msg && <p className={msg.ok ? 'success-text' : 'error-text'} role="status">{msg.text}</p>}

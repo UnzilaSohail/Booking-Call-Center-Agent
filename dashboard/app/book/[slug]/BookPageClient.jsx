@@ -32,6 +32,7 @@ export default function BookPageClient() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [location, setLocation] = useState(null); // only used when the business has more than one location
   const key = useRef(null);
 
   useEffect(() => {
@@ -42,7 +43,7 @@ export default function BookPageClient() {
 
   async function pickService(s) {
     setService(s); setSlot(null); setSlots(null); setError(null); setStaffChoice('any');
-    const list = await publicApi.staff(slug, s.id).catch(() => []);
+    const list = await publicApi.staff(slug, s.id, location?.id).catch(() => []);
     setStaff(list);
     setStep(list.length ? 1 : 2);
   }
@@ -50,7 +51,7 @@ export default function BookPageClient() {
   async function loadSlots(d = date, who = staffChoice, svc = service) {
     setSlots(null); setSlot(null);
     try {
-      setSlots((await publicApi.availability(slug, { serviceId: svc.id, date: d, staffId: who })).slots);
+      setSlots((await publicApi.availability(slug, { serviceId: svc.id, date: d, staffId: who, ...(location ? { locationId: location.id } : {}) })).slots);
     } catch (e) {
       setSlots([]); setError(e.message);
     }
@@ -63,7 +64,7 @@ export default function BookPageClient() {
     key.current ??= crypto.randomUUID();
     try {
       setResult(await publicApi.book(slug, {
-        serviceId: service.id, staffId: staffChoice, startTime: slot, name: form.name, phone: form.phone, email: form.email,
+        serviceId: service.id, staffId: staffChoice, locationId: location?.id, startTime: slot, name: form.name, phone: form.phone, email: form.email,
         consent: { sms: form.smsConsent, email: form.emailConsent }, idempotencyKey: key.current, website: form.website,
       }));
     } catch (err) {
@@ -76,7 +77,15 @@ export default function BookPageClient() {
   }
 
   const tz = biz?.timezone ?? 'UTC';
-  const where = biz && [biz.address, biz.city && !biz.address?.includes(biz.city) ? biz.city : null].filter(Boolean).join(', ');
+  // Jira 17z: a business with several locations asks WHERE first; the chosen location's name and
+  // address then replace the head-office address in the header, so the customer sees exactly where to go.
+  const multi = (biz?.locations?.length ?? 0) > 1;
+  const needLocation = multi && !location && !result;
+  const stepNo = step + 1 + (multi ? 1 : 0);
+  const stepTotal = STEPS.length + (multi ? 1 : 0);
+  const where = biz && (location
+    ? [location.name, location.address].filter(Boolean).join(': ')
+    : [biz.address, biz.city && !biz.address?.includes(biz.city) ? biz.city : null].filter(Boolean).join(', '));
   const staffName = staffChoice === 'any' ? 'Any available' : staff.find((s) => s.id === staffChoice)?.name;
   const selected = { background: 'var(--ink)', color: 'var(--ink-text)', borderColor: 'var(--ink)' };
 
@@ -97,16 +106,32 @@ export default function BookPageClient() {
               <div className="muted" style={{ fontSize: 12 }}><Link href="/find">Find a business</Link> &rsaquo; {biz.name} &middot; <Link href={`/my/${slug}`}>My appointments</Link></div>
               <h1 style={{ fontSize: 22, margin: '4px 0 2px' }}>{biz.name}</h1>
               {where && <div className="muted" style={{ fontSize: 13 }}>{where}</div>}
+              {multi && location && !result && (
+                <button type="button" className="ghost" style={{ padding: 0, fontSize: 12 }} onClick={() => { setLocation(null); setService(null); setStaff([]); setStaffChoice('any'); setSlot(null); setSlots(null); setStep(0); }}>Change location</button>
+              )}
               {biz.phone && <div className="muted" style={{ fontSize: 13 }}>{biz.phone}</div>}
             </div>
 
-            {!result && (
-              <div className="muted" style={{ fontSize: 12, marginBottom: 12 }} aria-label={`Step ${step + 1} of ${STEPS.length}`}>
-                Step {step + 1} of {STEPS.length}: <strong>{STEPS[step]}</strong>
+            {needLocation && (
+              <>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>Step 1 of {stepTotal}: <strong>Location</strong></div>
+                <div className="stack" style={{ gap: 8 }}>
+                  {biz.locations.map((l) => (
+                    <button key={l.id} type="button" onClick={() => setLocation(l)} style={{ width: '100%', padding: '12px 14px', justifyContent: 'flex-start', textAlign: 'left' }}>
+                      <span><strong>{l.name}</strong>{l.address && <span className="muted" style={{ display: 'block', fontWeight: 400 }}>{l.address}</span>}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {!result && !needLocation && (
+              <div className="muted" style={{ fontSize: 12, marginBottom: 12 }} aria-label={`Step ${stepNo} of ${stepTotal}`}>
+                Step {stepNo} of {stepTotal}: <strong>{STEPS[step]}</strong>
               </div>
             )}
 
-            {!result && step === 0 && (
+            {!result && !needLocation && step === 0 && (
               <div className="stack" style={{ gap: 8 }}>
                 {services.length === 0 && <p className="muted">This business hasn&apos;t set up its services yet. Please call them instead.</p>}
                 {services.map((s) => (
@@ -118,7 +143,7 @@ export default function BookPageClient() {
               </div>
             )}
 
-            {!result && step === 1 && (
+            {!result && !needLocation && step === 1 && (
               <>
                 <p style={{ marginTop: 0 }}>Who would you like for <strong>{service.name}</strong>?</p>
                 <div className="stack" style={{ gap: 8 }}>
@@ -132,7 +157,7 @@ export default function BookPageClient() {
               </>
             )}
 
-            {!result && step === 2 && (
+            {!result && !needLocation && step === 2 && (
               <>
                 <p style={{ marginTop: 0 }}><strong>{service.name}</strong>{staff.length > 0 && <> with {staffName}</>}</p>
                 <div className="field">
@@ -157,7 +182,7 @@ export default function BookPageClient() {
               </>
             )}
 
-            {!result && step === 3 && (
+            {!result && !needLocation && step === 3 && (
               <form onSubmit={submit}>
                 <p style={{ marginTop: 0 }}>
                   <strong>{service.name}</strong>{staff.length > 0 && <> with {staffName}</>}<br />

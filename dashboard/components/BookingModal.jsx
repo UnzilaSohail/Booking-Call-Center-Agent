@@ -86,7 +86,7 @@ export default function BookingModal({ mode, booking, initialDate, services, sta
         )}
 
         {isReschedule && (
-          <p className="muted">{booking.service_name} for {booking.customer_name} ({booking.phone})</p>
+          <p className="muted">{booking.service_name} for {booking.customer_name} ({booking.phone}){booking.reference ? ` · Ref ${booking.reference}` : ''} · Booked via {{ web: 'web', call: 'phone' }[booking.created_via] ?? 'dashboard'}</p>
         )}
 
         <div className="row">

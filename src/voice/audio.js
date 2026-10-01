@@ -27,6 +27,19 @@ function muLawEncodeSample(sample) {
   return ~(sign | (exponent << 4) | mantissa) & 0xff;
 }
 
+// Average absolute level (0..32768) of one Twilio mu-law frame, base64 as sent in media events.
+// Twilio streams a frame every 20 ms even on a dead line, so "a frame arrived" says nothing
+// about whether anyone is talking; this does (27k). ponytail: plain average level, tune
+// SPEECH_LEVEL if a quiet-speaking caller is ever cut off or a noisy line never times out.
+export const SPEECH_LEVEL = 400;
+export function mulawFrameLevel(base64Payload) {
+  const buf = Buffer.from(base64Payload ?? '', 'base64');
+  if (!buf.length) return 0;
+  let sum = 0;
+  for (let i = 0; i < buf.length; i++) sum += Math.abs(muLawDecodeByte(buf[i]));
+  return sum / buf.length;
+}
+
 // mu-law bytes -> Int16Array PCM samples (same sample rate, just codec conversion).
 export function muLawToPCM16(buffer) {
   const out = new Int16Array(buffer.length);

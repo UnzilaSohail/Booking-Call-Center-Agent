@@ -14,10 +14,22 @@ function StatusBadge({ status }) {
 // "Failed-message alerts" (ROADMAP.md §6) — src/notifications/notify.js records a send
 // failure on the booking instead of only logging it; this is where an admin actually
 // sees it, right where they already look for a given customer's booking.
+// Jira 29o: what happened to each confirmation message. Older bookings only have the error fields.
+const DELIVERY = {
+  sent: ['success', 'sent'], failed: ['danger', 'failed'], not_configured: ['warning', 'not sent'], opted_out: ['neutral', 'opted out'],
+};
 function DeliveryBadge({ booking }) {
-  const errors = [booking.confirmation_sms_error && 'SMS', booking.confirmation_email_error && 'Email'].filter(Boolean);
-  if (!errors.length) return null;
-  return <span className="badge danger" title={[booking.confirmation_sms_error, booking.confirmation_email_error].filter(Boolean).join(' / ')}>{errors.join('/')} failed</span>;
+  const channels = [['SMS', booking.confirmation_sms_status, booking.confirmation_sms_error], ['Email', booking.confirmation_email_status, booking.confirmation_email_error]]
+    .map(([name, status, error]) => [name, status ?? (error ? 'failed' : null), error])
+    .filter(([, status]) => DELIVERY[status]);
+  if (!channels.length) return null;
+  return (
+    <span className="row" style={{ gap: 4, flexWrap: 'nowrap' }}>
+      {channels.map(([name, status, error]) => (
+        <span key={name} className={`badge ${DELIVERY[status][0]}`} title={error ?? undefined}>{name} {DELIVERY[status][1]}</span>
+      ))}
+    </span>
+  );
 }
 
 function BookingsInner() {
@@ -87,7 +99,7 @@ function BookingsInner() {
         )}
         {!loading && results.length > 0 && (
           <table>
-            <thead><tr><th>When</th><th>Customer</th><th>Phone</th><th>Service</th><th>Booked via</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>When</th><th>Customer</th><th>Phone</th><th>Service</th><th>Booked via</th><th>Status</th><th>Confirmation</th></tr></thead>
             <tbody>
               {results.map((b) => (
                 <tr key={b.id} style={{ cursor: b.status === 'confirmed' ? 'pointer' : 'default' }} onClick={() => b.status === 'confirmed' && setModal({ mode: 'edit', booking: b })}>

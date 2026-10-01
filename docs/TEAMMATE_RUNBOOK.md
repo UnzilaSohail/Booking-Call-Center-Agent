@@ -26,6 +26,22 @@ npm run migrate
 pm2 restart booking-backend --update-env
 ```
 
+What `npm run migrate` now also does (safe to repeat): adds a TTL index on `booking_slot_locks.expires_at`,
+backfills that field on existing locks (old locks and orphans are cleaned up by MongoDB within a minute),
+and gives every business a booking link (`slug`) and its unique index.
+
+**Restarts and live calls (Jira 27l).** On SIGTERM/SIGINT the backend now stops taking new calls
+(callers hear "we are restarting, call back in a minute") and waits for calls in progress to finish,
+up to `DRAIN_TIMEOUT_MS` (default 10 minutes), before exiting. PM2 must be told to wait that long,
+otherwise it kills the process after 1.6 seconds and the drain never gets a chance:
+
+```
+pm2 restart booking-backend --update-env --kill-timeout 660000
+# or once, in the process config:  kill_timeout: 660000
+```
+Optional tuning (`.env`): `SILENCE_TIMEOUT_MS` (default 30000, how long a line may be silent before we hang up),
+`DRAIN_TIMEOUT_MS`.
+
 ## 3. Deploy dashboard (31e, 31f)
 
 ```
@@ -34,6 +50,7 @@ npm ci && npm run build
 pm2 restart booking-dashboard --update-env
 ```
 
+Set `NEXT_PUBLIC_SITE_URL` in `dashboard/.env.local` to the real public address (it builds the links in `sitemap.xml` and `robots.txt`; the default is localhost).
 Confirm `PUBLIC_DASHBOARD_URL` in the backend's `.env` matches the dashboard's real public
 URL (it's used to build reschedule/cancel and team-invite links sent in messages — a wrong
 value produces working-but-wrong links, not an error).

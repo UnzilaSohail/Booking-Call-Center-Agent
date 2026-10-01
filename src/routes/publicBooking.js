@@ -197,11 +197,14 @@ publicBookingRouter.get('/public/:slug/services', loadBusiness, async (req, res,
   }
 });
 
+// Staff with no location work at every location (same rule as service_ids).
+const atLocation = (staff, locationId) => !locationId || !staff.location_id || staff.location_id === locationId;
+
 publicBookingRouter.get('/public/:slug/staff', loadBusiness, async (req, res, next) => {
   try {
-    const { serviceId } = req.query;
+    const { serviceId, locationId } = req.query;
     const rows = await withTenant(req.business._id, (c) => c('staff').find({}).sort({ name: 1 }).toArray());
-    res.json(rows.filter((s) => !serviceId || offers(s, serviceId)).map((s) => ({ id: s._id, name: s.name })));
+    res.json(rows.filter((s) => (!serviceId || offers(s, serviceId)) && atLocation(s, locationId)).map((s) => ({ id: s._id, name: s.name })));
   } catch (err) {
     next(err);
   }
@@ -209,22 +212,28 @@ publicBookingRouter.get('/public/:slug/staff', loadBusiness, async (req, res, ne
 
 // The staff members a booking could go to: one named person (must do the service), or for
 // "any" every person who does it. A business with no staff at all books without one.
-async function candidatesFor(businessId, serviceId, staffId) {
+// locationId (multi-location businesses, Jira 17z) must be one of the business's own locations and
+// narrows the staff to those who work there.
+async function candidatesFor(businessId, serviceId, staffId, locationId) {
+  if (locationId && !(await withTenant(businessId, (c) => c('locations').findOne({ _id: String(locationId) })))) {
+    throw new BookingError(400, 'unknown location');
+  }
   const staff = await withTenant(businessId, (c) => c('staff').find({}).sort({ name: 1 }).toArray());
   if (staffId && staffId !== 'any') {
     const one = staff.find((s) => s._id === staffId);
     if (!one || !offers(one, serviceId)) throw new BookingError(400, 'that staff member does not offer this service');
+    if (!atLocation(one, locationId)) throw new BookingError(400, 'that staff member does not work at that location');
     return [one];
   }
-  return staff.length ? staff.filter((s) => offers(s, serviceId)) : [null];
+  return staff.length ? staff.filter((s) => offers(s, serviceId) && atLocation(s, locationId)) : [null];
 }
 
 publicBookingRouter.get('/public/:slug/availability', loadBusiness, async (req, res, next) => {
   try {
-    const { serviceId, date, staffId } = req.query;
+    const { serviceId, date, staffId, locationId } = req.query;
     if (!serviceId || !date) return res.status(400).json({ error: 'serviceId and date are required' });
     const id = req.business._id;
-    const candidates = await candidatesFor(id, serviceId, staffId);
+    const candidates = await candidatesFor(id, serviceId, staffId, locationId);
     const results = await Promise.all(candidates.map((s) => getAvailability(id, { serviceId, date, staffId: s?._id })));
     const now = Date.now();
     const slots = [...new Set(results.flatMap((r) => r.slots))].filter((s) => new Date(s).getTime() > now).sort();
@@ -266,7 +275,9 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
     if (tooMany(`phone:${b._id}:${phone}`, 5, 60 * 60_000)) return res.status(429).json({ error: 'too many bookings for this phone number, try again later' });
     if (tooMany(`cap:${b._id}`, DAILY_CAP, 24 * 60 * 60_000)) return res.status(429).json({ error: 'online booking is full for today, please call instead' });
 
-    const candidates = await candidatesFor(b._id, body.serviceId, body.staffId);
+    const locationId = body.locationId ? String(body.locationId) : undefined;
+    const candidates = await candidatesFor(b._id, body.serviceId, body.staffId, locationId);
+    const location = locationId ? await withTenant(b._id, (c) => c('locations').findOne({ _id: locationId })) : null;
     const idempotencyKey = body.idempotencyKey ? `web:${phone}:${String(body.idempotencyKey).slice(0, 100)}` : undefined;
 
     let consentDone = false;
@@ -280,11 +291,11 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
       try {
         const { booking, service } = await createBooking(b._id, {
           customerName: name, phone, customerEmail: email || null, serviceId: body.serviceId,
-          staffId: staff?._id, startTime: body.startTime, idempotencyKey, createdVia: 'web',
+          staffId: staff?._id, locationId, startTime: body.startTime, idempotencyKey, createdVia: 'web',
         });
         return res.status(201).json({
           booking: { id: booking.id, reference: booking.reference, startTime: booking.start_time, endTime: booking.end_time, serviceName: service.name, staffName: staff?.name ?? null },
-          business: { name: b.name, address: b.address ?? null, city: b.listing?.city ?? null, timezone: b.timezone, phone: b.contact_phone ?? null },
+          business: { name: b.name, address: location?.address ?? b.address ?? null, locationName: location?.name ?? null, city: b.listing?.city ?? null, timezone: b.timezone, phone: b.contact_phone ?? null },
           manageUrl: `${process.env.PUBLIC_DASHBOARD_URL || 'http://localhost:3002'}/manage/${signManageToken(b._id, booking.id, booking.start_time)}`,
         });
       } catch (err) {

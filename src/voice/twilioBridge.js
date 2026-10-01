@@ -3,7 +3,7 @@
 // socket per https://www.twilio.com/docs/voice/media-streams/websocket-messages —
 // this handler speaks that protocol directly (no Twilio server-side SDK needed for it).
 import { WebSocketServer } from 'ws';
-import { twilioPayloadToGeminiPCM, geminiPCMToTwilioPayload } from './audio.js';
+import { twilioPayloadToGeminiPCM, geminiPCMToTwilioPayload, mulawFrameLevel, SPEECH_LEVEL } from './audio.js';
 import { startGeminiSession, summarizeCall } from './geminiSession.js';
 import { transferCallToHuman, endCallWithMessage } from '../webhooks/twilio.js';
 import { getDb, withTenant, newId, serialize } from '../db.js';
@@ -14,7 +14,31 @@ import { getDb, withTenant, newId, serialize } from '../db.js';
 const MAX_CONCURRENT_CALLS = process.env.MAX_CONCURRENT_CALLS ? Number(process.env.MAX_CONCURRENT_CALLS) : null;
 let activeCalls = 0;
 
-export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream') {
+// 27l: on SIGTERM/restart, stop taking new calls and let the ones in progress finish (up to a
+// limit) instead of cutting every caller off mid-sentence. server.js calls beginDrain().
+// pm2 must be told to wait too (kill_timeout), see docs/TEAMMATE_RUNBOOK.md.
+const DRAIN_TIMEOUT_MS = Number(process.env.DRAIN_TIMEOUT_MS) || 10 * 60_000;
+let draining = false;
+export const getActiveCalls = () => activeCalls;
+export function resetDrain() { draining = false; }
+// Resolves true once no call is active, or false when timeoutMs runs out first.
+export function beginDrain(timeoutMs = DRAIN_TIMEOUT_MS) {
+  draining = true;
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const check = () => {
+      if (activeCalls === 0) { clearInterval(timer); resolve(true); return; }
+      if (Date.now() - startedAt >= timeoutMs) { clearInterval(timer); resolve(false); }
+    };
+    const timer = setInterval(check, 250);
+    check();
+  });
+}
+
+// deps lets tests swap the Gemini session and summary for fakes.
+export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream', deps = {}) {
+  const startSession = deps.startGeminiSession ?? startGeminiSession;
+  const summarize = deps.summarizeCall ?? summarizeCall;
   const wss = new WebSocketServer({ noServer: true });
 
   httpServer.on('upgrade', (req, socket, head) => {
@@ -42,17 +66,20 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
     // plan.md §6 "Dead air / silence handling": Gemini Live's own VAD handles normal
     // turn-taking, but a genuinely dead line (no media frames at all — not even comfort
     // noise) needs a call-level watchdog so we don't hold the line open indefinitely.
-    let lastMediaAt = Date.now();
-    const SILENCE_TIMEOUT_MS = 30_000;
+    // 27k: last time anyone actually spoke (caller audio above SPEECH_LEVEL, or the agent talking).
+    // It used to be refreshed by every Twilio frame, which arrive every 20 ms even on a dead
+    // line, so the silence timeout could never fire.
+    let lastActivityAt = Date.now();
+    const SILENCE_TIMEOUT_MS = Number(process.env.SILENCE_TIMEOUT_MS) || 30_000;
     const MAX_CALL_DURATION_MS = 15 * 60_000;
     const startedAt = Date.now();
     const watchdog = setInterval(() => {
       const now = Date.now();
-      if (now - lastMediaAt > SILENCE_TIMEOUT_MS || now - startedAt > MAX_CALL_DURATION_MS) {
-        console.warn(`ending call ${callSid} — ${now - lastMediaAt > SILENCE_TIMEOUT_MS ? 'silence timeout' : 'max duration reached'}`);
+      if (now - lastActivityAt > SILENCE_TIMEOUT_MS || now - startedAt > MAX_CALL_DURATION_MS) {
+        console.warn(`ending call ${callSid} — ${now - lastActivityAt > SILENCE_TIMEOUT_MS ? 'silence timeout' : 'max duration reached'}`);
         ws.close();
       }
-    }, 5_000);
+    }, Number(process.env.WATCHDOG_INTERVAL_MS) || 5_000);
     ws.on('close', () => clearInterval(watchdog));
 
     // KG-10/27e: a server-initiated close (watchdog above, Gemini ending the session,
@@ -81,14 +108,13 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
       });
       // AI call summary + caller intent (ROADMAP.md §7) — after the row above so a
       // slow/failed Gemini call never delays the outcome/duration write callers rely on.
-      const { summary, intent } = await summarizeCall(transcriptText);
+      const { summary, intent } = await summarize(transcriptText);
       if (summary || intent) {
         await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { summary, intent } }));
       }
     }
 
     ws.on('message', async (raw) => {
-      lastMediaAt = Date.now();
       let msg;
       try {
         msg = JSON.parse(raw.toString());
@@ -116,10 +142,13 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
               return;
             }
 
-            if (MAX_CONCURRENT_CALLS && activeCalls >= MAX_CONCURRENT_CALLS) {
-              console.warn(`call ${callSid} rejected — at MAX_CONCURRENT_CALLS (${MAX_CONCURRENT_CALLS})`);
-              await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: 'failed: lines_busy' } }));
-              await endCallWithMessage(callSid, "Sorry, all our lines are busy right now. Please try again in a few minutes.");
+            lastActivityAt = Date.now();
+            if (draining || (MAX_CONCURRENT_CALLS && activeCalls >= MAX_CONCURRENT_CALLS)) {
+              console.warn(`call ${callSid} rejected — ${draining ? 'server is draining for a restart' : `at MAX_CONCURRENT_CALLS (${MAX_CONCURRENT_CALLS})`}`);
+              await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: draining ? 'failed: restarting' : 'failed: lines_busy' } }));
+              await endCallWithMessage(callSid, draining
+                ? 'Sorry, we are restarting for a moment. Please call back in a minute.'
+                : 'Sorry, all our lines are busy right now. Please try again in a few minutes.');
               await finalizeCall();
               ws.close();
               return;
@@ -129,7 +158,7 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
             // model 404) must not leave the caller listening to silence until the
             // 15-minute cap — end the call gracefully and queue a callback instead.
             try {
-              gemini = await startGeminiSession({
+              gemini = await startSession({
                 business,
                 callSid,
                 isTest,
@@ -144,9 +173,10 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
                     return;
                   }
                   if (!base64Pcm24k) return;
+                  lastActivityAt = Date.now(); // the agent is talking, so the line is alive
                   ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload: geminiPCMToTwilioPayload(base64Pcm24k) } }));
                 },
-                onTranscript: (speaker, text) => transcript.push(`${speaker}: ${text}`),
+                onTranscript: (speaker, text) => { lastActivityAt = Date.now(); transcript.push(`${speaker}: ${text}`); },
                 onTransferToHuman: async (reason, transferPhoneNumber, category) => {
                   // transferCallToHuman redirects the *live* Twilio call via REST — that
                   // replaces the TwiML currently running (this Media Stream), so Twilio
@@ -213,6 +243,7 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
 
           case 'media': {
             if (!gemini) return;
+            if (mulawFrameLevel(msg.media.payload) > SPEECH_LEVEL) lastActivityAt = Date.now();
             gemini.sendCallerAudio(twilioPayloadToGeminiPCM(msg.media.payload));
             break;
           }

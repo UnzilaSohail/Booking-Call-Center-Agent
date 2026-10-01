@@ -13,7 +13,7 @@ import { sendSms, smsConfigured } from '../notifications/sms.js';
 import { sendEmail, emailConfigured } from '../notifications/email.js';
 import { signCustomerToken, requireCustomer } from '../customerAuth.js';
 import { loadBusiness } from './publicBooking.js';
-import { normalizePhone } from '../services/customerService.js';
+import { normalizePhone, LANGUAGES } from '../services/customerService.js';
 import {
   BookingError, getBusiness, getAvailability, isSlotOffered, rescheduleBooking, cancelBooking, assertWithinChangeCutoff,
 } from '../services/bookingService.js';
@@ -112,6 +112,7 @@ customerPortalRouter.use('/customer', requireCustomer, me);
 const profile = (c) => ({
   name: c.name ?? null, phone: c.phone, email: c.email ?? null,
   smsOptIn: c.consent?.smsOptIn !== false, emailOptIn: c.consent?.emailOptIn !== false,
+  language: c.preferences?.language ?? null,
 });
 
 me.get('/me', async (req, res, next) => {
@@ -127,7 +128,7 @@ me.get('/me', async (req, res, next) => {
 
 me.patch('/me', async (req, res, next) => {
   try {
-    const { name, email, smsOptIn, emailOptIn } = req.body ?? {};
+    const { name, email, smsOptIn, emailOptIn, language } = req.body ?? {};
     const set = { updated_at: new Date() };
     if (name !== undefined) {
       if (!String(name).trim() || String(name).length > 100) return res.status(400).json({ error: 'name is required' });
@@ -136,6 +137,10 @@ me.patch('/me', async (req, res, next) => {
     if (email !== undefined) {
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'email is not valid' });
       set.email = email || null;
+    }
+    if (language !== undefined) {
+      if (language && !LANGUAGES.includes(language)) return res.status(400).json({ error: `language must be one of: ${LANGUAGES.join(', ')}` });
+      set['preferences.language'] = language || null;
     }
     if (smsOptIn !== undefined) set['consent.smsOptIn'] = !!smsOptIn;
     if (emailOptIn !== undefined) set['consent.emailOptIn'] = !!emailOptIn;

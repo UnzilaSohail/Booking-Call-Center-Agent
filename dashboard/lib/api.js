@@ -154,9 +154,13 @@ export const api = {
     return request(`/api/call-logs?${new URLSearchParams(params)}`, { tokenStore: companyTokenStore });
   },
   // Twilio's own recording URL needs HTTP Basic Auth the browser can't supply (hence the
-  // login popup) — this proxies through the backend instead. Token goes in the query
-  // string, not a header, because an <audio src="..."> request can't carry custom headers.
-  callRecordingUrl: (id) => `${API_URL}/api/call-logs/${id}/recording?token=${encodeURIComponent(companyTokenStore.get() ?? '')}`,
+  // login popup) — this proxies through the backend instead. An <audio src="..."> request
+  // can't carry a header, so the URL gets a short-lived token for THIS recording only
+  // (never the login token, which would leak into logs and history).
+  callRecordingUrl: async (id) => {
+    const { token } = await request(`/api/call-logs/${id}/recording-token`, { method: 'POST', tokenStore: companyTokenStore });
+    return `${API_URL}/api/call-logs/${id}/recording?rt=${encodeURIComponent(token)}`;
+  },
 
   listCustomers: (q) => request(`/api/customers${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: companyTokenStore }),
   getCustomer: (id) => request(`/api/customers/${id}`, { tokenStore: companyTokenStore }),
@@ -195,7 +199,7 @@ export const publicApi = {
   submitLead: (payload) => request('/api/public/leads', { method: 'POST', body: payload }),
   business: (slug) => request(`/api/public/${slug}`),
   services: (slug) => request(`/api/public/${slug}/services`),
-  staff: (slug, serviceId) => request(`/api/public/${slug}/staff?${new URLSearchParams({ serviceId })}`),
+  staff: (slug, serviceId, locationId) => request(`/api/public/${slug}/staff?${new URLSearchParams({ serviceId, ...(locationId ? { locationId } : {}) })}`),
   availability: (slug, params) => request(`/api/public/${slug}/availability?${new URLSearchParams(params)}`),
   book: (slug, body) => request(`/api/public/${slug}/bookings`, { method: 'POST', body }),
 };

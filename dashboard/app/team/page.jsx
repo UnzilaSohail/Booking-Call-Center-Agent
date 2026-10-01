@@ -76,8 +76,17 @@ function StaffScheduleEditor({ staff, locations, services, onChanged }) {
     e.preventDefault();
     if (!newStart || !newEnd) return;
     setError(null);
+    const payload = { startTime: new Date(newStart).toISOString(), endTime: new Date(newEnd).toISOString(), reason: newReason || undefined };
     try {
-      await api.createStaffTimeOff(staff.id, { startTime: new Date(newStart).toISOString(), endTime: new Date(newEnd).toISOString(), reason: newReason || undefined });
+      try {
+        await api.createStaffTimeOff(staff.id, payload);
+      } catch (err) {
+        // 409 = customers already booked in that window. Show who, and only add it if confirmed.
+        if (!(err instanceof ApiError && err.status === 409) || !window.confirm(`${err.message}
+
+Add the time off anyway? Those customers will still be booked and need a call.`)) throw err;
+        await api.createStaffTimeOff(staff.id, { ...payload, force: true });
+      }
       setNewStart(''); setNewEnd(''); setNewReason('');
       toast.success('Time off added');
       loadTimeOff();

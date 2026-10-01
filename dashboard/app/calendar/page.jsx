@@ -55,7 +55,8 @@ function CalendarInner() {
           const color = colorForId(colorKeyFor(b));
           return {
             id: b.id,
-            title: `${b.service_name} — ${b.customer_name}`,
+            // 18f: where the booking came from, so a glance at the calendar tells web and phone apart.
+            title: `${b.service_name} — ${b.customer_name}${{ web: ' (web)', call: ' (phone)' }[b.created_via] ?? ''}`,
             start: b.start_time,
             end: b.end_time,
             backgroundColor: color,

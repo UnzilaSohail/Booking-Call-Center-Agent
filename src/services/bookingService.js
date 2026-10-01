@@ -201,6 +201,14 @@ function floorToGrid(date) {
 // [start, end) range is decomposed into fixed 5-minute slot documents whose _id is
 // deterministic — two concurrent bookings that touch the same slot collide on that _id,
 // and Mongo's default unique _id index lets exactly one insert win.
+// Locks only matter until the booking's time has passed. expires_at (end + 1 day) lets a TTL
+// index (db/schema.js) delete them by itself, so booking_slot_locks stops growing (KG-14).
+const LOCK_GRACE_MS = 24 * 60 * 60_000;
+function lockDocs(businessId, bookingId, staffId, startDate, endDate) {
+  const expires_at = new Date(endDate.getTime() + LOCK_GRACE_MS);
+  return slotLockIds(businessId, staffId, startDate, endDate).map((id) => ({ _id: id, business_id: businessId, booking_id: bookingId, expires_at }));
+}
+
 function slotLockIds(businessId, staffId, startDate, endDate) {
   const ids = [];
   const staffKey = staffId || 'none';
@@ -263,7 +271,10 @@ export async function createBooking(businessId, { customerName, phone, customerE
   // booking it already made instead of re-attempting to lock a slot.
   if (idempotencyKey) {
     const existing = await withTenant(businessId, (col) => col('bookings').findOne({ idempotency_key: idempotencyKey }));
-    if (existing) return { booking: serialize(existing), service, replayed: true };
+    if (existing?.status === 'confirmed') return { booking: serialize(existing), service, replayed: true };
+    // KG-05/28g: the key belongs to a booking that was cancelled since. Replaying it would hand
+    // back a cancelled booking as if it were confirmed, so release the key and book afresh.
+    if (existing) await withTenant(businessId, (col) => col('bookings').updateOne({ _id: existing._id, status: { $ne: 'confirmed' } }, { $unset: { idempotency_key: '' } }));
   }
 
   const bookingId = newId();
@@ -300,7 +311,7 @@ export async function createBooking(businessId, { customerName, phone, customerE
       // Locks inserted first: if any slot in the range is already taken, this throws
       // (duplicate key on _id) before the booking document itself is ever written.
       await db.collection('booking_slot_locks').insertMany(
-        slotLockIds(businessId, staffId, startDate, endDate).map((id) => ({ _id: id, business_id: businessId, booking_id: bookingId })),
+        lockDocs(businessId, bookingId, staffId, startDate, endDate),
         { session, ordered: true }
       );
       await db.collection('bookings').insertOne(bookingDoc, { session });
@@ -311,7 +322,7 @@ export async function createBooking(businessId, { customerName, phone, customerE
       // requests carrying the same idempotency key both passed the replay check above.
       if (idempotencyKey) {
         const existing = await withTenant(businessId, (col) => col('bookings').findOne({ idempotency_key: idempotencyKey }));
-        if (existing) return { booking: serialize(existing), service, replayed: true };
+        if (existing?.status === 'confirmed') return { booking: serialize(existing), service, replayed: true };
       }
       throw new BookingError(409, 'slot no longer available');
     }
@@ -371,7 +382,7 @@ export async function rescheduleBooking(businessId, bookingId, startTime) {
       // this same transaction) are restored by the abort, not left dangling.
       await db.collection('booking_slot_locks').deleteMany({ booking_id: bookingId }, { session });
       await db.collection('booking_slot_locks').insertMany(
-        slotLockIds(businessId, current.staff_id, startDate, endDate).map((id) => ({ _id: id, business_id: businessId, booking_id: bookingId })),
+        lockDocs(businessId, bookingId, current.staff_id, startDate, endDate),
         { session, ordered: true }
       );
       updated = await db.collection('bookings').findOneAndUpdate(

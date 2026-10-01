@@ -26,6 +26,16 @@ const OUTCOME_FILTERS = [
   { value: 'completed', label: 'No booking' },
 ];
 
+// Fetches a short-lived link for this one recording when the row is opened.
+function Recording({ id }) {
+  const [src, setSrc] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { api.callRecordingUrl(id).then(setSrc).catch(() => setFailed(true)); }, [id]);
+  if (failed) return <span className="error-text" style={{ fontSize: 12.5 }}>Recording unavailable.</span>;
+  if (!src) return <span className="muted" style={{ fontSize: 12.5 }}>Loading...</span>;
+  return <audio controls src={src} style={{ height: 32, width: '100%', maxWidth: 360 }} />;
+}
+
 function formatDuration(seconds) {
   if (seconds == null) return '—';
   const m = Math.floor(seconds / 60);
@@ -128,7 +138,7 @@ function CallsInner() {
                           {log.recording_url && (
                             <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
                               <strong style={{ fontSize: 12.5 }}>Recording</strong>
-                              <div style={{ marginTop: 4 }}><audio controls src={api.callRecordingUrl(log.id)} style={{ height: 32, width: '100%', maxWidth: 360 }} /></div>
+                              <div style={{ marginTop: 4 }}><Recording id={log.id} /></div>
                             </div>
                           )}
                           {log.voicemail && (

@@ -16,6 +16,23 @@
 //    needs the collection to exist, no extra index required.
 import { backfillSlugs } from '../src/services/slug.js';
 
+// Gives locks created before expires_at existed their expiry (booking end + 1 day). A lock whose
+// booking no longer exists is an orphan and gets an expiry in the past, so the TTL sweeps it.
+// Idempotent; returns how many locks it touched.
+export async function backfillLockExpiry(db) {
+  const rows = await db.collection('booking_slot_locks').aggregate([
+    { $match: { expires_at: { $exists: false } } },
+    { $lookup: { from: 'bookings', localField: 'booking_id', foreignField: '_id', as: 'b' } },
+    { $project: { end: { $arrayElemAt: ['$b.end_time', 0] } } },
+  ]).toArray();
+  for (let i = 0; i < rows.length; i += 1000) {
+    await db.collection('booking_slot_locks').bulkWrite(rows.slice(i, i + 1000).map((r) => ({
+      updateOne: { filter: { _id: r._id }, update: { $set: { expires_at: r.end ? new Date(r.end.getTime() + 24 * 60 * 60_000) : new Date(0) } } },
+    })));
+  }
+  return rows.length;
+}
+
 export async function ensureIndexes(db) {
   // partialFilterExpression, not `sparse` — a plain sparse index still indexes (and
   // therefore uniquely constrains) an explicit `null`, and every business starts with
@@ -67,6 +84,9 @@ export async function ensureIndexes(db) {
   // default unique index on _id, and lookups are always by business_id/booking_id via
   // an explicit filter, not a scan.
   await db.collection('booking_slot_locks').createIndex({ booking_id: 1 });
+  // Locks delete themselves a day after their booking ends (KG-14, src/services/bookingService.js).
+  await db.collection('booking_slot_locks').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
+  await backfillLockExpiry(db);
 
   await db.collection('call_logs').createIndex({ business_id: 1, created_at: 1 });
   await db.collection('call_logs').createIndex(

@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import { Router } from 'express';
 import { newId, withTenant, serialize, serializeAll, getDb } from '../db.js';
 import { requireOwner, requireArea } from '../auth.js';
@@ -80,9 +81,25 @@ teamRouter.post('/staff/:id/time-off', gate, async (req, res, next) => {
       return res.status(400).json({ error: 'startTime/endTime must be valid, with endTime after startTime' });
     }
 
+    // KG-15/28i: time off added after customers already booked that staff member. Refuse unless the
+    // caller confirms (force:true), and list who is affected so someone can ring them.
+    const clashes = await withTenant(req.businessId, (c) => c('bookings').find({
+      staff_id: req.params.id, status: 'confirmed', is_test: { $ne: true }, start_time: { $lt: end }, end_time: { $gt: start },
+    }).sort({ start_time: 1 }).toArray());
+    const clashList = clashes.map((b) => ({ id: b._id, customerName: b.customer_name, phone: b.phone, startTime: b.start_time }));
+    if (clashes.length && req.body?.force !== true) {
+      const db = await getDb();
+      const { timezone } = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { timezone: 1 } });
+      const list = clashes.slice(0, 5).map((b) => `${b.customer_name} ${DateTime.fromJSDate(b.start_time).setZone(timezone).toFormat('ccc d LLL h:mm a')}`).join(', ');
+      return res.status(409).json({
+        error: `${clashes.length} confirmed booking${clashes.length > 1 ? 's' : ''} overlap this time off (${list}${clashes.length > 5 ? ', ...' : ''}).`,
+        conflicts: clashList,
+      });
+    }
+
     const doc = { _id: newId(), business_id: req.businessId, staff_id: req.params.id, start_time: start, end_time: end, reason: reason || null, created_at: new Date() };
     await withTenant(req.businessId, (c) => c('staff_time_off').insertOne(doc));
-    res.status(201).json(serialize(doc));
+    res.status(201).json({ ...serialize(doc), conflicts: clashList });
   } catch (err) {
     next(err);
   }
