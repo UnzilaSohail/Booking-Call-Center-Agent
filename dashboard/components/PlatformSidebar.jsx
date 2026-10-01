@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Activity, Building2, CalendarClock, LayoutDashboard, LogOut, Settings as SettingsIcon } from 'lucide-react';
+import { Activity, Building2, CalendarClock, Inbox, LayoutDashboard, LogOut, Settings as SettingsIcon } from 'lucide-react';
 import Avatar from './Avatar';
 import { platformApi } from '../lib/api';
 
@@ -10,6 +10,7 @@ const LINKS = [
   { href: '/platform', label: 'Overview', icon: LayoutDashboard },
   { href: '/platform/bookings', label: 'Bookings', icon: CalendarClock },
   { href: '/platform/companies', label: 'Companies', icon: Building2 },
+  { href: '/platform/leads', label: 'Leads', icon: Inbox },
   { href: '/platform/activity', label: 'Agent activity', icon: Activity },
   { href: '/platform/settings', label: 'Settings', icon: SettingsIcon },
 ];

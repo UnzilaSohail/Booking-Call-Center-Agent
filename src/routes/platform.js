@@ -266,6 +266,18 @@ platformRouter.get('/call-logs', async (req, res, next) => {
   }
 });
 
+// Jira 16z — leads from the directory's "Tell us what you need" form (no business
+// matched them, so these live platform-wide, not under any one tenant).
+platformRouter.get('/leads', async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const rows = await db.collection('leads').find({}).sort({ created_at: -1 }).limit(500).toArray();
+    res.json(rows.map((l) => ({ id: l._id, name: l.name, contact: l.contact, need: l.need, city: l.city, status: l.status, createdAt: l.created_at })));
+  } catch (err) {
+    next(err);
+  }
+});
+
 platformRouter.get('/stats', async (req, res, next) => {
   try {
     const db = await getDb();

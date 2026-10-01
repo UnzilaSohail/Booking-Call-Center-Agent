@@ -4,10 +4,11 @@
 // they picked. Unknown / suspended / deleted / page-off all answer the same 404.
 import { Router } from 'express';
 import { DateTime } from 'luxon';
-import { getDb, withTenant } from '../db.js';
+import { getDb, withTenant, newId } from '../db.js';
 import { tooMany } from '../rateLimit.js';
 import { signManageToken } from '../customerLink.js';
 import { isListingEligible } from '../services/listingService.js';
+import { distanceKm } from '../services/geocoding.js';
 import { BookingError, getAvailability, isSlotOffered, createBooking } from '../services/bookingService.js';
 import { normalizePhone, recordWebConsent } from '../services/customerService.js';
 
@@ -48,7 +49,7 @@ async function liveBusinesses(filter = {}) {
     .filter(({ business, services: svc }) => isListingEligible(business, { serviceCount: svc.length }));
 }
 
-const card = ({ business: b, services }) => ({
+const card = ({ business: b, services }, near) => ({
   slug: b.slug,
   name: b.name,
   categories: b.listing?.categories ?? [],
@@ -58,12 +59,19 @@ const card = ({ business: b, services }) => ({
   phone: b.contact_phone ?? null,
   description: b.listing?.description ?? null,
   services: services.slice(0, 3).map((s) => ({ name: s.name, price: s.price ?? null })),
+  // Jira 16x "near me" — null when either side has no coordinates (the visitor declined
+  // geolocation, or this business was never geocoded), not 0, so the UI can tell
+  // "unknown distance" apart from "you're standing on top of it."
+  distanceKm: near && b.listing?.lat != null ? distanceKm(near, { lat: b.listing.lat, lng: b.listing.lng }) : null,
 });
 
 publicBookingRouter.get('/public/directory', async (req, res, next) => {
   try {
     const { q, category, city } = req.query;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    const near = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
     const filter = {};
     if (category) filter['listing.categories'] = String(category);
     if (city) filter['listing.city'] = { $regex: `^${escapeRegex(String(city).trim())}$`, $options: 'i' };
@@ -73,8 +81,46 @@ publicBookingRouter.get('/public/directory', async (req, res, next) => {
       const re = new RegExp(escapeRegex(String(q).trim()), 'i');
       rows = rows.filter(({ business, services }) => re.test(business.name) || services.some((s) => re.test(s.name)));
     }
+    if (near) {
+      // Businesses with no coordinates yet sort to the end (Infinity), not dropped — a
+      // "near me" search still shouldn't hide a business that just hasn't been geocoded.
+      rows = [...rows].sort((a, b) => {
+        const da = a.business.listing?.lat != null ? distanceKm(near, { lat: a.business.listing.lat, lng: a.business.listing.lng }) : Infinity;
+        const db_ = b.business.listing?.lat != null ? distanceKm(near, { lat: b.business.listing.lat, lng: b.business.listing.lng }) : Infinity;
+        return da - db_;
+      });
+    }
     const slice = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-    res.json({ results: slice.map(card), total: rows.length, page, pageSize: PAGE_SIZE });
+    res.json({ results: slice.map((r) => card(r, near)), total: rows.length, page, pageSize: PAGE_SIZE });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---- leads ("tell us what you need") -----------------------------------------------------
+// Jira 16z — a visitor who searched the directory and didn't find a match can leave their
+// contact details instead of just bouncing. Platform-wide (no business_id — nobody's been
+// matched to a business yet); reviewed by a platform admin (GET /api/platform/leads).
+publicBookingRouter.post('/public/leads', async (req, res, next) => {
+  try {
+    const body = req.body ?? {};
+    // Honeypot, same pattern/field name as the booking form above.
+    if (body.website) return res.status(201).json({ ok: true });
+    if (tooMany(`lead:${req.ip}`, 5, 10 * 60_000)) return res.status(429).json({ error: 'too many requests, try again later' });
+
+    const name = String(body.name ?? '').trim();
+    const contact = String(body.contact ?? '').trim();
+    const need = String(body.need ?? '').trim();
+    if (!name || name.length > 100) return res.status(400).json({ error: 'name is required' });
+    if (!contact || contact.length > 150) return res.status(400).json({ error: 'a phone number or email is required' });
+    if (!need || need.length > 1000) return res.status(400).json({ error: 'tell us briefly what you need' });
+
+    const db = await getDb();
+    await db.collection('leads').insertOne({
+      _id: newId(), name, contact, need, city: String(body.city ?? '').trim() || null,
+      status: 'open', created_at: new Date(),
+    });
+    res.status(201).json({ ok: true });
   } catch (err) {
     next(err);
   }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getDb, withTenant, serializeAll } from '../db.js';
 import { requireArea, requireOwner } from '../auth.js';
 import { isListingEligible, LISTING_CATEGORIES } from '../services/listingService.js';
+import { geocode } from '../services/geocoding.js';
 import { validateSlug } from '../services/slug.js';
 
 export const settingsRouter = Router();
@@ -259,6 +260,21 @@ settingsRouter.put('/business/listing', gate, async (req, res, next) => {
     if (country !== undefined) updates['listing.country'] = country || null;
     if (description !== undefined) updates['listing.description'] = description || null;
     if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'nothing to update' });
+
+    // Jira 16x "near me": re-geocode once here, not per search, whenever the location
+    // actually changes — a failed/slow geocode must never block saving the rest of the
+    // listing, so this only ever adds lat/lng on success and is skipped entirely otherwise.
+    if (city !== undefined || region !== undefined || country !== undefined) {
+      const parts = [city, region, country].filter(Boolean);
+      const point = parts.length ? await geocode(parts.join(', ')) : null;
+      if (point) {
+        updates['listing.lat'] = point.lat;
+        updates['listing.lng'] = point.lng;
+      } else {
+        updates['listing.lat'] = null;
+        updates['listing.lng'] = null;
+      }
+    }
 
     const db = await getDb();
     try {

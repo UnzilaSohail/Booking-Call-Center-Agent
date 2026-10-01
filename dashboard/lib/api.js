@@ -191,6 +191,8 @@ export const publicApi = {
   directory: (params) => request(`/api/public/directory?${new URLSearchParams(params)}`),
   categories: () => request('/api/public/directory/categories'),
   cities: () => request('/api/public/directory/cities'),
+  // Jira 16z "Tell us what you need" — a directory visitor who doesn't find a match.
+  submitLead: (payload) => request('/api/public/leads', { method: 'POST', body: payload }),
   business: (slug) => request(`/api/public/${slug}`),
   services: (slug) => request(`/api/public/${slug}/services`),
   staff: (slug, serviceId) => request(`/api/public/${slug}/staff?${new URLSearchParams({ serviceId })}`),
@@ -242,6 +244,7 @@ export const platformApi = {
   getAnalytics: () => request('/api/platform/analytics', { tokenStore: platformTokenStore }),
   listBookings: (q, status) => request(`/api/platform/bookings?${new URLSearchParams({ ...(q ? { q } : {}), ...(status ? { status } : {}) })}`, { tokenStore: platformTokenStore }),
   listCallLogs: () => request('/api/platform/call-logs', { tokenStore: platformTokenStore }),
+  listLeads: () => request('/api/platform/leads', { tokenStore: platformTokenStore }),
   getCompanyBilling: (id) => request(`/api/platform/businesses/${id}/billing`, { tokenStore: platformTokenStore }),
 };
 
