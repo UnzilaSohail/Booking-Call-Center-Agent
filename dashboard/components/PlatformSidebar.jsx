@@ -15,7 +15,7 @@ const LINKS = [
   { href: '/platform/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
-export default function PlatformSidebar() {
+export default function PlatformSidebar({ open = false, onNavigate }) {
   const pathname = usePathname();
   const router = useRouter();
   const [email, setEmail] = useState(null);
@@ -28,7 +28,7 @@ export default function PlatformSidebar() {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${open ? ' open' : ''}`} aria-label="Main menu">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 8px 22px' }}>
         <div style={{
           width: 32, height: 32, borderRadius: 9, flexShrink: 0,
@@ -46,7 +46,7 @@ export default function PlatformSidebar() {
       </div>
       <nav className="stack" style={{ gap: 2, flex: 1 }}>
         {LINKS.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={`sidebar-link${pathname === href ? ' active' : ''}`}>
+          <Link key={href} href={href} onClick={onNavigate} className={`sidebar-link${pathname === href ? ' active' : ''}`}>
             <Icon size={16} />
             {label}
           </Link>

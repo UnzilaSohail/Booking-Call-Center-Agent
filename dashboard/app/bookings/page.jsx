@@ -6,6 +6,7 @@ import BookingModal from '../../components/BookingModal';
 import { api } from '../../lib/api';
 import { DateTime } from '../../lib/datetime';
 import { useToast } from '../../lib/Toast';
+import EmptyState from '../../components/EmptyState';
 
 function StatusBadge({ status }) {
   return <span className={`badge ${status === 'confirmed' ? 'success' : 'neutral'}`}>{status}</span>;
@@ -92,10 +93,9 @@ function BookingsInner() {
         {error && <p className="error-text">{error}</p>}
         {loading && <p className="muted">Searching...</p>}
         {!loading && results.length === 0 && (
-          <div className="empty-state">
-            <Search size={28} color="var(--text-faint)" />
-            <p>No bookings match.</p>
-          </div>
+          <EmptyState icon={Search} action={{ label: 'Create a booking', onClick: () => setModal({ mode: 'create' }) }}>
+            No bookings match. Try another search, or add one by hand.
+          </EmptyState>
         )}
         {!loading && results.length > 0 && (
           <table>

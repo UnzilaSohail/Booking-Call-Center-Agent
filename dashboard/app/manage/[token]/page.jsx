@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { myBookingApi, ApiError } from '../../../lib/api';
 import { DateTime } from '../../../lib/datetime';
+import Loading from '../../../components/Skeleton';
 
 // Public, token-authenticated self-service page (ROADMAP.md §6 "Reschedule link"/
 // "Cancellation link") — reached from the link in a confirmation/reminder SMS or email
@@ -65,7 +66,7 @@ function ManageInner() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', padding: '24px 0' }}>
+    <main id="main-content" tabIndex={-1} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', padding: '24px 0' }}>
       <div className="card" style={{ width: 440 }}>
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600 }}>Manage your appointment</div>
@@ -73,7 +74,7 @@ function ManageInner() {
 
         {error && <p className="error-text">This link has expired or is invalid. Please contact the business directly to make changes.</p>}
 
-        {!error && !data && <p className="muted">Loading...</p>}
+        {!error && !data && <Loading />}
 
         {!error && data && (
           <>
@@ -104,7 +105,7 @@ function ManageInner() {
                 </div>
                 <div className="field">
                   <label>Available times</label>
-                  {loadingSlots && <p className="muted">Loading...</p>}
+                  {loadingSlots && <Loading />}
                   {!loadingSlots && slots.length === 0 && <p className="muted">No open slots this day.</p>}
                   <div className="row">
                     {slots.map((slot) => (
@@ -140,7 +141,7 @@ function ManageInner() {
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }
 

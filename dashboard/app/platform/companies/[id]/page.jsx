@@ -5,6 +5,7 @@ import { ArrowLeft, Ban, CheckCircle2, KeyRound, Trash2 } from 'lucide-react';
 import RequirePlatformAuth from '../../../../components/RequirePlatformAuth';
 import { platformApi, ApiError } from '../../../../lib/api';
 import { useToast } from '../../../../lib/Toast';
+import Loading from '../../../../components/Skeleton';
 
 function ResetPasswordRow({ admin }) {
   const toast = useToast();
@@ -61,7 +62,7 @@ function BillingSection({ id }) {
   }, [id]);
 
   if (error) return <div className="card"><h2>Billing</h2><p className="error-text">{error}</p></div>;
-  if (!billing) return <div className="card"><h2>Billing</h2><p className="muted">Loading...</p></div>;
+  if (!billing) return <div className="card"><h2>Billing</h2><Loading /></div>;
 
   return (
     <div className="card">
@@ -177,7 +178,7 @@ function CompanyDetailInner() {
   }
 
   if (error) return <p className="error-text">{error}</p>;
-  if (!company) return <p className="muted">Loading...</p>;
+  if (!company) return <Loading />;
 
   return (
     <div className="stack">

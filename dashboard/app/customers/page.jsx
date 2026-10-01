@@ -5,6 +5,8 @@ import { Contact, Download, Upload } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
+import Loading from '../../components/Skeleton';
+import EmptyState from '../../components/EmptyState';
 
 function downloadText(filename, text) {
   const blob = new Blob([text], { type: 'text/csv' });
@@ -88,13 +90,12 @@ function CustomersInner() {
       </form>
 
       <div className="card">
-        {loading && <p className="muted">Loading...</p>}
+        {loading && <Loading />}
         {error && <p className="error-text">{error}</p>}
         {!loading && !error && customers.length === 0 && (
-          <div className="empty-state">
-            <Contact size={28} color="var(--text-faint)" />
-            <p>No customers yet — they show up automatically once someone books or calls.</p>
-          </div>
+          <EmptyState icon={Contact} action={{ label: 'Import a customer list (CSV)', onClick: () => fileInputRef.current?.click() }}>
+            No customers yet. They appear automatically when someone books or calls, or you can import a list you already have.
+          </EmptyState>
         )}
         {!loading && customers.length > 0 && (
           <table>

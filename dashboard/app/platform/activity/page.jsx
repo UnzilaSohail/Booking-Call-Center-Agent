@@ -4,6 +4,7 @@ import { Phone } from 'lucide-react';
 import RequirePlatformAuth from '../../../components/RequirePlatformAuth';
 import { platformApi } from '../../../lib/api';
 import { DateTime } from '../../../lib/datetime';
+import Loading from '../../../components/Skeleton';
 
 function OutcomeBadge({ log }) {
   if (log.booking) return <span className="badge success">Booked</span>;
@@ -34,7 +35,7 @@ function ActivityInner() {
       </div>
 
       <div className="card">
-        {loading && <p className="muted">Loading...</p>}
+        {loading && <Loading />}
         {error && <p className="error-text">{error}</p>}
         {!loading && !error && logs.length === 0 && (
           <div className="empty-state">

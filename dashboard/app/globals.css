@@ -19,7 +19,7 @@
   --border-strong: #a9b8bd;
   --text: #16324a;
   --text-muted: #4d5c66;
-  --text-faint: #85949c;
+  --text-faint: #55646d; /* was #85949c (3:1 on white); now passes WCAG AA, see test/contrast.test.js */
 
   --ink: #17344a;
   --ink-hover: #234a63;
@@ -39,6 +39,14 @@
   --info-soft: #cffafe;
   --violet: #7c3aed;
   --violet-soft: #ede9fe;
+  /* Darker text shades for use ON the soft backgrounds above, and strong fills for white text (WCAG AA). */
+  --success-text: #166534;
+  --warning-text: #92400e;
+  --danger-text: #b91c1c;
+  --info-text: #155e75;
+  --violet-text: #5b21b6;
+  --success-strong: #15803d;
+  --warning-strong: #b45309;
 
   --radius-sm: 5px;
   --radius: 8px;
@@ -158,8 +166,8 @@ input:disabled, select:disabled { background: var(--surface-alt); color: var(--t
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .stack { display: flex; flex-direction: column; gap: 18px; }
 
-.error-text { color: var(--danger); font-size: 13px; }
-.success-text { color: var(--success); font-size: 13px; }
+.error-text { color: var(--danger-text); font-size: 13px; }
+.success-text { color: var(--success-text); font-size: 13px; }
 .muted { color: var(--text-muted); }
 .faint { color: var(--text-faint); }
 
@@ -173,11 +181,11 @@ input:disabled, select:disabled { background: var(--surface-alt); color: var(--t
   font-size: 11.5px;
   font-weight: 600;
 }
-.badge.success { background: var(--success-soft); color: var(--success); }
-.badge.warning { background: var(--warning-soft); color: var(--warning); }
-.badge.danger { background: var(--danger-soft); color: var(--danger); }
-.badge.info { background: var(--info-soft); color: var(--info); }
-.badge.violet { background: var(--violet-soft); color: var(--violet); }
+.badge.success { background: var(--success-soft); color: var(--success-text); }
+.badge.warning { background: var(--warning-soft); color: var(--warning-text); }
+.badge.danger { background: var(--danger-soft); color: var(--danger-text); }
+.badge.info { background: var(--info-soft); color: var(--info-text); }
+.badge.violet { background: var(--violet-soft); color: var(--violet-text); }
 .badge.neutral { background: var(--surface-alt); color: var(--text-muted); }
 
 /* ---- Modal ---- */
@@ -327,9 +335,9 @@ tbody tr:hover { background: var(--surface-alt); }
   box-shadow: var(--shadow-lg);
   display: flex; align-items: center; gap: 8px;
 }
-.toast.success { background: var(--success); }
+.toast.success { background: var(--success-strong); }
 .toast.error { background: var(--danger); }
-.toast.warning { background: var(--warning); }
+.toast.warning { background: var(--warning-strong); }
 
 /* ---- Callout: an inline notice that stays until dismissed (unlike a toast) ---- */
 .callout {
@@ -352,8 +360,6 @@ tbody tr:hover { background: var(--surface-alt); }
 
 @media (max-width: 860px) {
   .app-shell { flex-direction: column; }
-  .sidebar { width: 100%; height: auto; position: static; flex-direction: row; overflow-x: auto; padding: 10px; }
-  .sidebar-brand { display: none; }
   .page { padding: 18px 14px 40px; }
   .stat-strip { flex-direction: column; }
   .stat-strip .stat { border-right: none; border-bottom: 1px solid var(--border); }
@@ -390,3 +396,116 @@ tbody tr:hover { background: var(--surface-alt); }
   row-gap: 10px;
 }
 .fc .fc-toolbar-chunk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* ============================================================================================
+   GUI plan (Jira 24-26): skeletons, skip link, tabs, tooltips, hints, mobile menu, stepper
+   ============================================================================================ */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* Skip link (25f): first thing a keyboard user reaches; jumps past the sidebar. */
+.skip-link {
+  position: absolute; left: 8px; top: -56px; z-index: 200;
+  background: var(--ink); color: var(--ink-text); padding: 9px 14px;
+  border-radius: var(--radius-sm); font-weight: 600;
+}
+.skip-link:focus { top: 8px; text-decoration: none; }
+
+/* Skeleton loaders (24d) */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-alt) 25%, #f4f8f9 50%, var(--surface-alt) 75%);
+  background-size: 200% 100%; border-radius: 6px; animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+  * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+}
+
+/* Focus rings everywhere (25f) */
+textarea:focus-visible, [role="tab"]:focus-visible, summary:focus-visible, .infotip-btn:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.sidebar a:focus-visible, .sidebar button:focus-visible, .mobile-bar button:focus-visible { outline-color: #ffffff; }
+input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--danger); }
+
+/* Wide tables scroll inside their card instead of breaking the page (25h) */
+.card:has(table), .modal:has(table) { overflow-x: auto; }
+
+/* Tabs (25a) */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tab {
+  border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent;
+  padding: 10px 14px; color: var(--text-muted); font-weight: 600; white-space: nowrap;
+}
+.tab:hover { background: var(--surface-alt); }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--ink); }
+
+/* Tooltips (25c) */
+.infotip { position: relative; display: inline-flex; vertical-align: middle; margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.infotip-btn {
+  width: 18px; height: 18px; padding: 0; justify-content: center; border-radius: 999px;
+  font-size: 11px; line-height: 1; color: var(--text-muted); border-color: var(--border-strong);
+}
+.infotip-pop {
+  position: absolute; z-index: 70; left: 50%; top: calc(100% + 6px); transform: translateX(-50%);
+  width: 260px; background: var(--ink); color: var(--ink-text); padding: 9px 11px;
+  border-radius: var(--radius-sm); font-size: 12.5px; font-weight: 400; line-height: 1.45;
+  text-align: left; box-shadow: var(--shadow-lg);
+}
+@media (max-width: 520px) { .infotip-pop { left: auto; right: -8px; transform: none; } }
+
+/* Inline hints and validation messages (24g) */
+.hint { font-size: 12px; color: var(--text-muted); }
+.field-error { font-size: 12px; color: var(--danger-text); }
+
+/* Mobile menu (25j): the sidebar slides in from the left behind a top bar */
+.mobile-bar, .sidebar-backdrop { display: none; }
+@media (max-width: 860px) {
+  .mobile-bar {
+    display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 40;
+    background: var(--swatch-1); color: #f5f7f8; padding: 8px 12px;
+  }
+  .mobile-bar button { background: transparent; color: #f5f7f8; border-color: rgba(245, 248, 247, 0.35); }
+  .mobile-bar button:hover { background: rgba(245, 248, 247, 0.12); }
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; height: 100dvh; width: 272px; z-index: 60;
+    transform: translateX(-100%); visibility: hidden; overflow-y: auto;
+    transition: transform 0.2s ease, visibility 0s linear 0.2s;
+  }
+  .sidebar.open { transform: translateX(0); visibility: visible; transition: transform 0.2s ease; }
+  .sidebar-backdrop.open { display: block; position: fixed; inset: 0; background: rgba(10, 22, 33, 0.5); z-index: 55; }
+}
+
+/* Forms stack on phones (25i) */
+@media (max-width: 640px) {
+  .row > .field { flex: 1 1 100% !important; min-width: 0; }
+  .modal { padding: 18px; }
+  input, select, textarea, button { min-height: 40px; }
+  .tab { padding: 10px 12px; }
+}
+
+/* Customer pages: step bar and big tap targets (26c/26d) */
+.stepper { display: flex; gap: 6px; margin: 4px 0 10px; }
+.stepper .dot { flex: 1; height: 4px; border-radius: 999px; background: var(--border); }
+.stepper .dot.done { background: var(--ink); }
+.stepper .dot.current { background: var(--accent); }
+button.choice { width: 100%; min-height: 48px; padding: 12px 14px; justify-content: space-between; text-align: left; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.chip { background: var(--surface-alt); border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--text-muted); }
+.success-mark {
+  width: 48px; height: 48px; border-radius: 999px; background: var(--success-soft); color: var(--success-text);
+  display: flex; align-items: center; justify-content: center; margin-bottom: 8px;
+}
+.ref-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 22px; font-weight: 700;
+  letter-spacing: 0.12em; background: var(--surface-alt); border-radius: var(--radius); padding: 8px 14px; display: inline-block;
+}
+.hero { padding: 6px 0 14px; }
+.hero h1 { font-size: 28px; line-height: 1.15; }
+
+/* Setup progress on Overview (26a) and the sidebar badge */
+.setup-card { display: flex; flex-direction: column; gap: 10px; border-left: 4px solid var(--accent); }
+.sidebar-link .count { margin-left: auto; font-size: 11px; font-weight: 700; background: rgba(245, 248, 247, 0.16); color: #f5f7f8; border-radius: 999px; padding: 1px 8px; }

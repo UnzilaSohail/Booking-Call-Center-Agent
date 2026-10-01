@@ -3,6 +3,10 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { customerApi, publicApi, ApiError } from '../../../lib/api';
+import Loading from '../../../components/Skeleton';
+import { useConfirm } from '../../../lib/confirm';
+import TextField from '../../../components/TextField';
+import { validateName, validateEmail } from '../../../lib/validate';
 
 // Customer portal "My appointments" (docs/customer/PORTAL_SPEC.md). This is the customer's
 // door, separate from the company /login: no password, just a code sent to their own phone or
@@ -111,7 +115,7 @@ function Appointment({ a, token, biz, onChanged }) {
       {mode === 'reschedule' && (
         <div style={{ marginTop: 12 }}>
           <div className="field"><label htmlFor={`d-${a.id}`}>New date</label><input id={`d-${a.id}`} type="date" min={todayIn(a.timezone)} value={date} onChange={(e) => setDate(e.target.value)} /></div>
-          {slots === null && <p className="muted">Loading...</p>}
+          {slots === null && <Loading />}
           {slots?.length === 0 && <p className="muted">Nothing open this day.</p>}
           <div className="row" style={{ gap: 8, marginBottom: 12 }}>
             {slots?.map((s) => <button key={s} type="button" style={slot === s ? selected : undefined} onClick={() => setSlot(s)}>{timeOf(s, a.timezone)}</button>)}
@@ -149,8 +153,8 @@ function Details({ me, token, onSaved }) {
   }
   return (
     <form onSubmit={save}>
-      <div className="field"><label htmlFor="n">Name</label><input id="n" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-      <div className="field"><label htmlFor="e">Email</label><input id="e" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+      <TextField label="Name" required value={form.name} onChange={(v) => setForm({ ...form, name: v })} validate={validateName} />
+      <TextField label="Email" optional type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} validate={validateEmail} />
       <div className="field">
         <label htmlFor="lang">Preferred language</label>
         <select id="lang" value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })}>
@@ -167,6 +171,7 @@ function Details({ me, token, onSaved }) {
 }
 
 function Account({ slug, token, me, onSignOut, reload }) {
+  const confirm = useConfirm();
   const [list, setList] = useState(null);
   const [note, setNote] = useState(null);
   const load = () => customerApi.appointments(token).then(setList).catch((e) => { if (e instanceof ApiError && e.status === 401) onSignOut(); });
@@ -180,7 +185,7 @@ function Account({ slug, token, me, onSignOut, reload }) {
     a.click();
   }
   async function requestDeletion() {
-    if (!window.confirm(`Ask ${me.business.name} to delete your data?`)) return;
+    if (!(await confirm({ title: 'Delete my data?', message: `Ask ${me.business.name} to delete your data? They will follow up with you.`, confirmLabel: 'Send request', danger: true }))) return;
     try { setNote((await customerApi.requestDeletion(token)).message); } catch (err) { setNote(err.message); }
   }
 
@@ -192,7 +197,7 @@ function Account({ slug, token, me, onSignOut, reload }) {
       </div>
 
       <h3 style={{ fontSize: 15 }}>Upcoming</h3>
-      {!list && <p className="muted">Loading...</p>}
+      {!list && <Loading />}
       {list?.upcoming.length === 0 && <p className="muted">No upcoming appointments. <Link href={`/book/${slug}`}>Book one</Link></p>}
       <div className="stack" style={{ gap: 10 }}>{list?.upcoming.map((a) => <Appointment key={a.id} a={a} token={token} biz={me.business} onChanged={load} />)}</div>
       {list?.upcoming.length > 0 && <p style={{ marginTop: 12 }}><Link href={`/book/${slug}`}>Book another appointment</Link></p>}
@@ -233,7 +238,7 @@ export default function MyPage() {
   const signOut = () => { writeToken(slug, null); setToken(null); setMe(null); };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px 16px' }}>
+    <main id="main-content" tabIndex={-1} style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px 16px' }}>
       <div className="card" style={{ maxWidth: 520, margin: '0 auto' }}>
         {missing && <><h1 style={{ fontSize: 20 }}>We couldn&apos;t find that business</h1><p className="muted"><Link href="/find">Find a business</Link></p></>}
         {biz && (
@@ -243,11 +248,11 @@ export default function MyPage() {
             <div className="muted" style={{ fontSize: 13 }}>{[biz.address, biz.city && !biz.address?.includes(biz.city) ? biz.city : null].filter(Boolean).join(', ')}</div>
           </div>
         )}
-        {biz && token === undefined && <p className="muted">Loading...</p>}
+        {biz && token === undefined && <Loading />}
         {biz && token === null && <SignIn slug={slug} biz={biz} onToken={(t) => { writeToken(slug, t); setToken(t); }} />}
-        {biz && token && !me && <p className="muted">Loading...</p>}
+        {biz && token && !me && <Loading />}
         {biz && token && me && <Account slug={slug} token={token} me={me} onSignOut={signOut} reload={() => loadMe(token)} />}
       </div>
-    </div>
+    </main>
   );
 }

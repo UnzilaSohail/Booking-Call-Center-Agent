@@ -13,6 +13,7 @@ import RequirePlatformAuth from '../../components/RequirePlatformAuth';
 import Avatar from '../../components/Avatar';
 import { platformApi } from '../../lib/api';
 import { DateTime } from '../../lib/datetime';
+import Loading from '../../components/Skeleton';
 
 const ACCENT = '#2563eb';
 const ACCENT_SOFT = '#dbeafe';
@@ -76,7 +77,7 @@ function ChartCard({ title, subtitle, action, children, empty }) {
         </div>
         {action}
       </div>
-      {empty ? <div className="empty-state" style={{ padding: '28px 20px' }}><p>{empty}</p></div> : children}
+      {empty === 'Loading...' ? <Loading lines={4} style={{ padding: '12px 4px' }} /> : empty ? <div className="empty-state" style={{ padding: '28px 20px' }}><p>{empty}</p></div> : children}
     </div>
   );
 }

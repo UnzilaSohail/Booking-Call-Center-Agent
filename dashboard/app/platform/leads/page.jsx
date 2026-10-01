@@ -4,6 +4,7 @@ import { Inbox } from 'lucide-react';
 import RequirePlatformAuth from '../../../components/RequirePlatformAuth';
 import { platformApi } from '../../../lib/api';
 import { DateTime } from '../../../lib/datetime';
+import Loading from '../../../components/Skeleton';
 
 // Jira 16z — leads from the directory's "Tell us what you need" form (src/routes/
 // publicBooking.js POST /public/leads). Platform-wide since no business matched them yet.
@@ -25,7 +26,7 @@ function LeadsInner() {
 
       <div className="card">
         {error && <p className="error-text">{error}</p>}
-        {loading && <p className="muted">Loading...</p>}
+        {loading && <Loading />}
         {!loading && leads.length === 0 && (
           <div className="empty-state">
             <Inbox size={28} color="var(--text-faint)" />

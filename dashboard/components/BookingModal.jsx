@@ -2,6 +2,10 @@
 import { useEffect, useState } from 'react';
 import { DateTime } from '../lib/datetime';
 import { api } from '../lib/api';
+import Loading from './Skeleton';
+import Modal from './Modal';
+import TextField from './TextField';
+import { validateName, validatePhone, validateEmail } from '../lib/validate';
 
 // Handles both "new booking" and "existing booking" flows through the same slot-picking
 // UX the plan requires for calls too (plan.md §5 step 6: read back/confirm before
@@ -19,6 +23,7 @@ export default function BookingModal({ mode, booking, initialDate, services, sta
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [showErrors, setShowErrors] = useState(false);
 
   const isReschedule = mode === 'edit';
 
@@ -36,7 +41,11 @@ export default function BookingModal({ mode, booking, initialDate, services, sta
     setSaving(true);
     setError(null);
     try {
-      if (!selectedSlot) throw new Error('pick a time slot first');
+      if (!isReschedule && (validateName(customerName) || validatePhone(phone) || validateEmail(customerEmail))) {
+        setShowErrors(true);
+        throw new Error('Please fix the highlighted fields.');
+      }
+      if (!selectedSlot) throw new Error('Pick a time first.');
       if (isReschedule) {
         await api.rescheduleBooking(booking.id, selectedSlot);
       } else {
@@ -64,24 +73,14 @@ export default function BookingModal({ mode, booking, initialDate, services, sta
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{isReschedule ? 'Reschedule / cancel booking' : 'New booking'}</h2>
+    <Modal title={isReschedule ? 'Reschedule / cancel booking' : 'New booking'} onClose={onClose}>
+      <>
 
         {!isReschedule && (
           <>
-            <div className="field">
-              <label>Customer name</label>
-              <input required value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Phone</label>
-              <input required value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Email (optional)</label>
-              <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
-            </div>
+            <TextField label="Customer name" required value={customerName} onChange={setCustomerName} validate={validateName} showErrors={showErrors} autoComplete="off" />
+            <TextField label="Phone" required type="tel" value={phone} onChange={setPhone} validate={validatePhone} showErrors={showErrors} hint="Include the area code, for example (555) 123-4567." />
+            <TextField label="Email" optional type="email" value={customerEmail} onChange={setCustomerEmail} validate={validateEmail} showErrors={showErrors} />
           </>
         )}
 
@@ -130,7 +129,7 @@ export default function BookingModal({ mode, booking, initialDate, services, sta
 
         <div className="field">
           <label>Available times</label>
-          {loadingSlots && <p className="muted">Loading...</p>}
+          {loadingSlots && <Loading />}
           {!loadingSlots && slots.length === 0 && <p className="muted">No open slots this day.</p>}
           <div className="row">
             {slots.map((slot) => (
@@ -146,7 +145,7 @@ export default function BookingModal({ mode, booking, initialDate, services, sta
           </div>
         </div>
 
-        {error && <p className="error-text">{error}</p>}
+        {error && <p className="error-text" role="alert">{error}</p>}
 
         <div className="row" style={{ marginTop: 18, justifyContent: 'flex-end' }}>
           {isReschedule && <button className="danger" onClick={cancel} disabled={saving}>Cancel booking</button>}
@@ -155,7 +154,7 @@ export default function BookingModal({ mode, booking, initialDate, services, sta
             {saving ? 'Saving...' : isReschedule ? 'Reschedule' : 'Book'}
           </button>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

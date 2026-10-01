@@ -1,6 +1,6 @@
 # PLAN 3 — GUI (plan only; "self-explanatory" UI)
 
-**Status: plan only.** No UI code is written yet.
+**Status 2026-10-02: built** (Jira 24d to 26f). What changed, how it is checked and the limits: `docs/GUI_DESIGN_REVIEW.md`. The text below is the original plan.
 
 Findings from the code review: single 378-line CSS with good tokens but only 2 breakpoints; ~17 plain "Loading..." texts; empty states have no call-to-action; Settings is 9 stacked sections with no navigation;
 native `confirm()` dialogs; jargon (Transfer departments, Knowledge base, Exceptions, raw permission slugs); 0 `htmlFor` vs 110 labels, no `aria-live` toasts, no dialog role/focus trap on BookingModal, faint text ~3:1 contrast; tables/forms overflow on phones; invite success toast is misleading and the link is unrecoverable.

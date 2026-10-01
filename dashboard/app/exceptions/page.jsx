@@ -5,6 +5,7 @@ import RequireAuth from '../../components/RequireAuth';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import { DateTime } from '../../lib/datetime';
+import Loading from '../../components/Skeleton';
 
 const TYPE_LABELS = {
   failed_booking: 'Failed booking',
@@ -136,7 +137,7 @@ function ExceptionsInner() {
   return (
     <div className="stack">
       <div>
-        <h1>Exceptions</h1>
+        <h1>Needs attention</h1>
         <p className="muted" style={{ marginTop: 4 }}>Failed bookings, delivery failures, callback requests and calls that need a human to look at them.</p>
       </div>
 
@@ -147,7 +148,7 @@ function ExceptionsInner() {
         </div>
 
         {error && <p className="error-text">{error}</p>}
-        {loading && <p className="muted">Loading...</p>}
+        {loading && <Loading />}
         {!loading && items.length === 0 && <div className="empty-state"><p>{status === 'open' ? 'Nothing needs attention right now.' : 'Nothing resolved yet.'}</p></div>}
         {!loading && items.length > 0 && (
           <table>

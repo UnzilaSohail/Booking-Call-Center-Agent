@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { acceptInviteApi, setToken, ApiError } from '../../../lib/api';
+import Loading from '../../../components/Skeleton';
 
 const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', receptionist: 'Receptionist', staff: 'Staff', billing: 'Billing', custom: 'Custom access' };
 
@@ -48,7 +49,7 @@ function AcceptInviteInner() {
         </div>
 
         {error && <p className="error-text">This invite link has expired or is invalid. Ask the business owner to send a new one.</p>}
-        {!error && !invite && <p className="muted">Loading...</p>}
+        {!error && !invite && <Loading />}
 
         {!error && invite && (
           <form onSubmit={submit} className="stack">

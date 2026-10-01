@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, getToken, clearToken } from '../lib/api';
 import Sidebar from './Sidebar';
+import MobileBar from './MobileBar';
 
 // Client-side gate only: this is a UX convenience, not a security boundary — every
 // actual protected read/write still requires a valid bearer token server-side
@@ -13,6 +14,7 @@ export default function RequireAuth({ children, area }) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [allowed, setAllowed] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!getToken()) {
@@ -41,8 +43,10 @@ export default function RequireAuth({ children, area }) {
 
   return (
     <div className="app-shell">
-      <Sidebar />
-      <div className="main-content">
+      <MobileBar onMenu={() => setMenuOpen(true)} />
+      <Sidebar open={menuOpen} onNavigate={() => setMenuOpen(false)} />
+      <div className={`sidebar-backdrop${menuOpen ? ' open' : ''}`} onClick={() => setMenuOpen(false)} aria-hidden="true" />
+      <main id="main-content" tabIndex={-1} className="main-content">
         <div className="page">
           {allowed ? children : (
             <div className="empty-state" style={{ padding: '48px 20px' }}>
@@ -50,7 +54,7 @@ export default function RequireAuth({ children, area }) {
             </div>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

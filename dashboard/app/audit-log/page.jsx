@@ -4,6 +4,7 @@ import { History } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import { api } from '../../lib/api';
 import { DateTime } from '../../lib/datetime';
+import Loading from '../../components/Skeleton';
 
 function AuditLogInner() {
   const [logs, setLogs] = useState([]);
@@ -17,12 +18,12 @@ function AuditLogInner() {
   return (
     <div className="stack">
       <div>
-        <h1>Audit log</h1>
+        <h1>Activity history</h1>
         <p className="muted" style={{ marginTop: 4 }}>Every change made from this dashboard — who did what, and when.</p>
       </div>
 
       <div className="card">
-        {loading && <p className="muted">Loading...</p>}
+        {loading && <Loading />}
         {error && <p className="error-text">{error}</p>}
         {!loading && !error && logs.length === 0 && (
           <div className="empty-state">

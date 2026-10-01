@@ -4,6 +4,7 @@ import Link from 'next/link';
 import RequireAuth from '../../components/RequireAuth';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
+import Loading from '../../components/Skeleton';
 
 const VOICE_OPTIONS = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede'];
 
@@ -179,14 +180,14 @@ function OnboardingContent() {
   }
   useEffect(load, []);
 
-  if (!status) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+  if (!status) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
 
   const live = status.steps.find((s) => s.key === 'go_live')?.done;
 
   return (
     <div className="stack">
       <div>
-        <h1>Guided onboarding</h1>
+        <h1>Setup guide</h1>
         <p className="muted">{live ? 'You’re live — revisit any step below anytime.' : 'Work through these steps to start taking real calls.'}</p>
       </div>
       {status.steps.map((step) => {

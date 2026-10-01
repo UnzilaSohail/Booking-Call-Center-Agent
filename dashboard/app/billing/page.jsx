@@ -4,6 +4,7 @@ import RequireAuth from '../../components/RequireAuth';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import { DateTime } from '../../lib/datetime';
+import Loading from '../../components/Skeleton';
 
 const PLAN_ORDER = ['starter', 'growth', 'scale'];
 
@@ -270,7 +271,7 @@ function BillingInner() {
         <p className="muted" style={{ marginTop: 4 }}>Your plan, usage this period, payment method, and invoice history.</p>
       </div>
       {error && <p className="error-text">{error}</p>}
-      {!plan && !error && <p className="muted">Loading...</p>}
+      {!plan && !error && <Loading />}
       {plan && (
         <>
           <PlanAndUsageCard plan={plan} usage={usage} onChanged={load} />

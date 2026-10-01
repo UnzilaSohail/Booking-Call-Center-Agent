@@ -7,10 +7,13 @@ import RequireAuth from '../../../components/RequireAuth';
 import { api } from '../../../lib/api';
 import { useToast } from '../../../lib/Toast';
 import { DateTime } from '../../../lib/datetime';
+import Loading from '../../../components/Skeleton';
+import { useConfirm } from '../../../lib/confirm';
 
 // Staff review of "same person, new phone" (Jira 18k/18l/18m). Same email is a strong match;
 // same name alone is weak, so it is labelled. Merging folds the other record into this one.
 function DuplicatesCard({ id, onMerged }) {
+  const confirm = useConfirm();
   const toast = useToast();
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -18,7 +21,7 @@ function DuplicatesCard({ id, onMerged }) {
   if (!rows?.length) return null;
 
   async function merge(d) {
-    if (!window.confirm(`Merge ${d.name || d.phone} (${d.phone}) into this customer? Their bookings and calls move here and their record is deleted.`)) return;
+    if (!(await confirm({ title: 'Merge these customers?', message: `Merge ${d.name || d.phone} (${d.phone}) into this customer? Their bookings and calls move here and their record is deleted.`, confirmLabel: 'Merge', danger: true }))) return;
     setBusy(d.id);
     try {
       await api.mergeCustomer(id, d.id);
@@ -98,7 +101,7 @@ function CustomerDetailInner() {
   }
 
   if (error) return <p className="error-text">{error}</p>;
-  if (!customer || !form) return <p className="muted">Loading...</p>;
+  if (!customer || !form) return <Loading />;
 
   const serviceName = (sid) => services.find((s) => s.id === sid)?.name ?? '—';
 

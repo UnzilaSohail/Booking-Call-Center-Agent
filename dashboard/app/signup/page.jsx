@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, storeTokenForRole } from '../../lib/api';
 import { useTimezones } from '../../lib/timezones';
+import TextField from '../../components/TextField';
+import { validatePhone, validatePassword, validateRequiredEmail } from '../../lib/validate';
 
 const INDUSTRIES = ['Salon / Spa', 'Medical / Dental', 'Fitness', 'Home Services', 'Restaurant', 'Professional Services', 'Other'];
 
@@ -126,21 +128,17 @@ export default function SignupPage() {
                 <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} />
               </div>
               <div className="field">
-                <label>Email</label>
-                <input type="email" required value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} />
+                <TextField label="Email" required type="email" value={ownerEmail} onChange={setOwnerEmail} validate={validateRequiredEmail} style={{ margin: 0 }} />
               </div>
               <div className="field">
-                <label>Phone</label>
-                <input type="tel" required value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} placeholder="+15551234567" />
+                <TextField label="Phone" required type="tel" value={ownerPhone} onChange={setOwnerPhone} validate={validatePhone} placeholder="(555) 123-4567" hint="We text a code to this number to verify it." style={{ margin: 0 }} />
               </div>
               <div className="row">
                 <div className="field" style={{ flex: 1 }}>
-                  <label>Password</label>
-                  <input type="password" required minLength={8} value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} />
+                  <TextField label="Password" required type="password" value={ownerPassword} onChange={setOwnerPassword} validate={validatePassword} hint="At least 8 characters." autoComplete="new-password" style={{ margin: 0 }} />
                 </div>
                 <div className="field" style={{ flex: 1 }}>
-                  <label>Confirm password</label>
-                  <input type="password" required minLength={8} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                  <TextField label="Confirm password" required type="password" value={confirmPassword} onChange={setConfirmPassword} validate={(v) => (v && v !== ownerPassword ? 'The two passwords do not match.' : validatePassword(v))} autoComplete="new-password" style={{ margin: 0 }} />
                 </div>
               </div>
               <p className="muted" style={{ fontSize: 12.5, marginTop: -6 }}>

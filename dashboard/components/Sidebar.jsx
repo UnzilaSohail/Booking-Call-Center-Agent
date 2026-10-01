@@ -23,19 +23,26 @@ const LINKS = [
   { href: '/calls', label: 'Calls', icon: Phone, area: 'calls' },
   { href: '/services', label: 'Services', icon: Tag, area: 'services' },
   { href: '/team', label: 'Team', icon: Users, area: 'team' },
-  { href: '/exceptions', label: 'Exceptions', icon: AlertTriangle, area: 'exceptions' },
-  { href: '/onboarding', label: 'Onboarding', icon: ListTodo, area: null },
+  { href: '/exceptions', label: 'Needs attention', icon: AlertTriangle, area: 'exceptions' },
+  { href: '/onboarding', label: 'Setup guide', icon: ListTodo, area: null },
   { href: '/billing', label: 'Billing', icon: CreditCard, area: 'billing' },
   { href: '/settings', label: 'Settings', icon: SettingsIcon, area: 'settings' },
-  { href: '/audit-log', label: 'Audit log', icon: History, area: 'settings' },
+  { href: '/audit-log', label: 'Activity history', icon: History, area: 'settings' },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ open = false, onNavigate }) {
   const pathname = usePathname();
   const router = useRouter();
   const [me, setMe] = useState(null);
+  const [setup, setSetup] = useState(null); // { done, total } while onboarding is unfinished (Jira 26a)
 
   useEffect(() => { api.getMe().then(setMe).catch(() => {}); }, []);
+  useEffect(() => {
+    api.getOnboardingStatus().then((s) => {
+      const done = s.steps.filter((x) => x.done).length;
+      setSetup(s.steps.find((x) => x.key === 'go_live')?.done ? null : { done, total: s.steps.length });
+    }).catch(() => {});
+  }, [pathname]);
 
   function logout() {
     clearToken();
@@ -45,7 +52,7 @@ export default function Sidebar() {
   const displayName = me?.name || me?.email || 'Loading...';
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${open ? ' open' : ''}`} aria-label="Main menu">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 8px 22px' }}>
         <div style={{
           width: 32, height: 32, borderRadius: 9, flexShrink: 0,
@@ -63,9 +70,10 @@ export default function Sidebar() {
       </div>
       <nav className="stack" style={{ gap: 2, flex: 1 }}>
         {LINKS.filter(({ area }) => !area || (me?.areas ?? []).includes(area)).map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={`sidebar-link${pathname === href || (href !== '/' && pathname.startsWith(href)) ? ' active' : ''}`}>
+          <Link key={href} href={href} onClick={onNavigate} className={`sidebar-link${pathname === href || (href !== '/' && pathname.startsWith(href)) ? ' active' : ''}`}>
             <Icon size={16} />
             {label}
+            {href === '/onboarding' && setup && <span className="count" aria-label={`${setup.done} of ${setup.total} steps done`}>{setup.done}/{setup.total}</span>}
           </Link>
         ))}
       </nav>

@@ -1,5 +1,7 @@
 import './globals.css';
 import { ToastProvider } from '../lib/Toast';
+import { ConfirmProvider } from '../lib/confirm';
+import A11yLabels from '../components/A11yLabels';
 
 export const metadata = {
   title: 'Booking Admin',
@@ -23,7 +25,9 @@ export default function RootLayout({ children }) {
           one, so this silences just that noise without disabling hydration warnings
           elsewhere. https://react.dev/link/hydration-mismatch */}
       <body suppressHydrationWarning>
-        <ToastProvider>{children}</ToastProvider>
+        <a className="skip-link" href="#main-content">Skip to main content</a>
+        <ToastProvider><ConfirmProvider>{children}</ConfirmProvider></ToastProvider>
+        <A11yLabels />
       </body>
     </html>
   );

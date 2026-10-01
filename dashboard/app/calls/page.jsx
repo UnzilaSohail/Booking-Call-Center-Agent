@@ -4,6 +4,8 @@ import { Phone } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import { api } from '../../lib/api';
 import { DateTime } from '../../lib/datetime';
+import Loading from '../../components/Skeleton';
+import EmptyState from '../../components/EmptyState';
 
 function OutcomeBadge({ log }) {
   if (log.booking) return <span className="badge success">Booked</span>;
@@ -32,7 +34,7 @@ function Recording({ id }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => { api.callRecordingUrl(id).then(setSrc).catch(() => setFailed(true)); }, [id]);
   if (failed) return <span className="error-text" style={{ fontSize: 12.5 }}>Recording unavailable.</span>;
-  if (!src) return <span className="muted" style={{ fontSize: 12.5 }}>Loading...</span>;
+  if (!src) return <Loading lines={1} height={28} style={{ width: 260 }} />;
   return <audio controls src={src} style={{ height: 32, width: '100%', maxWidth: 360 }} />;
 }
 
@@ -95,13 +97,12 @@ function CallsInner() {
       </div>
 
       <div className="card">
-        {loading && <p className="muted">Loading...</p>}
+        {loading && <Loading />}
         {error && <p className="error-text">{error}</p>}
         {!loading && !error && logs.length === 0 && (
-          <div className="empty-state">
-            <Phone size={28} color="var(--text-faint)" />
-            <p>No calls yet. Once your phone number is connected, calls will show up here automatically.</p>
-          </div>
+          <EmptyState icon={Phone} action={{ label: 'Set up your phone number', href: '/settings#calls' }}>
+            No calls yet. Once your phone number is connected, every call shows up here with a summary.
+          </EmptyState>
         )}
 
         {!loading && logs.length > 0 && (

@@ -1,12 +1,15 @@
 'use client';
 import { Fragment, useEffect, useState } from 'react';
-import { CalendarClock, Link2, Pencil, Plus, Send, Trash2, UserCheck, UserX, X } from 'lucide-react';
+import { CalendarClock, Link2, Pencil, Plus, Send, Trash2, UserCheck, UserX, Users, X } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import Avatar from '../../components/Avatar';
 import { api, ApiError } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import { DateTime } from '../../lib/datetime';
 import { copyText } from '../../lib/clipboard';
+import Loading from '../../components/Skeleton';
+import { useConfirm } from '../../lib/confirm';
+import EmptyState from '../../components/EmptyState';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const ROLES = ['manager', 'receptionist', 'staff', 'billing', 'custom'];
@@ -20,6 +23,7 @@ function emptyWeek() {
 // overridden), an optional daily break, a location assignment, and time off — same
 // row-expand pattern the Calls page uses for call details.
 function StaffScheduleEditor({ staff, locations, services, onChanged }) {
+  const confirm = useConfirm();
   const toast = useToast();
   const [customHours, setCustomHours] = useState(staff.hours != null);
   const [customServices, setCustomServices] = useState(staff.service_ids != null);
@@ -82,9 +86,7 @@ function StaffScheduleEditor({ staff, locations, services, onChanged }) {
         await api.createStaffTimeOff(staff.id, payload);
       } catch (err) {
         // 409 = customers already booked in that window. Show who, and only add it if confirmed.
-        if (!(err instanceof ApiError && err.status === 409) || !window.confirm(`${err.message}
-
-Add the time off anyway? Those customers will still be booked and need a call.`)) throw err;
+        if (!(err instanceof ApiError && err.status === 409) || !(await confirm({ title: 'Customers are already booked', message: `${err.message}\n\nAdd the time off anyway? Those customers will still be booked and need a call.`, confirmLabel: 'Add anyway' }))) throw err;
         await api.createStaffTimeOff(staff.id, { ...payload, force: true });
       }
       setNewStart(''); setNewEnd(''); setNewReason('');
@@ -117,9 +119,9 @@ Add the time off anyway? Those customers will still be booked and need a call.`)
               <label style={{ width: 100, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
                 <input type="checkbox" checked={!r.closed} onChange={(e) => updateRow(r.dayOfWeek, { closed: !e.target.checked })} style={{ width: 'auto' }} /> {DAY_NAMES[r.dayOfWeek].slice(0, 3)}
               </label>
-              <input type="time" disabled={r.closed} value={r.openTime} onChange={(e) => updateRow(r.dayOfWeek, { openTime: e.target.value })} style={{ width: 110 }} />
+              <input type="time" aria-label={`${DAY_NAMES[r.dayOfWeek]} starts`} disabled={r.closed} value={r.openTime} onChange={(e) => updateRow(r.dayOfWeek, { openTime: e.target.value })} style={{ width: 110 }} />
               <span className="muted">to</span>
-              <input type="time" disabled={r.closed} value={r.closeTime} onChange={(e) => updateRow(r.dayOfWeek, { closeTime: e.target.value })} style={{ width: 110 }} />
+              <input type="time" aria-label={`${DAY_NAMES[r.dayOfWeek]} ends`} disabled={r.closed} value={r.closeTime} onChange={(e) => updateRow(r.dayOfWeek, { closeTime: e.target.value })} style={{ width: 110 }} />
             </div>
           ))}
         </div>
@@ -131,9 +133,9 @@ Add the time off anyway? Those customers will still be booked and need a call.`)
       </label>
       {breakEnabled && (
         <div className="row" style={{ alignItems: 'center', marginBottom: 12 }}>
-          <input type="time" value={breakStart} onChange={(e) => setBreakStart(e.target.value)} style={{ width: 110 }} />
+          <input type="time" aria-label="Break starts" value={breakStart} onChange={(e) => setBreakStart(e.target.value)} style={{ width: 110 }} />
           <span className="muted">to</span>
-          <input type="time" value={breakEnd} onChange={(e) => setBreakEnd(e.target.value)} style={{ width: 110 }} />
+          <input type="time" aria-label="Break ends" value={breakEnd} onChange={(e) => setBreakEnd(e.target.value)} style={{ width: 110 }} />
         </div>
       )}
 
@@ -202,6 +204,7 @@ Add the time off anyway? Those customers will still be booked and need a call.`)
 }
 
 function StaffSection() {
+  const confirm = useConfirm();
   const toast = useToast();
   const [staff, setStaff] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -241,7 +244,7 @@ function StaffSection() {
   }
 
   async function remove(id) {
-    if (!confirm('Remove this staff member?')) return;
+    if (!(await confirm({ title: 'Remove this staff member?', message: 'They disappear from the calendar and the booking page. This cannot be undone.', confirmLabel: 'Remove', danger: true }))) return;
     setError(null);
     try {
       await api.deleteStaff(id);
@@ -295,11 +298,11 @@ function StaffSection() {
               )}
             </Fragment>
           ))}
-          {staff.length === 0 && <tr><td colSpan={2} className="muted">No team members yet — add one below.</td></tr>}
+          {staff.length === 0 && <tr><td colSpan={2}><EmptyState icon={Users} action={{ label: 'Add your first team member', onClick: () => document.getElementById('staff-name')?.focus() }}>No team members yet. Add the people customers can book with.</EmptyState></td></tr>}
         </tbody>
       </table>
       <form onSubmit={add} className="row" style={{ alignItems: 'flex-end', marginTop: 10 }}>
-        <div className="field" style={{ flex: 1 }}><label>Name</label><input required value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="field" style={{ flex: 1 }}><label>Name</label><input id="staff-name" required value={name} onChange={(e) => setName(e.target.value)} /></div>
         <button type="submit" className="primary">Add</button>
       </form>
       {error && <p className="error-text">{error}</p>}
@@ -309,8 +312,10 @@ function StaffSection() {
 
 // Matches src/permissions.js's AREAS — the fixed set a custom role picks from.
 const AREAS = ['bookings', 'customers', 'calls', 'services', 'team', 'settings', 'exceptions'];
+const AREA_LABELS = { bookings: 'Bookings and calendar', customers: 'Customers', calls: 'Call history', services: 'Services', team: 'Team', settings: 'Settings', exceptions: 'Needs attention' };
 
 function TeamMembersSection() {
+  const confirm = useConfirm();
   const toast = useToast();
   const [members, setMembers] = useState([]);
   const [me, setMe] = useState(null);
@@ -376,7 +381,7 @@ function TeamMembersSection() {
   }
 
   async function setStatus(id, status) {
-    if (status === 'suspended' && !confirm('Suspend this team member? They will immediately lose access.')) return;
+    if (status === 'suspended' && !(await confirm({ title: 'Suspend this team member?', message: 'They will immediately lose access.', confirmLabel: 'Suspend', danger: true }))) return;
     try {
       await api.updateTeamMember(id, { status });
       toast.success(status === 'suspended' ? 'Suspended' : 'Reactivated');
@@ -432,7 +437,7 @@ function TeamMembersSection() {
               )}
             </tr>
           ))}
-          {members.length === 0 && <tr><td colSpan={isOwner ? 5 : 4} className="muted">Loading...</td></tr>}
+          {members.length === 0 && <tr><td colSpan={isOwner ? 5 : 4}><Loading lines={2} /></td></tr>}
         </tbody>
       </table>
 
@@ -455,7 +460,7 @@ function TeamMembersSection() {
               {AREAS.map((a) => (
                 <label key={a} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
                   <input type="checkbox" style={{ width: 'auto' }} checked={permissions.includes(a)} onChange={(e) => setPermissions((prev) => (e.target.checked ? [...prev, a] : prev.filter((x) => x !== a)))} />
-                  {a}
+                  {AREA_LABELS[a]}
                 </label>
               ))}
             </div>

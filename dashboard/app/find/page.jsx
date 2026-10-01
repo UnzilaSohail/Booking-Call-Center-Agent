@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { publicApi } from '../../lib/api';
+import Loading from '../../components/Skeleton';
 
 // Public directory (docs/customer/DISCOVERY_AND_LISTING.md): a customer who doesn't have a
 // business link searches here. Each card shows the street address and city so two
@@ -54,9 +55,9 @@ export default function FindPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px 16px' }}>
+    <main id="main-content" tabIndex={-1} style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px 16px' }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
-        <h1 style={{ fontSize: 26 }}>Find a business to book with</h1>
+        <div className="hero"><h1>Find a business to book with</h1></div>
         <p className="muted" style={{ marginTop: 0 }}>Search by name or by what you need, like &ldquo;haircut&rdquo; or &ldquo;teeth cleaning&rdquo;.</p>
 
         <div className="card" style={{ marginBottom: 16 }}>
@@ -88,10 +89,16 @@ export default function FindPage() {
         </div>
 
         {error && <p className="error-text">{error}</p>}
-        {!data && !error && <p className="muted">Loading...</p>}
+        {!data && !error && (
+          <div className="stack" style={{ gap: 12 }}>{[0, 1, 2].map((i) => <div key={i} className="card"><Loading lines={3} /></div>)}</div>
+        )}
+        {data && data.results.length > 0 && (
+          <p className="muted" style={{ margin: '0 0 10px' }} aria-live="polite">{data.total} business{data.total === 1 ? '' : 'es'} found{near ? ', nearest first' : ''}</p>
+        )}
         {data?.results.length === 0 && (
           <div className="card">
-            <p style={{ margin: 0 }}>No businesses match. Try a different word or clear the filters.</p>
+            <p style={{ margin: '0 0 10px' }}>No businesses match. Try a different word, or clear the filters.</p>
+            {(q || category || city || near) && <button type="button" onClick={() => { setQ(''); setCategory(''); setCity(''); setNear(null); setPage(1); }}>Clear filters</button>}
           </div>
         )}
         {data?.results.length === 0 && <LeadForm defaultCity={city} />}
@@ -116,7 +123,7 @@ export default function FindPage() {
                     </div>
                   )}
                 </div>
-                <Link href={`/book/${b.slug}`}><button type="button" className="primary">Book</button></Link>
+                <Link href={`/book/${b.slug}`} aria-label={`Book with ${b.name}`}><button type="button" className="primary">Book</button></Link>
               </div>
             </div>
           ))}
@@ -141,7 +148,7 @@ export default function FindPage() {
 
         <p className="muted" style={{ fontSize: 12.5, marginTop: 24 }}>Are you a business? <Link href="/signup">Sign up</Link> or <Link href="/login">log in</Link>.</p>
       </div>
-    </div>
+    </main>
   );
 }
 

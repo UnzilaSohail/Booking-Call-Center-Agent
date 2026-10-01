@@ -1,11 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Pencil, Trash2, X } from 'lucide-react';
+import { Pencil, Tag, Trash2, X } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import { api, ApiError } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
+import { useConfirm } from '../../lib/confirm';
+import EmptyState from '../../components/EmptyState';
+import InfoTip from '../../components/InfoTip';
 
 function ServicesSection() {
+  const confirm = useConfirm();
   const toast = useToast();
   const [services, setServices] = useState([]);
   const [form, setForm] = useState({ name: '', durationMinutes: 30, bufferMinutes: 0, price: '' });
@@ -47,7 +51,7 @@ function ServicesSection() {
   }
 
   async function remove(id) {
-    if (!confirm('Delete this service?')) return;
+    if (!(await confirm({ title: 'Delete this service?', message: 'Customers will no longer be able to book it. This cannot be undone.', confirmLabel: 'Delete', danger: true }))) return;
     setError(null);
     try {
       await api.deleteService(id);
@@ -85,13 +89,13 @@ function ServicesSection() {
               </td>
             </tr>
           ))}
-          {services.length === 0 && <tr><td colSpan={5} className="muted">No services yet — add one below.</td></tr>}
+          {services.length === 0 && <tr><td colSpan={5}><EmptyState icon={Tag} action={{ label: 'Add your first service', onClick: () => document.getElementById('service-name')?.focus() }}>No services yet. Add what customers can book, like a haircut or a check-up.</EmptyState></td></tr>}
         </tbody>
       </table>
       <form onSubmit={add} className="row" style={{ marginTop: 14, alignItems: 'flex-end' }}>
-        <div className="field" style={{ flex: 2 }}><label>Name</label><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+        <div className="field" style={{ flex: 2 }}><label>Name</label><input id="service-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
         <div className="field"><label>Duration (min)</label><input type="number" min={1} required value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })} /></div>
-        <div className="field"><label>Buffer (min)</label><input type="number" min={0} value={form.bufferMinutes} onChange={(e) => setForm({ ...form, bufferMinutes: e.target.value })} /></div>
+        <div className="field"><label>Buffer (min) <InfoTip term="buffer" /></label><input type="number" min={0} value={form.bufferMinutes} onChange={(e) => setForm({ ...form, bufferMinutes: e.target.value })} /></div>
         <div className="field"><label>Price</label><input type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></div>
         <button type="submit" className="primary">Add</button>
       </form>

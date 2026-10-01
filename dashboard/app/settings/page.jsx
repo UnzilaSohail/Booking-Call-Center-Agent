@@ -6,6 +6,9 @@ import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import { useTimezones } from '../../lib/timezones';
 import { copyText } from '../../lib/clipboard';
+import Loading from '../../components/Skeleton';
+import InfoTip from '../../components/InfoTip';
+import { GLOSSARY } from '../../lib/glossary';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const INDUSTRIES = ['Salon / Spa', 'Medical / Dental', 'Fitness', 'Home Services', 'Restaurant', 'Professional Services', 'Other'];
@@ -41,7 +44,7 @@ function BusinessProfileSection() {
     }
   }
 
-  if (!form) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+  if (!form) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
 
   return (
     <div className="card">
@@ -68,24 +71,24 @@ function BusinessProfileSection() {
         </div>
         <div className="row" style={{ alignItems: 'flex-end' }}>
           <div className="field" style={{ flex: 1 }}>
-            <label>Booking phone number</label>
+            <label>Your business phone number</label>
             <input value={form.phoneNumber ?? 'Not provisioned yet'} disabled />
           </div>
           <div className="field" style={{ flex: 1 }}>
-            <label>Call-in change cutoff (minutes)</label>
+            <label>Last time to change an appointment (minutes before) <InfoTip term="cutoff" /></label>
             <input type="number" min={0} value={form.rescheduleCutoffMinutes} onChange={(e) => setForm({ ...form, rescheduleCutoffMinutes: e.target.value })} />
           </div>
         </div>
         <p className="muted" style={{ fontSize: 12, marginTop: -6, marginBottom: 14 }}>
-          How close to an appointment a caller can still reschedule/cancel it by phone. Dashboard admins can always override.
+          How close to the appointment a customer can still reschedule or cancel on their own. Staff can always change it from the dashboard.
         </p>
         <div className="row" style={{ alignItems: 'flex-end' }}>
           <div className="field" style={{ flex: 1 }}>
-            <label>Minimum booking notice (minutes)</label>
+            <label>Soonest a customer can book (minutes from now) <InfoTip term="minNotice" /></label>
             <input type="number" min={0} value={form.minBookingNoticeMinutes} onChange={(e) => setForm({ ...form, minBookingNoticeMinutes: e.target.value })} />
           </div>
           <div className="field" style={{ flex: 1 }}>
-            <label>Maximum booking window (days, blank = unlimited)</label>
+            <label>How far ahead customers can book (days, blank = no limit) <InfoTip term="bookingWindow" /></label>
             <input type="number" min={1} value={form.maxBookingWindowDays ?? ''} onChange={(e) => setForm({ ...form, maxBookingWindowDays: e.target.value })} />
           </div>
         </div>
@@ -107,7 +110,7 @@ function BusinessProfileSection() {
           <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
         </div>
         <div className="field">
-          <label>Human transfer number (fallback)</label>
+          <label>Where to send calls the AI can't handle <InfoTip term="transferNumber" /></label>
           <input value={form.transferPhoneNumber} onChange={(e) => setForm({ ...form, transferPhoneNumber: e.target.value })} placeholder="Where calls go when the AI hands off, if no department/staff/location number applies" />
         </div>
         <div className="row" style={{ alignItems: 'flex-end' }}>
@@ -116,12 +119,12 @@ function BusinessProfileSection() {
             Record calls
           </label>
           <div className="field" style={{ flex: 1 }}>
-            <label>Recording &amp; transcript retention (days, blank = keep forever)</label>
+            <label>Delete recordings and transcripts after (days, blank = keep) <InfoTip term="retention" /></label>
             <input type="number" min={1} value={form.recordingRetentionDays ?? ''} onChange={(e) => setForm({ ...form, recordingRetentionDays: e.target.value })} />
           </div>
         </div>
         <p className="muted" style={{ fontSize: 12, marginTop: -6, marginBottom: 14 }}>
-          Callers are always told calls may be recorded. A retention window nulls out old recordings/transcripts on a schedule (src/services/retentionWorker.js) — call outcomes and durations are kept either way.
+          Callers are always told a call may be recorded. After the number of days above, the recording and transcript are erased automatically. The record of the call itself (when, how long, how it ended) is kept.
         </p>
         {error && <p className="error-text">{error}</p>}
         <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving...' : 'Save profile'}</button>
@@ -143,7 +146,7 @@ function BookingPageSection() {
   function load() { api.getListing().then(setForm).catch((e) => setError(e.message)); }
   useEffect(load, []);
 
-  if (!form) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+  if (!form) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
 
   const link = `${window.location.origin}/book/${form.slug}`;
   const set = (patch) => setForm({ ...form, ...patch });
@@ -174,11 +177,11 @@ function BookingPageSection() {
 
   return (
     <div className="card">
-      <h2>Booking page &amp; listing</h2>
+      <h2>Booking page &amp; listing <InfoTip term="listing" /></h2>
       <p className="muted" style={{ marginTop: 0 }}>Share this link on your website, Instagram or a QR code so customers can book without calling.</p>
       <form onSubmit={save}>
         <div className="field">
-          <label htmlFor="slug">Your booking link</label>
+          <label htmlFor="slug">Your booking link <InfoTip term="slug" /></label>
           <div className="row" style={{ flexWrap: 'nowrap', alignItems: 'center' }}>
             <span className="muted" style={{ whiteSpace: 'nowrap' }}>{window.location.origin}/book/</span>
             <input id="slug" required value={form.slug ?? ''} onChange={(e) => set({ slug: e.target.value.toLowerCase() })} />
@@ -265,7 +268,7 @@ function LocationsSection() {
     }
   }
 
-  if (!locations) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+  if (!locations) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
 
   return (
     <div className="card">
@@ -407,7 +410,7 @@ function MfaSection() {
     }
   }
 
-  if (!me) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+  if (!me) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
 
   return (
     <div className="card">
@@ -494,9 +497,9 @@ function BusinessHoursSection() {
           <label style={{ width: 110, display: 'flex', alignItems: 'center', gap: 6 }}>
             <input type="checkbox" checked={!r.closed} onChange={(e) => updateRow(r.dayOfWeek, { closed: !e.target.checked })} style={{ width: 'auto' }} /> {DAY_NAMES[r.dayOfWeek]}
           </label>
-          <input type="time" disabled={r.closed} value={r.openTime} onChange={(e) => updateRow(r.dayOfWeek, { openTime: e.target.value })} style={{ width: 120 }} />
+          <input type="time" aria-label={`${DAY_NAMES[r.dayOfWeek]} opens`} disabled={r.closed} value={r.openTime} onChange={(e) => updateRow(r.dayOfWeek, { openTime: e.target.value })} style={{ width: 120 }} />
           <span className="muted">to</span>
-          <input type="time" disabled={r.closed} value={r.closeTime} onChange={(e) => updateRow(r.dayOfWeek, { closeTime: e.target.value })} style={{ width: 120 }} />
+          <input type="time" aria-label={`${DAY_NAMES[r.dayOfWeek]} closes`} disabled={r.closed} value={r.closeTime} onChange={(e) => updateRow(r.dayOfWeek, { closeTime: e.target.value })} style={{ width: 120 }} />
         </div>
       ))}
       <button className="primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save hours'}</button>
@@ -531,7 +534,7 @@ function HolidaysSection() {
     }
   }
 
-  if (!holidays) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+  if (!holidays) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
 
   return (
     <div className="card">
@@ -594,11 +597,11 @@ function TransferDepartmentsSection() {
     }
   }
 
-  if (!departments) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+  if (!departments) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
 
   return (
     <div className="card">
-      <h2>Transfer departments</h2>
+      <h2>Call transfer: who answers what <InfoTip term="departments" /></h2>
       <p className="muted" style={{ marginTop: -8, fontSize: 12.5 }}>
         Named phone lines the AI can transfer to when a caller asks for one by name (e.g. "billing").
       </p>
@@ -719,12 +722,12 @@ function KnowledgeBaseSection() {
     }
   }
 
-  if (!status) return <div className="card">{error ? <p className="error-text">{error}</p> : <p className="muted">Loading...</p>}</div>;
+  if (!status) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
 
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2>Knowledge base</h2>
+        <h2>What your AI should know <InfoTip term="knowledge" /></h2>
         {status.hasUnpublishedChanges && <span className="badge warning">Unpublished changes</span>}
       </div>
       <p className="muted" style={{ marginTop: -8, fontSize: 12.5 }}>
@@ -743,10 +746,10 @@ function KnowledgeBaseSection() {
         {form.faqs.map((f, i) => (
           <div key={i} className="row" style={{ alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-              <input value={f.question} onChange={(e) => updateRow('faqs', i, { question: e.target.value })} placeholder="Do you take walk-ins?" />
+              <input aria-label={`Question ${i + 1}`} value={f.question} onChange={(e) => updateRow('faqs', i, { question: e.target.value })} placeholder="Do you take walk-ins?" />
             </div>
             <div className="field" style={{ flex: 2, marginBottom: 0 }}>
-              <input value={f.answer} onChange={(e) => updateRow('faqs', i, { answer: e.target.value })} placeholder="Yes, subject to availability." />
+              <input aria-label={`Answer ${i + 1}`} value={f.answer} onChange={(e) => updateRow('faqs', i, { answer: e.target.value })} placeholder="Yes, subject to availability." />
             </div>
             <button className="icon-btn" onClick={() => removeRow('faqs', i)} disabled={form.faqs.length === 1}>
               <Trash2 size={15} color="var(--danger)" />
@@ -784,10 +787,10 @@ function KnowledgeBaseSection() {
         {form.pronunciation.map((p, i) => (
           <div key={i} className="row" style={{ alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-              <input value={p.term} onChange={(e) => updateRow('pronunciation', i, { term: e.target.value })} placeholder="Xero" />
+              <input aria-label={`Word ${i + 1}`} value={p.term} onChange={(e) => updateRow('pronunciation', i, { term: e.target.value })} placeholder="Xero" />
             </div>
             <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-              <input value={p.pronunciation} onChange={(e) => updateRow('pronunciation', i, { pronunciation: e.target.value })} placeholder="ZEER-oh" />
+              <input aria-label={`How to say word ${i + 1}`} value={p.pronunciation} onChange={(e) => updateRow('pronunciation', i, { pronunciation: e.target.value })} placeholder="ZEER-oh" />
             </div>
             <button className="icon-btn" onClick={() => removeRow('pronunciation', i)} disabled={form.pronunciation.length === 1}>
               <Trash2 size={15} color="var(--danger)" />
@@ -876,7 +879,7 @@ function PhoneNumberSection() {
 
   return (
     <div className="card">
-      <h2>Inbound phone number</h2>
+      <h2>Your business phone number</h2>
       {phoneNumber ? (
         <p>Customers call <strong>{phoneNumber}</strong> to book.</p>
       ) : (
@@ -962,6 +965,7 @@ function DeleteAccountSection() {
       </p>
       <form onSubmit={del} className="row" style={{ alignItems: 'center' }}>
         <input
+          aria-label="Type the business name to confirm deletion"
           placeholder={`Type "${business.name}" to confirm`}
           value={confirmName}
           onChange={(e) => setConfirmName(e.target.value)}
@@ -976,6 +980,68 @@ function DeleteAccountSection() {
   );
 }
 
+// Settings is grouped into tabs so the page isn't one 12-section scroll (Jira 25a). The tab lives in the
+// address (#booking, #calls ...) so a link or a refresh lands on the same one.
+function GlossaryCard() {
+  return (
+    <div className="card">
+      <h2>Plain-English glossary</h2>
+      <p className="muted" style={{ marginTop: -8, fontSize: 12.5 }}>What the terms in this dashboard mean. You'll also find a small ? next to many fields.</p>
+      <dl style={{ margin: 0, display: 'grid', gap: 12 }}>
+        {Object.values(GLOSSARY).map(([term, meaning]) => (
+          <div key={term}><dt style={{ fontWeight: 650 }}>{term}</dt><dd style={{ margin: '2px 0 0' }} className="muted">{meaning}</dd></div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+const TABS = [
+  { id: 'business', label: 'Business', render: () => <><BusinessProfileSection /><LocationsSection /></> },
+  { id: 'booking', label: 'Booking & hours', render: () => <><BookingPageSection /><BusinessHoursSection /><HolidaysSection /></> },
+  { id: 'calls', label: 'Calls & AI', render: () => <><PhoneNumberSection /><TransferDepartmentsSection /><KnowledgeBaseSection /><CalendarConnectSection /></> },
+  { id: 'account', label: 'Account & security', render: () => <><ChangePasswordSection /><MfaSection /><DeleteAccountSection /></> },
+  { id: 'help', label: 'Help', render: () => <GlossaryCard /> },
+];
+
+function SettingsTabs() {
+  const [tab, setTab] = useState(TABS[0].id);
+  useEffect(() => {
+    const fromHash = window.location.hash.slice(1);
+    if (TABS.some((t) => t.id === fromHash)) setTab(fromHash);
+  }, []);
+
+  function choose(id) {
+    setTab(id);
+    window.history.replaceState(null, '', `#${id}`);
+  }
+  function onKeyDown(e, index) {
+    const move = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!move) return;
+    e.preventDefault();
+    const next = TABS[(index + move + TABS.length) % TABS.length];
+    choose(next.id);
+    document.getElementById(`tab-${next.id}`)?.focus();
+  }
+
+  return (
+    <>
+      <div className="tabs" role="tablist" aria-label="Settings sections">
+        {TABS.map((t, i) => (
+          <button
+            key={t.id} id={`tab-${t.id}`} type="button" role="tab" className="tab"
+            aria-selected={tab === t.id} aria-controls="settings-panel" tabIndex={tab === t.id ? 0 : -1}
+            onClick={() => choose(t.id)} onKeyDown={(e) => onKeyDown(e, i)}
+          >{t.label}</button>
+        ))}
+      </div>
+      <div id="settings-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="stack">
+        {TABS.find((t) => t.id === tab).render()}
+      </div>
+    </>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <RequireAuth area="settings">
@@ -983,18 +1049,7 @@ export default function SettingsPage() {
         <div>
           <h1>Settings</h1>
         </div>
-        <BusinessProfileSection />
-        <BookingPageSection />
-        <LocationsSection />
-        <BusinessHoursSection />
-        <HolidaysSection />
-        <TransferDepartmentsSection />
-        <KnowledgeBaseSection />
-        <CalendarConnectSection />
-        <PhoneNumberSection />
-        <ChangePasswordSection />
-        <MfaSection />
-        <DeleteAccountSection />
+        <SettingsTabs />
       </div>
     </RequireAuth>
   );
