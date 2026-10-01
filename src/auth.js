@@ -66,6 +66,43 @@ authRouter.post('/mfa/verify-login', async (req, res, next) => {
   }
 });
 
+// Thrown by resolveSessionFromToken below so callers can map each case to the right
+// HTTP status without string-matching a generic Error's message.
+export class SessionError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// The actual verify-token-to-session logic, as a plain function instead of middleware —
+// reused by requireAuth below (the normal Authorization-header flow) and by any route a
+// browser element hits without custom headers (e.g. an <audio>/<img> src, which can't
+// carry a Bearer header — src/routes/callLogs.js's recording proxy is the first of these).
+export async function resolveSessionFromToken(token) {
+  let payload;
+  try {
+    payload = jwt.verify(token, JWT_SECRET);
+  } catch {
+    throw new SessionError(401, 'invalid or expired token');
+  }
+  if (payload.role !== 'business' || !payload.businessId) throw new SessionError(401, 'invalid token for this endpoint');
+
+  // Checked on every request, not just at login — otherwise a platform admin suspending
+  // a company (or an owner suspending a teammate) would only stop *new* logins, and any
+  // token issued before the suspension (valid up to 12h) would keep working right through it.
+  const db = await getDb();
+  const [business, admin] = await Promise.all([
+    db.collection('businesses').findOne({ _id: payload.businessId }, { projection: { status: 1 } }),
+    db.collection('admins').findOne({ _id: payload.adminId }, { projection: { role: 1, permissions: 1, status: 1 } }),
+  ]);
+  if (business?.status === 'suspended') throw new SessionError(403, 'this account has been suspended — contact the platform');
+  if (!admin) throw new SessionError(401, 'admin not found');
+  if (admin.status === 'suspended') throw new SessionError(403, 'your access has been suspended — contact your business owner');
+
+  return { businessId: payload.businessId, adminId: payload.adminId, admin: { role: admin.role ?? 'owner', areas: areasFor(admin) } };
+}
+
 // Everything past this middleware gets req.businessId from the verified token —
 // never from a request body/query param (that's the multi-tenant leak flagged in plan.md §7).
 // Rejects a platform-admin token too (wrong role) — those are a different login entirely
@@ -75,33 +112,14 @@ export async function requireAuth(req, res, next) {
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'missing bearer token' });
 
-  let payload;
   try {
-    payload = jwt.verify(token, JWT_SECRET);
-  } catch {
-    return res.status(401).json({ error: 'invalid or expired token' });
-  }
-  if (payload.role !== 'business' || !payload.businessId) return res.status(401).json({ error: 'invalid token for this endpoint' });
-
-  try {
-    // Checked on every request, not just at login — otherwise a platform admin
-    // suspending a company (or an owner suspending a teammate) would only stop *new*
-    // logins, and any token issued before the suspension (valid up to 12h) would keep
-    // working right through it.
-    const db = await getDb();
-    const [business, admin] = await Promise.all([
-      db.collection('businesses').findOne({ _id: payload.businessId }, { projection: { status: 1 } }),
-      db.collection('admins').findOne({ _id: payload.adminId }, { projection: { role: 1, permissions: 1, status: 1 } }),
-    ]);
-    if (business?.status === 'suspended') return res.status(403).json({ error: 'this account has been suspended — contact the platform' });
-    if (!admin) return res.status(401).json({ error: 'admin not found' });
-    if (admin.status === 'suspended') return res.status(403).json({ error: 'your access has been suspended — contact your business owner' });
-
-    req.businessId = payload.businessId;
-    req.adminId = payload.adminId;
-    req.admin = { role: admin.role ?? 'owner', areas: areasFor(admin) };
+    const session = await resolveSessionFromToken(token);
+    req.businessId = session.businessId;
+    req.adminId = session.adminId;
+    req.admin = session.admin;
     next();
   } catch (err) {
+    if (err instanceof SessionError) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 }

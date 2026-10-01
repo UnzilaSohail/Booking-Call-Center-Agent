@@ -153,6 +153,10 @@ export const api = {
     for (const [k, v] of Object.entries({ from, to, phone, outcome })) if (v) params[k] = v;
     return request(`/api/call-logs?${new URLSearchParams(params)}`, { tokenStore: companyTokenStore });
   },
+  // Twilio's own recording URL needs HTTP Basic Auth the browser can't supply (hence the
+  // login popup) — this proxies through the backend instead. Token goes in the query
+  // string, not a header, because an <audio src="..."> request can't carry custom headers.
+  callRecordingUrl: (id) => `${API_URL}/api/call-logs/${id}/recording?token=${encodeURIComponent(companyTokenStore.get() ?? '')}`,
 
   listCustomers: (q) => request(`/api/customers${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: companyTokenStore }),
   getCustomer: (id) => request(`/api/customers/${id}`, { tokenStore: companyTokenStore }),

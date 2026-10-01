@@ -19,7 +19,7 @@ import { knowledgeRouter } from './routes/knowledge.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { calendarRouter, calendarOAuthRouter } from './routes/calendar.js';
 import { phoneNumberRouter } from './routes/phoneNumber.js';
-import { callLogsRouter } from './routes/callLogs.js';
+import { callLogsRouter, callRecordingRouter } from './routes/callLogs.js';
 import { exceptionsRouter } from './routes/exceptions.js';
 import { auditLogsRouter } from './routes/auditLogs.js';
 import { billingRouter } from './routes/billing.js';
@@ -58,6 +58,10 @@ app.use('/api', myBookingRouter);
 app.use('/api', publicBookingRouter);
 app.use('/api', customerPortalRouter);
 app.use('/api', acceptInviteRouter);
+// Unguarded like the routers above — it does its own token check (query param, since a
+// browser <audio> element can't send an Authorization header) rather than the app-wide
+// requireAuth below. See src/routes/callLogs.js for why.
+app.use('/api', callRecordingRouter);
 app.use('/api/auth', authRouter);
 // Scoped to /api/platform specifically — requirePlatformAuth must not be mounted at the
 // broader /api prefix, or it would intercept every other /api/* request (including

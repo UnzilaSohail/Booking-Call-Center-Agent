@@ -128,7 +128,7 @@ function CallsInner() {
                           {log.recording_url && (
                             <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
                               <strong style={{ fontSize: 12.5 }}>Recording</strong>
-                              <div style={{ marginTop: 4 }}><audio controls src={log.recording_url} style={{ height: 32, width: '100%', maxWidth: 360 }} /></div>
+                              <div style={{ marginTop: 4 }}><audio controls src={api.callRecordingUrl(log.id)} style={{ height: 32, width: '100%', maxWidth: 360 }} /></div>
                             </div>
                           )}
                           {log.voicemail && (
