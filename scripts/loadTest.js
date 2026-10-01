@@ -7,7 +7,14 @@
 // Usage: npm run migrate && npm start   (in one terminal)
 //        API_URL=http://localhost:3000 npm run load-test   (in another)
 import 'dotenv/config';
-import { client, getDb } from '../src/db.js';
+import jwt from 'jsonwebtoken';
+import { client, getDb, newId } from '../src/db.js';
+
+// `npm run load-test -- --public` runs the public booking page load test instead.
+if (process.argv.includes('--public')) {
+  await (await import('./loadTestPublic.js')).run();
+  process.exit(process.exitCode ?? 0);
+}
 
 const API_URL = process.env.API_URL || 'http://localhost:3000';
 const CONCURRENCY = Number(process.env.LOAD_TEST_CONCURRENCY || 20);
@@ -24,17 +31,20 @@ async function api(path, opts = {}) {
 async function main() {
   console.log(`load-testing ${API_URL} with ${CONCURRENCY} concurrent booking attempts on one slot...`);
 
+  // Self-signup (POST /api/auth/signup) no longer exists, so create the business and its owner
+  // directly in the database (this script already shares the server's MONGODB_URI) and sign a
+  // session token the same way the login route does.
   const suffix = Date.now();
   const email = `loadtest+${suffix}@example.com`;
-  const signup = await api('/api/auth/signup', {
-    method: 'POST',
-    body: JSON.stringify({ businessName: `__loadtest_${suffix}__`, email, password: 'loadtest-password' }),
+  const db0 = await getDb();
+  const businessId = newId();
+  const adminId = newId();
+  await db0.collection('businesses').insertOne({
+    _id: businessId, name: `__loadtest_${suffix}__`, timezone: 'UTC', status: 'active', google_calendar_id: 'primary', reschedule_cutoff_minutes: 120,
+    hours: [0, 1, 2, 3, 4, 5, 6].map((d) => ({ day_of_week: d, open_time: '09:00', close_time: '18:00' })), created_at: new Date(),
   });
-  if (signup.status !== 201) throw new Error(`signup failed: ${JSON.stringify(signup.body)}`);
-  const businessId = signup.body.businessId;
-
-  const login = await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password: 'loadtest-password' }) });
-  const token = login.body.token;
+  await db0.collection('admins').insertOne({ _id: adminId, business_id: businessId, email, name: 'Load Test', role: 'owner', status: 'active', password_hash: 'x' });
+  const token = jwt.sign({ role: 'business', adminId, businessId }, process.env.JWT_SECRET, { expiresIn: '1h' });
   const auth = { Authorization: `Bearer ${token}` };
 
   const service = await api('/api/services', {

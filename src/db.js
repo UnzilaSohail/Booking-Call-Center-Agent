@@ -21,7 +21,14 @@ export const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://loca
 
 let dbPromise = null;
 export function getDb() {
-  dbPromise ??= client.connect().then((c) => c.db(process.env.MONGODB_DB_NAME || 'booking_call_center'));
+  const name = process.env.MONGODB_DB_NAME || 'booking_call_center';
+  // Jira 23e: tests insert and delete data, so they must never run against a real database.
+  // `node --test` sets NODE_TEST_CONTEXT in its child processes; there, only a database whose name
+  // ends in _test is allowed (npm test picks <name>_test for you, see scripts/test.mjs).
+  if (process.env.NODE_TEST_CONTEXT && process.env.MONGODB_URI && !name.endsWith('_test') && !process.env.TEST_ALLOW_ANY_DB) {
+    return Promise.reject(new Error(`refusing to run tests against database "${name}": use "npm test", or set MONGODB_DB_NAME=${name}_test (TEST_ALLOW_ANY_DB=1 overrides)`));
+  }
+  dbPromise ??= client.connect().then((c) => c.db(name));
   return dbPromise;
 }
 
