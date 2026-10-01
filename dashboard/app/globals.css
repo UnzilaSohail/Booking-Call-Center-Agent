@@ -509,3 +509,6 @@ button.choice { width: 100%; min-height: 48px; padding: 12px 14px; justify-conte
 /* Setup progress on Overview (26a) and the sidebar badge */
 .setup-card { display: flex; flex-direction: column; gap: 10px; border-left: 4px solid var(--accent); }
 .sidebar-link .count { margin-left: auto; font-size: 11px; font-weight: 700; background: rgba(245, 248, 247, 0.16); color: #f5f7f8; border-radius: 999px; padding: 1px 8px; }
+
+/* Older cards pull the line under their heading up with margin-top:-8px, which made the two overlap. */
+.card h2 + p[style*="margin-top: -8px"] { margin-top: 6px !important; }

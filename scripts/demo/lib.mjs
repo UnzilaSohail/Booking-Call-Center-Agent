@@ -11,7 +11,7 @@ export const API = process.env.API_URL || 'http://localhost:3000';
 // it survives navigation inside the same tab.
 const OVERLAY = `(() => {
   const ready = () => {
-    if (document.getElementById('__cap')) return;
+    if (document.getElementById('__cursor')) return;
     const css = document.createElement('style');
     css.textContent = \`
       #__cap { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: min(900px, 92vw); z-index: 2147483647;
@@ -24,11 +24,12 @@ const OVERLAY = `(() => {
         border: 3px solid rgba(37,99,235,.8); animation: __rip .5s ease-out forwards; }
       @keyframes __rip { to { transform: scale(4); opacity: 0; } }\`;
     document.head.appendChild(css);
-    const cap = document.createElement('div'); cap.id = '__cap'; document.body.appendChild(cap);
+    const inFrame = window !== window.top;
+    const cap = document.createElement('div'); cap.id = '__cap'; if (!inFrame) document.body.appendChild(cap);
     const cur = document.createElement('div'); cur.id = '__cursor'; document.body.appendChild(cur);
     const setCap = (t) => { cap.textContent = t || ''; cap.style.display = t ? 'block' : 'none'; };
     window.__setCap = setCap;
-    try { setCap(sessionStorage.getItem('__cap')); const x = +sessionStorage.getItem('__cx') || 40, y = +sessionStorage.getItem('__cy') || 40; cur.style.left = x + 'px'; cur.style.top = y + 'px'; } catch {}
+    try { if (!inFrame) setCap(sessionStorage.getItem('__cap')); const x = +sessionStorage.getItem('__cx') || 40, y = +sessionStorage.getItem('__cy') || 40; cur.style.left = x + 'px'; cur.style.top = y + 'px'; } catch {}
     addEventListener('mousemove', (e) => { cur.style.left = e.clientX + 'px'; cur.style.top = e.clientY + 'px'; try { sessionStorage.setItem('__cx', e.clientX); sessionStorage.setItem('__cy', e.clientY); } catch {} }, true);
     addEventListener('mousedown', (e) => {
       cur.classList.add('down');
@@ -108,4 +109,29 @@ export async function slide(page, { title, lines = [], foot = '' }, ms = 4000) {
     <div style="margin-top:34px;color:#8ab4c4;font-size:16px">${foot}</div></body>`;
   await page.setContent(html);
   await page.waitForTimeout(ms);
+}
+
+// ---- phone view -------------------------------------------------------------------------------
+// A video keeps one fixed frame size, so changing the window to phone width leaves a grey void. Instead the
+// page is shown inside a phone-shaped frame: a small page served from the dashboard's own address (so the
+// logged-in session is shared) that holds the real dashboard in an iframe 384px wide.
+const PHONE_HTML = `<!doctype html><meta charset="utf-8"><title>phone view</title>
+<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:flex-start;padding-left:150px;gap:70px;background:linear-gradient(135deg,#102a3f,#1a3a52);font-family:system-ui,sans-serif;color:#f5f7f8">
+<div style="width:412px;height:650px;border-radius:46px;background:#05080c;padding:14px;box-shadow:0 24px 70px rgba(0,0,0,.55);position:relative;flex-shrink:0;margin-top:-30px">
+<div style="position:absolute;top:14px;left:50%;transform:translateX(-50%);width:110px;height:20px;background:#05080c;border-radius:0 0 16px 16px;z-index:2"></div>
+<iframe id="phone" src="/" title="phone" style="width:384px;height:622px;border:0;border-radius:32px;background:#fff"></iframe></div>
+<div style="max-width:420px"><div style="font:600 13px system-ui;letter-spacing:.14em;text-transform:uppercase;color:#8ab4c4">On a phone</div>
+<h2 style="font:600 34px/1.2 Georgia,serif;margin:10px 0 18px">The same dashboard, made for small screens</h2>
+<ul style="margin:0;padding-left:20px;font-size:19px;line-height:1.7;color:#dbe6ea"><li>A menu button instead of a cramped strip</li><li>The menu slides in; tapping outside closes it</li><li>Tables scroll inside their card, never sideways</li><li>Forms stack, buttons are easy to tap</li></ul></div>`;
+
+export async function openPhone(page, path = '/') {
+  await page.route(`${BASE}/__phone`, (route) => route.fulfill({ contentType: 'text/html', body: PHONE_HTML }));
+  await page.goto(`${BASE}/__phone`);
+  await phoneGo(page, path);
+  return page.frameLocator('#phone');
+}
+
+export async function phoneGo(page, path) {
+  await page.evaluate((p) => { document.getElementById('phone').src = p; }, path);
+  await page.waitForTimeout(2600);
 }
