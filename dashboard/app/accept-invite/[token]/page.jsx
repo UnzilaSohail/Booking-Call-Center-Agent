@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { acceptInviteApi, setToken, ApiError } from '../../../lib/api';
 import Loading from '../../../components/Skeleton';
+import AuthShell from '../../../components/AuthShell';
 
 const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', receptionist: 'Receptionist', staff: 'Staff', billing: 'Billing', custom: 'Custom access' };
 
@@ -42,8 +43,8 @@ function AcceptInviteInner() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', padding: '24px 0' }}>
-      <div className="card" style={{ width: 400 }}>
+    <AuthShell>
+      <div className="card fade-up" style={{ width: 400, maxWidth: '100%' }}>
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600 }}>Join the team</div>
         </div>
@@ -69,7 +70,7 @@ function AcceptInviteInner() {
           </form>
         )}
       </div>
-    </div>
+    </AuthShell>
   );
 }
 

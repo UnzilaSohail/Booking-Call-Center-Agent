@@ -10,22 +10,24 @@ import {
   TrendingDown, TrendingUp, UserCheck2, XCircle,
 } from 'lucide-react';
 import RequirePlatformAuth from '../../components/RequirePlatformAuth';
+import CountUp from '../../components/CountUp';
+import DemoDataCard from '../../components/DemoDataCard';
 import Avatar from '../../components/Avatar';
 import { platformApi } from '../../lib/api';
 import { DateTime } from '../../lib/datetime';
 import Loading from '../../components/Skeleton';
 
-const ACCENT = '#2563eb';
-const ACCENT_SOFT = '#dbeafe';
-const SUCCESS = '#16a34a';
-const SUCCESS_SOFT = '#dcfce7';
-const WARNING = '#d97706';
-const WARNING_SOFT = '#fef3c7';
-const DANGER = '#dc2626';
-const DANGER_SOFT = '#fee2e2';
-const VIOLET = '#7c3aed';
-const TEXT_MUTED = '#4d5c66';
-const BORDER = '#cfd9dd';
+const ACCENT = 'var(--chart-1)';
+const ACCENT_SOFT = 'var(--accent-soft)';
+const SUCCESS = 'var(--success)';
+const SUCCESS_SOFT = 'var(--success-soft)';
+const WARNING = 'var(--warning)';
+const WARNING_SOFT = 'var(--warning-soft)';
+const DANGER = 'var(--danger)';
+const DANGER_SOFT = 'var(--danger-soft)';
+const VIOLET = 'var(--violet)';
+const TEXT_MUTED = 'var(--text-muted)';
+const BORDER = 'var(--border-strong)';
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -60,7 +62,7 @@ function StatCard({ icon: Icon, iconColor, iconBg, label, value, pct, context, i
       <div className="icon-badge" style={{ background: iconBg }}>
         <Icon size={17} color={iconColor} />
       </div>
-      <div className="value">{value}</div>
+      <div className="value"><CountUp value={value} /></div>
       <div className="label">{label}</div>
       <Trend pct={pct} context={context} isGoodUp={isGoodUp} />
     </div>
@@ -296,6 +298,8 @@ function OverviewInner() {
           </ChartCard>
         </div>
       </div>
+
+      <DemoDataCard onChanged={() => platformApi.getAnalytics().then(setAnalytics).catch(() => {})} />
     </div>
   );
 }

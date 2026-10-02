@@ -7,6 +7,7 @@ import {
   Tag, Users,
 } from 'lucide-react';
 import Avatar from './Avatar';
+import ThemeToggle from './ThemeToggle';
 import { api, clearToken } from '../lib/api';
 
 const ROLE_LABELS = {
@@ -54,13 +55,7 @@ export default function Sidebar({ open = false, onNavigate }) {
   return (
     <aside className={`sidebar${open ? ' open' : ''}`} aria-label="Main menu">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 8px 22px' }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-          border: '1px solid rgba(245, 248, 247, 0.22)', background: 'rgba(245, 248, 247, 0.08)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <CalendarDays size={16} color="#f5f7f8" />
-        </div>
+        <div className="brand-mark"><CalendarDays size={18} color="#ffffff" /></div>
         <div>
           <div className="sidebar-brand" style={{ padding: 0, fontSize: 15.5 }}>Booking</div>
           <div style={{ fontSize: 10.5, fontWeight: 500, marginTop: 1, letterSpacing: '0.03em', color: 'rgba(245, 248, 247, 0.5)' }}>
@@ -87,10 +82,13 @@ export default function Sidebar({ open = false, onNavigate }) {
             <div style={{ fontSize: 10.5, color: 'rgba(245, 248, 247, 0.5)' }}>{ROLE_LABELS[me?.role] ?? 'Administrator'}</div>
           </div>
         </div>
-        <button className="ghost" onClick={logout} style={{ justifyContent: 'flex-start', width: '100%' }}>
-          <LogOut size={16} />
-          Log out
-        </button>
+        <div className="row" style={{ alignItems: 'center', flexWrap: 'nowrap', gap: 6 }}>
+          <button className="ghost" onClick={logout} style={{ justifyContent: 'flex-start', flex: 1 }}>
+            <LogOut size={16} />
+            Log out
+          </button>
+          <ThemeToggle />
+        </div>
       </div>
     </aside>
   );

@@ -43,6 +43,7 @@ function BookingsInner() {
   const [services, setServices] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [modal, setModal] = useState(null);
+  const [shown, setShown] = useState(25); // long histories are revealed 25 at a time
 
   useEffect(() => {
     api.listServices().then(setServices).catch(() => {});
@@ -53,7 +54,7 @@ function BookingsInner() {
     setLoading(true);
     setError(null);
     api.listBookings(undefined, undefined, { q: q || undefined, status: status === 'all' ? undefined : status })
-      .then(setResults)
+      .then((r) => { setResults(r); setShown(25); })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [q, status]);
@@ -101,7 +102,7 @@ function BookingsInner() {
           <table>
             <thead><tr><th>When</th><th>Customer</th><th>Phone</th><th>Service</th><th>Booked via</th><th>Status</th><th>Confirmation</th></tr></thead>
             <tbody>
-              {results.map((b) => (
+              {results.slice(0, shown).map((b) => (
                 <tr key={b.id} style={{ cursor: b.status === 'confirmed' ? 'pointer' : 'default' }} onClick={() => b.status === 'confirmed' && setModal({ mode: 'edit', booking: b })}>
                   <td>{DateTime.formatDateTime(b.start_time)}</td>
                   <td>{b.customer_name}</td>
@@ -114,6 +115,12 @@ function BookingsInner() {
               ))}
             </tbody>
           </table>
+        )}
+        {!loading && results.length > shown && (
+          <div className="row" style={{ justifyContent: 'center', alignItems: 'center', marginTop: 14 }}>
+            <span className="muted" style={{ fontSize: 13 }}>Showing {shown} of {results.length}</span>
+            <button type="button" onClick={() => setShown(shown + 50)}>Show more</button>
+          </div>
         )}
       </div>
 

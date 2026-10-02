@@ -1,12 +1,16 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { MapPin, Navigation, Search } from 'lucide-react';
 import { publicApi } from '../../lib/api';
+import { gradientFor, initials } from '../../lib/brand';
 import Loading from '../../components/Skeleton';
+import PublicNav from '../../components/PublicNav';
 
-// Public directory (docs/customer/DISCOVERY_AND_LISTING.md): a customer who doesn't have a
-// business link searches here. Each card shows the street address and city so two
-// "ABC Salon"s can't be mixed up; only businesses that opted in and are ready show up.
+// Public directory (docs/customer/DISCOVERY_AND_LISTING.md): a customer who doesn't have a business link
+// searches here. Each card shows the street address and city so two "ABC Salon"s can't be mixed up; only
+// businesses that opted in and are ready show up. Look: one friendly search bar, quick type chips, and
+// cards that lift on hover (theme.css).
 const label = (slug) => slug.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 export default function FindPage() {
@@ -55,100 +59,106 @@ export default function FindPage() {
   }
 
   return (
-    <main id="main-content" tabIndex={-1} style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px 16px' }}>
-      <div style={{ maxWidth: 720, margin: '0 auto' }}>
-        <div className="hero"><h1>Find a business to book with</h1></div>
-        <p className="muted" style={{ marginTop: 0 }}>Search by name or by what you need, like &ldquo;haircut&rdquo; or &ldquo;teeth cleaning&rdquo;.</p>
+    <div className="public-shell">
+      <PublicNav />
+      <main id="main-content" tabIndex={-1} className="public-wrap">
+        <section className="hero fade-up">
+          <h1>Book local services <span className="grad-text">in seconds</span></h1>
+          <p className="lead">Find a salon, clinic or studio near you and book online. No phone call, no account needed.</p>
 
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div className="field">
-            <label htmlFor="q">Business or service</label>
-            <input id="q" type="search" value={q} onChange={(e) => reset(setQ)(e.target.value)} placeholder="ABC Salon, haircut, dentist..." />
-          </div>
-          <div className="row">
-            <div className="field" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}>
-              <label htmlFor="cat">Type</label>
-              <select id="cat" value={category} onChange={(e) => reset(setCategory)(e.target.value)}>
-                <option value="">All types</option>
-                {categories.map((c) => <option key={c.name} value={c.name}>{label(c.name)} ({c.count})</option>)}
-              </select>
+          <form className="search-pill" role="search" onSubmit={(e) => e.preventDefault()}>
+            <div className="seg">
+              <Search size={18} color="var(--text-muted)" aria-hidden="true" />
+              <label htmlFor="q">Business or service</label>
+              <input id="q" type="search" value={q} onChange={(e) => reset(setQ)(e.target.value)} placeholder="Haircut, dentist, Glow Studio..." autoComplete="off" />
             </div>
-            <div className="field" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}>
+            <div className="seg city">
+              <MapPin size={18} color="var(--text-muted)" aria-hidden="true" />
               <label htmlFor="city">City</label>
               <select id="city" value={city} onChange={(e) => reset(setCity)(e.target.value)}>
                 <option value="">Anywhere</option>
                 {cities.map((c) => <option key={c.name} value={c.name}>{c.name} ({c.count})</option>)}
               </select>
             </div>
-            <div className="field" style={{ marginBottom: 0, alignSelf: 'flex-end' }}>
-              <button type="button" onClick={findNearMe} disabled={locating} style={near ? { background: 'var(--accent-soft)', borderColor: 'var(--accent)' } : undefined}>
-                {locating ? 'Locating...' : near ? '✓ Sorted by distance' : 'Near me'}
-              </button>
-            </div>
-          </div>
-        </div>
+            <button type="button" className="primary" onClick={findNearMe} disabled={locating} style={{ borderRadius: 999, padding: '0 20px' }}>
+              <Navigation size={15} aria-hidden="true" /> {locating ? 'Locating...' : near ? 'Nearest first' : 'Near me'}
+            </button>
+          </form>
 
-        {error && <p className="error-text">{error}</p>}
+          <div className="chip-row" role="group" aria-label="Type of business">
+            <button type="button" className="chip-btn" aria-pressed={!category} onClick={() => reset(setCategory)('')}>All</button>
+            {categories.map((c) => (
+              <button key={c.name} type="button" className="chip-btn" aria-pressed={category === c.name} onClick={() => reset(setCategory)(category === c.name ? '' : c.name)}>
+                {label(c.name)} <span style={{ opacity: 0.7 }}>{c.count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="trust-row">
+            <span>Book in under a minute</span><span>Instant confirmation</span><span>Change or cancel online</span>
+          </div>
+        </section>
+
+        {error && <p className="error-text" role="alert">{error}</p>}
         {!data && !error && (
-          <div className="stack" style={{ gap: 12 }}>{[0, 1, 2].map((i) => <div key={i} className="card"><Loading lines={3} /></div>)}</div>
+          <div className="stack" style={{ gap: 14 }}>{[0, 1, 2].map((i) => <div key={i} className="card" style={{ padding: 22 }}><Loading lines={3} /></div>)}</div>
         )}
         {data && data.results.length > 0 && (
-          <p className="muted" style={{ margin: '0 0 10px' }} aria-live="polite">{data.total} business{data.total === 1 ? '' : 'es'} found{near ? ', nearest first' : ''}</p>
+          <p className="muted" style={{ margin: '0 0 12px' }} aria-live="polite">{data.total} business{data.total === 1 ? '' : 'es'} found{near ? ', nearest first' : ''}</p>
         )}
         {data?.results.length === 0 && (
-          <div className="card">
+          <div className="card" style={{ padding: 22 }}>
             <p style={{ margin: '0 0 10px' }}>No businesses match. Try a different word, or clear the filters.</p>
             {(q || category || city || near) && <button type="button" onClick={() => { setQ(''); setCategory(''); setCity(''); setNear(null); setPage(1); }}>Clear filters</button>}
           </div>
         )}
         {data?.results.length === 0 && <LeadForm defaultCity={city} />}
 
-        <div className="stack" style={{ gap: 12 }}>
+        <div className="stack stagger" style={{ gap: 14 }}>
           {data?.results.map((b) => (
-            <div key={b.slug} className="card">
-              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap' }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: 18 }}>{b.name}</h2>
-                  <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
-                    {[b.address, b.address?.includes(b.city) ? null : b.city].filter(Boolean).join(', ')}
-                    {b.distanceKm != null && <> · {b.distanceKm < 1 ? 'less than 1 km' : `${Math.round(b.distanceKm)} km`} away</>}
-                  </div>
-                  {b.categories.length > 0 && (
-                    <div className="row" style={{ gap: 6, marginTop: 8 }}>{b.categories.map((c) => <span key={c} className="badge neutral">{label(c)}</span>)}</div>
-                  )}
-                  {b.description && <p style={{ fontSize: 13.5, margin: '8px 0 0' }}>{b.description}</p>}
-                  {b.services.length > 0 && (
-                    <div className="muted" style={{ fontSize: 13, marginTop: 8 }}>
-                      {b.services.map((s) => `${s.name}${s.price != null ? ` $${s.price}` : ''}`).join(' · ')}
-                    </div>
-                  )}
+            <article key={b.slug} className="card lift biz-card">
+              <div className="avatar-lg" style={{ background: gradientFor(b.name) }} aria-hidden="true">{initials(b.name)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h2 style={{ margin: 0, fontSize: 19 }}>{b.name}</h2>
+                <div className="muted" style={{ fontSize: 13.5, marginTop: 2 }}>
+                  <MapPin size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />
+                  {[b.address, b.address?.includes(b.city) ? null : b.city].filter(Boolean).join(', ')}
+                  {b.distanceKm != null && <> · {b.distanceKm < 1 ? 'less than 1 km' : `${Math.round(b.distanceKm)} km`} away</>}
                 </div>
-                <Link href={`/book/${b.slug}`} aria-label={`Book with ${b.name}`}><button type="button" className="primary">Book</button></Link>
+                {b.categories.length > 0 && (
+                  <div className="row" style={{ gap: 6, marginTop: 8 }}>{b.categories.map((c) => <span key={c} className="badge violet">{label(c)}</span>)}</div>
+                )}
+                {b.description && <p style={{ fontSize: 14, margin: '8px 0 0' }}>{b.description}</p>}
+                {b.services.length > 0 && (
+                  <div className="chips" style={{ marginTop: 10, marginBottom: 0 }}>
+                    {b.services.map((s) => <span key={s.name} className="chip">{s.name}{s.price != null ? ` · $${s.price}` : ''}</span>)}
+                  </div>
+                )}
               </div>
-            </div>
+              <Link href={`/book/${b.slug}`} aria-label={`Book with ${b.name}`}><button type="button" className="primary" style={{ borderRadius: 999, padding: '10px 22px' }}>Book</button></Link>
+            </article>
           ))}
         </div>
 
         {data && data.total > data.pageSize && (
-          <div className="row" style={{ marginTop: 16, alignItems: 'center' }}>
+          <div className="row" style={{ marginTop: 18, alignItems: 'center' }}>
             <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
             <span className="muted">Page {page} of {Math.ceil(data.total / data.pageSize)}</span>
             <button type="button" disabled={page * data.pageSize >= data.total} onClick={() => setPage(page + 1)}>Next</button>
           </div>
         )}
         {data?.results.length > 0 && (
-          <p className="muted" style={{ fontSize: 13, marginTop: 20 }}>
+          <p className="muted" style={{ fontSize: 13.5, marginTop: 22 }}>
             Not finding the right fit?{' '}
-            <button type="button" onClick={() => setLeadOpen((v) => !v)} style={{ padding: 0, border: 'none', background: 'none', color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' }}>
+            <button type="button" onClick={() => setLeadOpen((v) => !v)} style={{ padding: 0, border: 'none', background: 'none', color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', boxShadow: 'none' }}>
               Tell us what you need
             </button>
           </p>
         )}
         {data?.results.length > 0 && leadOpen && <LeadForm defaultCity={city} />}
 
-        <p className="muted" style={{ fontSize: 12.5, marginTop: 24 }}>Are you a business? <Link href="/signup">Sign up</Link> or <Link href="/login">log in</Link>.</p>
-      </div>
-    </main>
+        <p className="muted" style={{ fontSize: 13, marginTop: 28 }}>Are you a business? <Link href="/signup">Sign up</Link> or <Link href="/login">log in</Link>.</p>
+      </main>
+    </div>
   );
 }
 

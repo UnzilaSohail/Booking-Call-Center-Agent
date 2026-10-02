@@ -29,6 +29,8 @@ const SHOTS = [
   { name: 'login', run: async (page) => { await go(page, '/login', { wait: 1200 }); } },
   { name: 'signup', run: async (page) => { await go(page, '/signup', { wait: 1200 }); } },
   { name: 'my-signin', run: async (page) => { await go(page, `/my/${DEMO.slug}`, { wait: 1500 }); } },
+  { name: 'find-dark', run: async (page) => { await page.evaluate(() => localStorage.setItem('theme', 'dark')); await go(page, '/find', { wait: 1200 }); } },
+  { name: 'login-dark', run: async (page) => { await go(page, '/login', { wait: 1200 }); } },
 ];
 
 fs.mkdirSync(path.join(ROOT, 'baseline'), { recursive: true });
@@ -45,7 +47,7 @@ try {
       await page.mouse.move(0, 0);
       await page.evaluate(() => document.activeElement?.blur?.());
       await page.waitForTimeout(300);
-      const current = await page.screenshot({ fullPage: false });
+      const current = await page.screenshot({ fullPage: false, animations: 'disabled' });
       const baselinePath = path.join(ROOT, 'baseline', file);
       if (UPDATE || !fs.existsSync(baselinePath)) {
         fs.writeFileSync(baselinePath, current);

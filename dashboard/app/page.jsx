@@ -6,30 +6,31 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  AlertTriangle, Bot, Box, CalendarDays, CalendarRange, Crown, DollarSign, Minus, Moon, TrendingDown, TrendingUp, Users,
+  AlertTriangle, Bot, Box, CalendarDays, Crown, DollarSign, Minus, Moon, TrendingDown, TrendingUp, Users,
 } from 'lucide-react';
 import RequireAuth from '../components/RequireAuth';
 import Avatar from '../components/Avatar';
 import BookingModal from '../components/BookingModal';
 import { api } from '../lib/api';
-import { DateTime } from '../lib/datetime';
 import Loading from '../components/Skeleton';
 import SetupProgress from '../components/SetupProgress';
+import CountUp from '../components/CountUp';
 
-const ACCENT = '#2563eb';
-const ACCENT_SOFT = '#dbeafe';
-const SUCCESS = '#16a34a';
-const SUCCESS_SOFT = '#dcfce7';
-const WARNING = '#d97706';
-const WARNING_SOFT = '#fef3c7';
-const DANGER = '#dc2626';
-const DANGER_SOFT = '#fee2e2';
-const INFO = '#0891b2';
-const INFO_SOFT = '#cffafe';
-const VIOLET = '#7c3aed';
-const VIOLET_SOFT = '#ede9fe';
-const TEXT_MUTED = '#4d5c66';
-const BORDER = '#cfd9dd';
+// Theme tokens (not hex) so charts and icons follow light/dark mode.
+const ACCENT = 'var(--chart-1)';
+const ACCENT_SOFT = 'var(--accent-soft)';
+const SUCCESS = 'var(--success)';
+const SUCCESS_SOFT = 'var(--success-soft)';
+const WARNING = 'var(--warning)';
+const WARNING_SOFT = 'var(--warning-soft)';
+const DANGER = 'var(--danger)';
+const DANGER_SOFT = 'var(--danger-soft)';
+const INFO = 'var(--info)';
+const INFO_SOFT = 'var(--info-soft)';
+const VIOLET = 'var(--violet)';
+const VIOLET_SOFT = 'var(--violet-soft)';
+const TEXT_MUTED = 'var(--text-muted)';
+const BORDER = 'var(--border-strong)';
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -62,7 +63,7 @@ function StatCard({ icon: Icon, iconColor, iconBg, label, value, pct, context })
       <div className="icon-badge" style={{ background: iconBg }}>
         <Icon size={17} color={iconColor} />
       </div>
-      <div className="value">{value}</div>
+      <div className="value"><CountUp value={value} /></div>
       <div className="label">{label}</div>
       <Trend pct={pct} context={context} />
     </div>
@@ -128,7 +129,7 @@ function HomeInner() {
   const hasActivity = dailyData.some((d) => d.confirmed > 0 || d.cancelled > 0);
   const callData = analytics ? [
     { name: 'Booked', value: analytics.calls.booked, color: ACCENT },
-    { name: 'Transferred', value: analytics.calls.transferred, color: INFO },
+    { name: 'Transferred', value: analytics.calls.transferred, color: 'var(--chart-2)' },
     { name: 'Missed', value: analytics.calls.noBooking, color: BORDER },
   ].filter((d) => d.value > 0) : [];
 
@@ -144,23 +145,25 @@ function HomeInner() {
 
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="hero-card fade-up">
         <div>
           <h1>{greeting()}{firstName ? `, ${firstName}` : ''}</h1>
-          <p className="muted" style={{ marginTop: 4 }}>Here&apos;s what&apos;s happening with your bookings.</p>
-        </div>
-        <div className="row" style={{ alignItems: 'center', gap: 10 }}>
-          <span className="badge neutral" style={{ padding: '6px 12px' }}>
-            <CalendarRange size={13} style={{ marginRight: 2 }} />
-            Last 30 days
-          </span>
-          <button
-            className="primary"
-            onClick={() => setModal({ mode: 'create', initialDate: new Date() })}
-            disabled={services.length === 0}
-          >
+          <p>Here&apos;s what&apos;s happening with your bookings.</p>
+          <button className="primary" onClick={() => setModal({ mode: 'create', initialDate: new Date() })} disabled={services.length === 0}>
             + New booking
           </button>
+        </div>
+        <div className="agent-card">
+          <div className="row" style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 14 }}><Bot size={17} /> AI receptionist</span>
+            <span style={{ fontSize: 12.5 }}><span className="live-dot" style={{ width: 8, height: 8, marginRight: 6 }} />Online</span>
+          </div>
+          <span className="wave" aria-hidden="true">{Array.from({ length: 18 }, (_, i) => <span key={i} style={{ '--i': i }} />)}</span>
+          <div className="row" style={{ gap: 22, marginTop: 10 }}>
+            <div><b><CountUp value={analytics?.calls.total ?? '—'} /></b><small>calls answered</small></div>
+            <div><b><CountUp value={analytics?.calls.booked ?? '—'} /></b><small>booked by AI</small></div>
+            <div><b><CountUp value={analytics ? `${analytics.calls.conversionRate}%` : '—'} /></b><small>conversion</small></div>
+          </div>
         </div>
       </div>
 
@@ -222,16 +225,16 @@ function HomeInner() {
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 999, background: DANGER, marginRight: 5 }} />Cancellations</span>
             </div>
             <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart data={dailyData} margin={{ left: -20, right: 8 }}>
+              <ComposedChart data={dailyData} margin={{ left: 0, right: 8 }}>
                 <defs>
                   <linearGradient id="bookingsFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={ACCENT} stopOpacity={0.28} />
+                    <stop offset="0%" stopColor={ACCENT} stopOpacity={0.35} />
                     <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} stroke={BORDER} />
                 <XAxis dataKey="label" tick={{ fontSize: 11, fill: TEXT_MUTED }} axisLine={{ stroke: BORDER }} tickLine={false} interval={1} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: TEXT_MUTED }} axisLine={false} tickLine={false} width={30} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: TEXT_MUTED }} axisLine={false} tickLine={false} width={34} />
                 <Tooltip content={<CustomTooltip />} />
                 <Area type="monotone" dataKey="confirmed" name="Bookings" stroke={ACCENT} strokeWidth={2} fill="url(#bookingsFill)" />
                 <Line type="monotone" dataKey="cancelled" name="Cancellations" stroke={DANGER} strokeWidth={2} dot={false} />
@@ -325,25 +328,22 @@ function HomeInner() {
         <div style={{ flex: '1 1 100%', minWidth: 320 }}>
           <ChartCard title="Upcoming bookings" action={<Link href="/bookings" style={{ fontSize: 12.5 }}>View all</Link>} empty={upcoming.length === 0 ? 'Nothing booked in the next week yet.' : null}>
             {upcoming.length > 0 && (
-              <table>
-                <thead><tr><th>Customer</th><th>Service</th><th>Date &amp; time</th><th>Staff</th><th>Status</th></tr></thead>
-                <tbody>
-                  {upcoming.map((b) => (
-                    <tr key={b.id}>
-                      <td>
-                        <div className="row" style={{ alignItems: 'center', gap: 8 }}>
-                          <Avatar name={b.customer_name} />
-                          {b.customer_name}
-                        </div>
-                      </td>
-                      <td>{b.service_name ?? '—'}</td>
-                      <td>{DateTime.formatDateTime(b.start_time)}</td>
-                      <td>{staffNameById[b.staff_id] ?? '—'}</td>
-                      <td><span className="badge success">Confirmed</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div>
+                {upcoming.map((b) => (
+                  <div key={b.id} className="up-row">
+                    <div className="date-tile"><small>{new Date(b.start_time).toLocaleDateString([], { month: 'short' })}</small><b>{new Date(b.start_time).getDate()}</b></div>
+                    <Avatar name={b.customer_name} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600 }}>{b.customer_name}</div>
+                      <div className="muted" style={{ fontSize: 13 }}>{b.service_name ?? '—'}{staffNameById[b.staff_id] ? ` with ${staffNameById[b.staff_id]}` : ''}</div>
+                    </div>
+                    <div style={{ textAlign: 'right', fontSize: 13.5 }}>
+                      <div style={{ fontWeight: 600 }}>{new Date(b.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>
+                      <span className="badge success">Confirmed</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </ChartCard>
         </div>

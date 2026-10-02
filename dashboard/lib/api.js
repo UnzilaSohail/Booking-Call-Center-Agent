@@ -250,6 +250,9 @@ export const platformApi = {
   listCallLogs: () => request('/api/platform/call-logs', { tokenStore: platformTokenStore }),
   listLeads: () => request('/api/platform/leads', { tokenStore: platformTokenStore }),
   getCompanyBilling: (id) => request(`/api/platform/businesses/${id}/billing`, { tokenStore: platformTokenStore }),
+  getDemoData: () => request('/api/platform/demo-data', { tokenStore: platformTokenStore }),
+  addDemoData: (listed) => request('/api/platform/demo-data', { method: 'POST', body: { listed }, tokenStore: platformTokenStore }),
+  removeDemoData: () => request('/api/platform/demo-data', { method: 'DELETE', tokenStore: platformTokenStore }),
 };
 
 // Single login call used by the one login page (app/login/page.jsx) — tries both roles

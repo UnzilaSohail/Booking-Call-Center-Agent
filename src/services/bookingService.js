@@ -204,7 +204,7 @@ function floorToGrid(date) {
 // Locks only matter until the booking's time has passed. expires_at (end + 1 day) lets a TTL
 // index (db/schema.js) delete them by itself, so booking_slot_locks stops growing (KG-14).
 const LOCK_GRACE_MS = 24 * 60 * 60_000;
-function lockDocs(businessId, bookingId, staffId, startDate, endDate) {
+export function lockDocs(businessId, bookingId, staffId, startDate, endDate) {
   const expires_at = new Date(endDate.getTime() + LOCK_GRACE_MS);
   return slotLockIds(businessId, staffId, startDate, endDate).map((id) => ({ _id: id, business_id: businessId, booking_id: bookingId, expires_at }));
 }

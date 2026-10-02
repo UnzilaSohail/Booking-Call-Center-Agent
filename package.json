@@ -19,7 +19,9 @@
     "local-tunnel": "node scripts/localTunnel.js",
     "backup-db": "node scripts/backupDb.js",
     "restore-db": "node scripts/restoreDb.js",
-    "make-invite-link": "node scripts/makeInviteLink.mjs"
+    "make-invite-link": "node scripts/makeInviteLink.mjs",
+    "demo:seed": "node scripts/demo/seedDemo.mjs",
+    "demo:remove": "node scripts/demo/seedDemo.mjs --clean"
   },
   "repository": {
     "type": "git",

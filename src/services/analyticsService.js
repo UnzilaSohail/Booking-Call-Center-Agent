@@ -22,6 +22,7 @@ export async function getAnalytics(businessId) {
   const prevMonthStart = new Date(monthStart);
   prevMonthStart.setMonth(prevMonthStart.getMonth() - 1);
   const now = new Date();
+  const prevSamePoint = new Date(Math.min(monthStart.getTime(), prevMonthStart.getTime() + (now.getTime() - monthStart.getTime())));
   const trendStart = daysAgo(13); // 14-day window including today
 
   return withTenant(businessId, async (col) => {
@@ -35,9 +36,10 @@ export async function getAnalytics(businessId) {
         { $group: { _id: null, revenue: { $sum: { $ifNull: ['$service.price', 0] } }, count: { $sum: 1 } } },
       ]).toArray(),
 
-      // Same, for the prior calendar month — powers the "vs last month" trend.
+      // Same, for the prior calendar month — powers the "vs last month" trend. Compared over the same number of
+      // elapsed days (day 3 of this month vs days 1-3 of last), so the first days of a month don't read as a crash.
       col('bookings').aggregate([
-        { $match: { status: 'confirmed', is_test: { $ne: true }, start_time: { $gte: prevMonthStart, $lt: monthStart } } },
+        { $match: { status: 'confirmed', is_test: { $ne: true }, start_time: { $gte: prevMonthStart, $lt: prevSamePoint } } },
         { $lookup: { from: 'services', localField: 'service_id', foreignField: '_id', as: 'service' } },
         { $unwind: { path: '$service', preserveNullAndEmptyArrays: true } },
         { $group: { _id: null, revenue: { $sum: { $ifNull: ['$service.price', 0] } } } },

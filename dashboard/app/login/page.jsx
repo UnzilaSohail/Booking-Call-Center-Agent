@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, unifiedLogin, storeTokenForRole } from '../../lib/api';
+import AuthShell from '../../components/AuthShell';
 
 // One login for both roles — the backend (src/routes/unifiedLogin.js) figures out
 // whether these credentials belong to a platform admin or a company admin, so nobody
@@ -56,8 +57,8 @@ export default function LoginPage() {
 
   if (mfaToken) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-        <form onSubmit={submitCode} className="card" style={{ width: 360 }}>
+      <AuthShell>
+        <form onSubmit={submitCode} className="card fade-up" style={{ width: 380, maxWidth: '100%' }}>
           <div style={{ marginBottom: 22 }}>
             <div style={{ fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600 }}>Booking</div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>Enter your 6-digit authenticator code</div>
@@ -74,16 +75,16 @@ export default function LoginPage() {
             Back
           </button>
         </form>
-      </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-      <form onSubmit={submit} className="card" style={{ width: 360 }}>
+    <AuthShell>
+      <form onSubmit={submit} className="card fade-up" style={{ width: 380, maxWidth: '100%' }}>
         <div style={{ marginBottom: 22 }}>
-          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600 }}>Booking</div>
-          <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>Log in</div>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 24, fontWeight: 700 }}>Welcome back</div>
+          <div className="muted" style={{ fontSize: 13.5, marginTop: 2 }}>Log in to your dashboard</div>
         </div>
         <div className="field">
           <label>Email</label>
@@ -107,6 +108,6 @@ export default function LoginPage() {
           Looking to book an appointment? <Link href="/find">Find a business</Link>
         </p>
       </form>
-    </div>
+    </AuthShell>
   );
 }

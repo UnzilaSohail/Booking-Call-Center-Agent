@@ -7,6 +7,8 @@ import Loading from '../../../components/Skeleton';
 import { useConfirm } from '../../../lib/confirm';
 import TextField from '../../../components/TextField';
 import { validateName, validateEmail } from '../../../lib/validate';
+import PublicNav from '../../../components/PublicNav';
+import { gradientFor, initials } from '../../../lib/brand';
 
 // Customer portal "My appointments" (docs/customer/PORTAL_SPEC.md). This is the customer's
 // door, separate from the company /login: no password, just a code sent to their own phone or
@@ -18,7 +20,6 @@ const todayIn = (tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).forma
 const keyFor = (slug) => `customer_token:${slug}`;
 const readToken = (slug) => { try { return localStorage.getItem(keyFor(slug)); } catch { return null; } };
 const writeToken = (slug, t) => { try { t ? localStorage.setItem(keyFor(slug), t) : localStorage.removeItem(keyFor(slug)); } catch { /* private mode: session only */ } };
-const selected = { background: 'var(--ink)', color: 'var(--ink-text)', borderColor: 'var(--ink)' };
 
 function SignIn({ slug, biz, onToken }) {
   const [mode, setMode] = useState('phone');
@@ -95,8 +96,11 @@ function Appointment({ a, token, biz, onChanged }) {
 
   return (
     <div className="card" style={{ padding: 16 }}>
-      <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-        <div>
+      <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', alignItems: 'center' }}>
+        <div className="date-pill" style={{ minWidth: 56, flexShrink: 0, pointerEvents: 'none' }} aria-hidden="true">
+          <small>{fmt(a.startTime, a.timezone, { month: 'short' })}</small><b>{fmt(a.startTime, a.timezone, { day: 'numeric' })}</b>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <strong>{a.serviceName}</strong>{a.staffName && <> with {a.staffName}</>}
           <div>{when(a.startTime, a.timezone)}</div>
         </div>
@@ -117,8 +121,8 @@ function Appointment({ a, token, biz, onChanged }) {
           <div className="field"><label htmlFor={`d-${a.id}`}>New date</label><input id={`d-${a.id}`} type="date" min={todayIn(a.timezone)} value={date} onChange={(e) => setDate(e.target.value)} /></div>
           {slots === null && <Loading />}
           {slots?.length === 0 && <p className="muted">Nothing open this day.</p>}
-          <div className="row" style={{ gap: 8, marginBottom: 12 }}>
-            {slots?.map((s) => <button key={s} type="button" style={slot === s ? selected : undefined} onClick={() => setSlot(s)}>{timeOf(s, a.timezone)}</button>)}
+          <div className="slot-grid" style={{ marginBottom: 12 }}>
+            {slots?.map((s) => <button key={s} type="button" className="slot-btn" aria-pressed={slot === s} onClick={() => setSlot(s)}>{timeOf(s, a.timezone)}</button>)}
           </div>
           {error && <p className="error-text">{error}</p>}
           <div className="row">
@@ -238,14 +242,18 @@ export default function MyPage() {
   const signOut = () => { writeToken(slug, null); setToken(null); setMe(null); };
 
   return (
-    <main id="main-content" tabIndex={-1} style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px 16px' }}>
-      <div className="card" style={{ maxWidth: 520, margin: '0 auto' }}>
+    <div className="public-shell">
+    <PublicNav right={biz && <Link href={`/book/${slug}`} style={{ fontWeight: 600, fontSize: 14 }}>Book an appointment</Link>} />
+    <main id="main-content" tabIndex={-1} className="public-wrap narrow" style={{ paddingTop: 24 }}>
+      <div className="card fade-up">
         {missing && <><h1 style={{ fontSize: 20 }}>We couldn&apos;t find that business</h1><p className="muted"><Link href="/find">Find a business</Link></p></>}
         {biz && (
-          <div style={{ marginBottom: 16 }}>
-            <div className="muted" style={{ fontSize: 12 }}><Link href={`/book/${slug}`}>Book an appointment</Link></div>
-            <h1 style={{ fontSize: 22, margin: '4px 0 2px' }}>{biz.name}</h1>
+          <div className="row" style={{ marginBottom: 16, alignItems: 'center', gap: 14, flexWrap: 'nowrap' }}>
+            <div className="avatar-lg" style={{ background: gradientFor(biz.name), width: 48, height: 48, fontSize: 17 }} aria-hidden="true">{initials(biz.name)}</div>
+            <div>
+            <h1 style={{ fontSize: 22, margin: '0 0 2px' }}>{biz.name}</h1>
             <div className="muted" style={{ fontSize: 13 }}>{[biz.address, biz.city && !biz.address?.includes(biz.city) ? biz.city : null].filter(Boolean).join(', ')}</div>
+            </div>
           </div>
         )}
         {biz && token === undefined && <Loading />}
@@ -254,5 +262,6 @@ export default function MyPage() {
         {biz && token && me && <Account slug={slug} token={token} me={me} onSignOut={signOut} reload={() => loadMe(token)} />}
       </div>
     </main>
+    </div>
   );
 }

@@ -6,10 +6,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const css = readFileSync(new URL('../dashboard/app/globals.css', import.meta.url), 'utf8');
-const root = css.slice(css.indexOf(':root'), css.indexOf('}', css.indexOf(':root')));
-const token = (name) => {
-  const m = new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`).exec(root);
-  assert.ok(m, `token --${name} not found in :root`);
+const block = (open) => { const i = css.indexOf(open); return css.slice(i, css.indexOf('}', i)); };
+const light = block(':root {');
+const dark = block(':root[data-theme="dark"]');
+// A theme only restates the tokens it changes, so dark falls back to the light value for the rest.
+const tokenIn = (theme) => (name) => {
+  const re = new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`);
+  const m = re.exec(theme === 'dark' ? dark : light) ?? re.exec(light);
+  assert.ok(m, `token --${name} not found`);
   return m[1];
 };
 
@@ -35,18 +39,21 @@ const PAIRS = [
   ['danger', 'surface'], // danger buttons and links
 ];
 
-describe('design token contrast', () => {
-  for (const [fg, bg] of PAIRS) {
-    it(`${fg} on ${bg} is at least 4.5:1`, () => {
-      const r = ratio(token(fg), token(bg));
-      assert.ok(r >= 4.5, `--${fg} (${token(fg)}) on --${bg} (${token(bg)}) is only ${r.toFixed(2)}:1`);
-    });
-  }
-
-  it('white text on the toast fills is at least 4.5:1', () => {
-    for (const fill of ['success-strong', 'warning-strong', 'danger']) {
-      const r = ratio('#ffffff', token(fill));
-      assert.ok(r >= 4.5, `white on --${fill} is only ${r.toFixed(2)}:1`);
+for (const theme of ['light', 'dark']) {
+  const token = tokenIn(theme);
+  describe(`design token contrast (${theme})`, () => {
+    for (const [fg, bg] of PAIRS) {
+      it(`${fg} on ${bg} is at least 4.5:1`, () => {
+        const r = ratio(token(fg), token(bg));
+        assert.ok(r >= 4.5, `--${fg} (${token(fg)}) on --${bg} (${token(bg)}) is only ${r.toFixed(2)}:1`);
+      });
     }
+
+    it('white text on the toast fills is at least 4.5:1', () => {
+      for (const fill of ['success-strong', 'warning-strong', 'danger-strong']) {
+        const r = ratio('#ffffff', token(fill));
+        assert.ok(r >= 4.5, `white on --${fill} is only ${r.toFixed(2)}:1`);
+      }
+    });
   });
-});
+}

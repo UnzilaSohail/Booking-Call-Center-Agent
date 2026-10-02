@@ -1,4 +1,5 @@
 'use client';
+import Transcript from '../../components/Transcript';
 import { Fragment, useEffect, useState } from 'react';
 import { Phone } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
@@ -179,9 +180,7 @@ function CallsInner() {
                             </div>
                           )}
                           {log.transcript && (
-                            <div style={{ padding: '10px 12px', whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
-                              {log.transcript}
-                            </div>
+                            <Transcript text={log.transcript} />
                           )}
                         </td>
                       </tr>

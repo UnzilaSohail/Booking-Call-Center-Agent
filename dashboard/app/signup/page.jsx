@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import AuthShell from '../../components/AuthShell';
 import { useRouter } from 'next/navigation';
 import { api, storeTokenForRole } from '../../lib/api';
 import { useTimezones } from '../../lib/timezones';
@@ -72,8 +73,8 @@ export default function SignupPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', padding: '24px 0' }}>
-      <div className="card" style={{ width: 440 }}>
+    <AuthShell>
+      <div className="card fade-up" style={{ width: 440, maxWidth: '100%' }}>
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600 }}>Create your account</div>
           <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
@@ -177,6 +178,6 @@ export default function SignupPage() {
           Already have an account? <Link href="/login">Log in</Link>
         </p>
       </div>
-    </div>
+    </AuthShell>
   );
 }

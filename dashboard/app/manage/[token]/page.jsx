@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { myBookingApi, ApiError } from '../../../lib/api';
 import { DateTime } from '../../../lib/datetime';
 import Loading from '../../../components/Skeleton';
+import PublicNav from '../../../components/PublicNav';
 
 // Public, token-authenticated self-service page (ROADMAP.md §6 "Reschedule link"/
 // "Cancellation link") — reached from the link in a confirmation/reminder SMS or email
@@ -66,8 +67,10 @@ function ManageInner() {
   }
 
   return (
-    <main id="main-content" tabIndex={-1} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', padding: '24px 0' }}>
-      <div className="card" style={{ width: 440 }}>
+    <div className="public-shell">
+      <PublicNav />
+      <main id="main-content" tabIndex={-1} className="public-wrap narrow" style={{ paddingTop: 24 }}>
+      <div className="card fade-up">
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600 }}>Manage your appointment</div>
         </div>
@@ -107,13 +110,14 @@ function ManageInner() {
                   <label>Available times</label>
                   {loadingSlots && <Loading />}
                   {!loadingSlots && slots.length === 0 && <p className="muted">No open slots this day.</p>}
-                  <div className="row">
+                  <div className="slot-grid">
                     {slots.map((slot) => (
                       <button
                         key={slot}
                         type="button"
+                        className="slot-btn"
+                        aria-pressed={selectedSlot === slot}
                         onClick={() => setSelectedSlot(slot)}
-                        style={selectedSlot === slot ? { background: 'var(--ink)', color: 'var(--ink-text)', borderColor: 'var(--ink)' } : undefined}
                       >
                         {DateTime.formatTime(slot, data.timezone)}
                       </button>
@@ -141,7 +145,8 @@ function ManageInner() {
           </>
         )}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }
 

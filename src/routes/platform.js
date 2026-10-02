@@ -7,6 +7,7 @@ import { getDb, newId, withTenant, serializeAll } from '../db.js';
 import { initialBillingFields, getPlan } from '../billing/plans.js';
 import { uniqueSlug } from '../services/slug.js';
 import { computeUsage, computeInvoiceAmounts } from '../services/billingService.js';
+import { addDemoData, removeDemoData, demoStatus } from '../services/demoData.js';
 
 export const platformRouter = Router();
 
@@ -586,3 +587,19 @@ platformRouter.post('/businesses', async (req, res, next) => {
     next(err);
   }
 });
+
+// Demo data (src/services/demoData.js): fake, clearly flagged businesses so the product can be shown before any
+// real client exists, and removed again with one call. The generated password is returned once, here, and
+// never stored in readable form.
+let demoBusy = false;
+async function exclusive(res, next, fn) {
+  if (demoBusy) return res.status(409).json({ error: 'demo data is already being changed, try again in a moment' });
+  demoBusy = true;
+  try { res.json(await fn()); } catch (err) { next(err); } finally { demoBusy = false; }
+}
+platformRouter.get('/demo-data', (req, res, next) => demoStatus().then((s) => res.json(s)).catch(next));
+platformRouter.post('/demo-data', (req, res, next) => exclusive(res, next, async () => {
+  const { password, listed, owners, counts } = await addDemoData({ listed: req.body?.listed === true });
+  return { password, listed, owners, counts, ...(await demoStatus()) };
+}));
+platformRouter.delete('/demo-data', (req, res, next) => exclusive(res, next, async () => ({ removed: await removeDemoData() })));
