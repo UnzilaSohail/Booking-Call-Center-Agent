@@ -192,6 +192,16 @@ A real WebSocket client talks to the real bridge; Gemini and the summary are fak
 | DS-04 | Opted-out customer | Recorded as opted out, no error | Pass |
 | DS-05 | Undelivered confirmations | Show up in the Exceptions queue | Pass |
 
+## DD — Demo data (`test/demoData.test.js`)
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| DD-1 | Add demo data | 6+ flagged demo businesses, 250+ bookings, 100+ calls, 30+ customers, unlisted unless asked, a generated password | Pass |
+| DD-2 | Generated history | No staff member is double-booked | Pass |
+| DD-3 | Add twice | No pile-up: the old set is replaced | Pass |
+| DD-4 | Remove | Every demo business and its bookings, calls, customers, invoices, locks and admins are gone; a real business survives | Pass |
+
+Also: the colour-contrast test (`test/contrast.test.js`) now checks the light and the dark theme; `npm run screenshots` compares 16 pages (light and dark, desktop and phone).
+
 ## EM — Email and invites (`test/emailInvite.test.js`)
 Run against the real Express app over HTTP with no email/SMS provider configured (skips itself if a provider is configured).
 | ID | Scenario | Expected | Status |

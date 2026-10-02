@@ -21,7 +21,8 @@
     "restore-db": "node scripts/restoreDb.js",
     "make-invite-link": "node scripts/makeInviteLink.mjs",
     "demo:seed": "node scripts/demo/seedDemo.mjs",
-    "demo:remove": "node scripts/demo/seedDemo.mjs --clean"
+    "demo:remove": "node scripts/demo/seedDemo.mjs --clean",
+    "demo:walkthrough": "node scripts/demo/walkthrough.mjs"
   },
   "repository": {
     "type": "git",

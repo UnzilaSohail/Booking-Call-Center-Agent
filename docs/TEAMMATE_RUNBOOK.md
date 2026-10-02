@@ -112,6 +112,16 @@ Only once that number is known, set `MAX_CONCURRENT_CALLS` in `.env` (see
   the actual production incident on 2026-09-29 this repo's Plan 2 test suite now guards
   against — see `docs/testing/KNOWN_GAPS.md` KG-07).
 
+## 7b. Demo data (for showing the product before a real client exists)
+
+- Easiest: log in as a platform admin, open the platform Overview, scroll to **Demo data**, press **Add demo data**
+  (tick "Show demo businesses in the public directory" only if people should find them on /find). The login
+  password is shown once on screen. **Remove demo data** deletes all of it in one click.
+- Or from the server: `npm run demo:seed -- --listed` (prints the password) and `npm run demo:remove`.
+- Everything is flagged `demo: true`, uses made-up `.example.test` emails and 555 phone numbers, and is inserted
+  directly, so no real SMS or email is sent. Real companies are never touched by "remove".
+- Remove it before the first real client signs up if you do not want fake businesses in the public directory.
+
 ## 8. Housekeeping
 
 - `pm2 logs booking-backend --lines 0` then watch briefly for unexpected errors after

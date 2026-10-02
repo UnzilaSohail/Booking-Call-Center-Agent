@@ -15,13 +15,13 @@ const OVERLAY = `(() => {
     const css = document.createElement('style');
     css.textContent = \`
       #__cap { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: min(900px, 92vw); z-index: 2147483647;
-        background: rgba(15,30,45,.92); color: #fff; font: 600 17px/1.35 system-ui, sans-serif; padding: 10px 18px; border-radius: 10px;
+        background: rgba(24,20,70,.92); color: #fff; font: 600 17px/1.35 system-ui, sans-serif; padding: 10px 18px; border-radius: 10px;
         box-shadow: 0 6px 24px rgba(0,0,0,.35); text-align: center; pointer-events: none; display: none; }
       #__cursor { position: fixed; z-index: 2147483647; width: 18px; height: 18px; margin: -3px 0 0 -3px; pointer-events: none;
-        border-radius: 50%; background: rgba(37,99,235,.9); border: 2px solid #fff; box-shadow: 0 1px 6px rgba(0,0,0,.45); transition: transform .08s; }
+        border-radius: 50%; background: rgba(99,102,241,.92); border: 2px solid #fff; box-shadow: 0 1px 6px rgba(0,0,0,.45); transition: transform .08s; }
       #__cursor.down { transform: scale(.7); }
       .__ripple { position: fixed; z-index: 2147483646; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; pointer-events: none;
-        border: 3px solid rgba(37,99,235,.8); animation: __rip .5s ease-out forwards; }
+        border: 3px solid rgba(99,102,241,.85); animation: __rip .5s ease-out forwards; }
       @keyframes __rip { to { transform: scale(4); opacity: 0; } }\`;
     document.head.appendChild(css);
     const inFrame = window !== window.top;
@@ -100,13 +100,16 @@ export async function logout(page) {
 }
 
 // A full-screen title/summary slide (plain HTML, no app involved).
-export async function slide(page, { title, lines = [], foot = '' }, ms = 4000) {
-  const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;height:100vh;display:flex;flex-direction:column;justify-content:center;
-    padding:0 90px;background:linear-gradient(135deg,#102a3f,#1a3a52);color:#f5f7f8;font-family:system-ui,sans-serif">
-    <div style="font:600 14px system-ui;letter-spacing:.14em;text-transform:uppercase;color:#8ab4c4;margin-bottom:14px">Booking platform · walkthrough</div>
-    <h1 style="font:600 46px/1.15 Georgia,serif;margin:0 0 26px">${title}</h1>
-    <ul style="margin:0;padding:0;list-style:none;font-size:22px;line-height:1.7">${lines.map((l) => `<li style="margin:4px 0">${l}</li>`).join('')}</ul>
-    <div style="margin-top:34px;color:#8ab4c4;font-size:16px">${foot}</div></body>`;
+export async function slide(page, { title, lines = [], foot = '', kicker = 'Booking platform' }, ms = 4000) {
+  const html = `<!doctype html><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+    <body style="margin:0;height:100vh;display:flex;flex-direction:column;justify-content:center;padding:0 100px;position:relative;overflow:hidden;
+    background:linear-gradient(135deg,#1e1b4b,#312e81 55%,#0f766e);color:#f5f7ff;font-family:Inter,system-ui,sans-serif">
+    <div style="position:absolute;width:560px;height:560px;right:-160px;top:-200px;border-radius:50%;background:radial-gradient(circle,rgba(244,114,182,.35),transparent 65%)"></div>
+    <div style="position:absolute;width:480px;height:480px;left:-160px;bottom:-220px;border-radius:50%;background:radial-gradient(circle,rgba(45,212,191,.3),transparent 65%)"></div>
+    <div style="position:relative"><div style="font:600 14px Inter;letter-spacing:.16em;text-transform:uppercase;color:#a5b4fc;margin-bottom:16px">${kicker}</div>
+    <h1 style="font:800 48px/1.1 'Plus Jakarta Sans',system-ui,sans-serif;letter-spacing:-.03em;margin:0 0 28px;max-width:1000px">${title}</h1>
+    <ul style="margin:0;padding:0;list-style:none;font-size:23px;line-height:1.65">${lines.map((l) => `<li style="margin:6px 0;opacity:.95">${l}</li>`).join('')}</ul>
+    <div style="margin-top:34px;color:#a5b4fc;font-size:16px">${foot}</div></div></body>`;
   await page.setContent(html);
   await page.waitForTimeout(ms);
 }
@@ -116,7 +119,7 @@ export async function slide(page, { title, lines = [], foot = '' }, ms = 4000) {
 // page is shown inside a phone-shaped frame: a small page served from the dashboard's own address (so the
 // logged-in session is shared) that holds the real dashboard in an iframe 384px wide.
 const PHONE_HTML = `<!doctype html><meta charset="utf-8"><title>phone view</title>
-<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:flex-start;padding-left:150px;gap:70px;background:linear-gradient(135deg,#102a3f,#1a3a52);font-family:system-ui,sans-serif;color:#f5f7f8">
+<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:flex-start;padding-left:150px;gap:70px;background:linear-gradient(135deg,#1e1b4b,#312e81 55%,#0f766e);font-family:system-ui,sans-serif;color:#f5f7f8">
 <div style="width:412px;height:650px;border-radius:46px;background:#05080c;padding:14px;box-shadow:0 24px 70px rgba(0,0,0,.55);position:relative;flex-shrink:0;margin-top:-30px">
 <div style="position:absolute;top:14px;left:50%;transform:translateX(-50%);width:110px;height:20px;background:#05080c;border-radius:0 0 16px 16px;z-index:2"></div>
 <iframe id="phone" src="/" title="phone" style="width:384px;height:622px;border:0;border-radius:32px;background:#fff"></iframe></div>

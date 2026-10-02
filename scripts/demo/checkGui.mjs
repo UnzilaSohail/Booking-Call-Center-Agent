@@ -62,7 +62,7 @@ try {
     check(`sidebar says "${name}"`, (await page.getByRole('link', { name: new RegExp(name) }).count()) > 0);
   }
   await go(page, '/bookings', { wait: 2000 });
-  check('Bookings shows "Booked via" and the delivery status of confirmations', (await page.getByText('Booked via').count()) > 0 && (await page.getByText('SMS not sent').count()) > 0);
+  check('Bookings shows "Booked via" and the delivery status of confirmations', (await page.getByText('Booked via').count()) > 0 && (await page.getByText(/SMS (sent|failed|not sent)/).count()) > 0);
 
   // ---- phone width: no sideways scroll, menu works ----
   await page.setViewportSize({ width: 390, height: 844 });

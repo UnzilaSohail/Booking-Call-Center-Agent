@@ -1,4 +1,13 @@
-# Walkthrough video
+# Walkthrough videos
+
+**Full product walkthrough (for the boss and for clients)**: `walkthrough-full.webm`, about 10 minutes, English captions, no sound.
+It shows the redesigned product on demo data: the customer's first click to a confirmed booking, the AI receptionist, the owner's
+dashboard (overview, calls with transcripts, calendar, bookings, customers, team, billing, settings, dark mode, phone), the platform console
+(including the demo-data button) and a new business signing up. Re-record with `npm run demo:walkthrough`
+(`DEMO_ONLY="booking,calls"` for some scenes; `scripts/demo/walkthrough.mjs`).
+
+**Earlier video (2 October)**: the plan-by-plan description below is of `walkthrough-2026-10-02.webm`.
+
 
 `walkthrough-2026-10-02.webm` (about 5 minutes 30 seconds, 1280x720, 17 MB, no sound; captions explain each step).
 It was recorded by a browser driven with Playwright against a demo copy of the system with test data, so nothing in it is a real customer.
