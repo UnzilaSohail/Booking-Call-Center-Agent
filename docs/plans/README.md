@@ -1,17 +1,20 @@
-# Plans and next steps (updated 2026-09-30)
+# Plans and next steps (status updated 2026-10-03)
 
 Four separate plans. Each plan file lists its steps split into **NOW** (code, docs, tests, Jira — no server needed) and **TOMORROW** (needs SSH, keys or a business decision).
 Every item is a task on the AIN Jira board (parents 16 to 32, one short task per item).
 
-| Plan | File | Status | Jira parents |
+| Plan | File | Status (2026-10-03) | Jira parents |
 |---|---|---|---|
-| 1 Customer: find the right business, book without calling, be recognised, "my appointments" | [PLAN_1_CUSTOMER.md](PLAN_1_CUSTOMER.md) | Designed, not started | 16-19 |
-| 2 Test cases: use cases, race-condition tests (call vs manual on the same slot), known gaps | [PLAN_2_TEST_CASES.md](PLAN_2_TEST_CASES.md) | **Done** (docs + code pushed) | 20-23 |
-| 3 GUI: self-explanatory UI (plan only) | [PLAN_3_GUI.md](PLAN_3_GUI.md) | Plan only | 24-26 |
-| 4 Other: call reliability, booking fixes, email/invites, payment provider, deploy, board hygiene | [PLAN_4_OTHER.md](PLAN_4_OTHER.md) | Not started | 27-32 |
+| 1 Customer: find the right business, book without calling, be recognised, "my appointments" | [PLAN_1_CUSTOMER.md](PLAN_1_CUSTOMER.md) | **Built.** Only 19c (SMS sign-in codes) and 19d (email sign-in) wait on Twilio and an email provider | 16-19 |
+| 2 Test cases: use cases, race-condition tests, known gaps | [PLAN_2_TEST_CASES.md](PLAN_2_TEST_CASES.md) | **Done** except the live-server runs: 23c real multi-call test, 23d manual checklist | 20-23 |
+| 3 GUI: self-explanatory UI | [PLAN_3_GUI.md](PLAN_3_GUI.md) | **Built** (see `docs/GUI_DESIGN_REVIEW.md`) | 24-26 |
+| 4 Other: call reliability, booking fixes, email/invites, payment provider, deploy | [PLAN_4_OTHER.md](PLAN_4_OTHER.md) | **Code done.** What is left is server work, accounts and the boss's payment decision | 27-32 |
+
+Everything that needs no server is finished; what remains is the "Tomorrow" lists below plus the open Jira tasks (31 deploy, 29k to 29n email, 30b to 30j payments, 19c/19d, 23c/23d, 27m).
+Tests: 212 pass, 0 gaps; GitHub runs them on every push. Walkthrough video: `docs/demo/`.
 
 Test documents: [`docs/testing/USE_CASES.md`](../testing/USE_CASES.md), [`TEST_CASES.md`](../testing/TEST_CASES.md), [`KNOWN_GAPS.md`](../testing/KNOWN_GAPS.md).
-Latest run: 96 tests, 90 pass, 0 fail, 6 known gaps (shown as `todo`). The gaps are real defects the new tests found; each has a Jira task.
+Latest run: 212 tests, 212 pass, 0 gaps (see `docs/testing/TEST_CASES.md`).
 
 ## What changed in the code (already pushed)
 - `package.json`: `npm run dev` now watches only `src/` (the local Mongo data folder was restarting the server in a loop).
@@ -29,5 +32,8 @@ Latest run: 96 tests, 90 pass, 0 fail, 6 known gaps (shown as `todo`). The gaps 
 - **Payment provider:** keep Stripe (cards 2.9% + 30c, ACH Direct Debit 0.8% capped at $5) if AI Networks has a real US company with an EIN and US bank account. Stripe does not support Pakistan-registered businesses. If there is no US entity, Paddle or Polar (merchant of record, higher fee, handles sales tax) is the alternative. Details in Plan 4.
 - **Directory listing rule:** businesses opt in; confirm whether listings need platform approval before going live (default in Plan 1: auto-list when the business is ready, platform admin can hide).
 
-## Suggested order
-Plan 4 (repo cleanup, call fixes, email fix) → Plan 1 (customer web booking and directory) → GUI phases. Tell the lead which plan/step to start; nothing beyond Plan 2 has been executed.
+## Order for the next round
+1. **Teammate, morning:** deploy (`docs/TEAMMATE_RUNBOOK.md`: drift check, pull, `npm run migrate`, dashboard build, restart with `--kill-timeout 660000`), then run the smoke test.
+2. **Boss, via the teammate, same morning:** the decisions above, plus who owns the Twilio console and the email sender domain.
+3. **Right after deploy:** email provider (29k to 29n), Twilio Geo Permissions and SMS registration (31i), then real-phone tests (23c, 23d) and the Gemini quota (27m).
+4. **When the boss has decided:** payments (30b to 30j).
