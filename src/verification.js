@@ -19,3 +19,8 @@ export async function verifyCode(code, hash, expiresAt) {
   if (!hash || !expiresAt || new Date(expiresAt) < new Date()) return false;
   return bcrypt.compare(code, hash);
 }
+
+// Costs the same as a real check; call it when there is nobody to check against, so "no such person" and "wrong
+// code" take equally long and the response time does not reveal who is on file.
+const DUMMY_HASH = bcrypt.hashSync('timing-equaliser', 10);
+export const fakeVerify = (code) => bcrypt.compare(String(code), DUMMY_HASH).then(() => false);

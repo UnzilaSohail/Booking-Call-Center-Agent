@@ -199,8 +199,22 @@ A real WebSocket client talks to the real bridge; Gemini and the summary are fak
 | DD-2 | Generated history | No staff member is double-booked | Pass |
 | DD-3 | Add twice | No pile-up: the old set is replaced | Pass |
 | DD-4 | Remove | Every demo business and its bookings, calls, customers, invoices, locks and admins are gone; a real business survives | Pass |
+| DD-5 | Demo-data endpoints with no token, a garbage token, a business-owner token, a customer token, an expired platform token | All refused (401/403), nothing created | Pass |
 
 Also: the colour-contrast test (`test/contrast.test.js`) now checks the light and the dark theme; `npm run screenshots` compares 16 pages (light and dark, desktop and phone).
+
+## SEC — Login and input protections (`test/security.test.js`)
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| SEC-01 | 9 wrong passwords | 8th is 401, 9th is 429, and even the right password is refused until the window passes | Pass |
+| SEC-02 | Older company and platform login URLs | Same limit applies | Pass |
+| SEC-03 | Right password after 5 wrong ones | Works and resets the count | Pass |
+| SEC-04 | One address tries 30 different accounts | Blocked | Pass |
+| SEC-05 | Object or array instead of text | 400, not a crash | Pass |
+| SEC-06 | Object as serviceId on the public booking page | 400 | Pass |
+| SEC-07 | Failure counters | Count wrong answers only; forgiven on success | Pass |
+| SEC-08 | No such person | Costs as much as a real check | Pass |
+| SEC-09 | API headers | nosniff, no X-Powered-By | Pass |
 
 ## EM — Email and invites (`test/emailInvite.test.js`)
 Run against the real Express app over HTTP with no email/SMS provider configured (skips itself if a provider is configured).

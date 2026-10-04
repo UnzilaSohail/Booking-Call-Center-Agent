@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { DateTime } from 'luxon';
 import { getDb, withTenant, newId } from '../db.js';
 import { tooMany } from '../rateLimit.js';
-import { generateCode, hashCode, verifyCode, CODE_TTL_MS, MAX_ATTEMPTS } from '../verification.js';
+import { generateCode, hashCode, verifyCode, fakeVerify, CODE_TTL_MS, MAX_ATTEMPTS } from '../verification.js';
 import { sendSms, smsConfigured } from '../notifications/sms.js';
 import { sendEmail, emailConfigured } from '../notifications/email.js';
 import { signCustomerToken, requireCustomer } from '../customerAuth.js';
@@ -91,11 +91,12 @@ customerPortalRouter.post('/public/:slug/portal/verify', loadBusiness, async (re
     const b = req.business;
 
     const customer = await findCustomer(b._id, who);
-    if (!customer) return badCode(res);
+    if (!customer) { await fakeVerify(code); return badCode(res); } // same time as a wrong code
     const db = await getDb();
     // Count the attempt first, atomically, so parallel guesses can't exceed the limit.
     const row = await db.collection('customer_login_codes').findOneAndUpdate({ _id: `${b._id}:${customer._id}` }, { $inc: { attempts: 1 } }, { returnDocument: 'after' });
-    if (!row || row.attempts > MAX_ATTEMPTS || !(await verifyCode(code, row.code_hash, row.expires_at))) return badCode(res);
+    if (!row) { await fakeVerify(code); return badCode(res); }
+    if (row.attempts > MAX_ATTEMPTS || !(await verifyCode(code, row.code_hash, row.expires_at))) return badCode(res);
 
     await db.collection('customer_login_codes').deleteOne({ _id: row._id });
     res.json({ token: signCustomerToken(b._id, customer._id) });
@@ -135,8 +136,8 @@ me.patch('/me', async (req, res, next) => {
       set.name = String(name).trim();
     }
     if (email !== undefined) {
-      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'email is not valid' });
-      set.email = email || null;
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) return res.status(400).json({ error: 'email is not valid' });
+      set.email = email ? String(email) : null;
     }
     if (language !== undefined) {
       if (language && !LANGUAGES.includes(language)) return res.status(400).json({ error: `language must be one of: ${LANGUAGES.join(', ')}` });

@@ -22,7 +22,8 @@
     "make-invite-link": "node scripts/makeInviteLink.mjs",
     "demo:seed": "node scripts/demo/seedDemo.mjs",
     "demo:remove": "node scripts/demo/seedDemo.mjs --clean",
-    "demo:walkthrough": "node scripts/demo/walkthrough.mjs"
+    "demo:walkthrough": "node scripts/demo/walkthrough.mjs",
+    "smoke": "node scripts/smokeTest.mjs"
   },
   "repository": {
     "type": "git",

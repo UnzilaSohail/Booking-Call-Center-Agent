@@ -40,6 +40,7 @@ function CalendarInner() {
 
   // Color by staff when this business has staff, otherwise by service — either way it's
   // the same color every time the same staff/service appears, no server field needed.
+  const colorOrder = useMemo(() => (staffList.length > 0 ? staffList : services).map((x) => x.id), [staffList, services]);
   const colorKeyFor = useCallback((b) => (staffList.length > 0 ? b.staff_id : b.service_id), [staffList.length]);
 
   const fetchEvents = useCallback((fetchInfo, successCallback, failureCallback) => {
@@ -52,7 +53,7 @@ function CalendarInner() {
           return b.staff_id === staffFilter;
         })
         .map((b) => {
-          const color = colorForId(colorKeyFor(b));
+          const color = colorForId(colorKeyFor(b), colorOrder);
           return {
             id: b.id,
             // 18f: where the booking came from, so a glance at the calendar tells web and phone apart.
@@ -65,7 +66,7 @@ function CalendarInner() {
           };
         })))
       .catch(failureCallback);
-  }, [staffFilter, colorKeyFor]);
+  }, [staffFilter, colorKeyFor, colorOrder]);
 
   function refresh() {
     calendarRef.current?.getApi().refetchEvents();
@@ -115,7 +116,7 @@ function CalendarInner() {
           <div className="row" style={{ marginBottom: 12, fontSize: 12 }}>
             {legend.map((item) => (
               <span key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', background: colorForId(item.id), display: 'inline-block' }} />
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: colorForId(item.id, colorOrder), display: 'inline-block' }} />
                 {item.label}
               </span>
             ))}
@@ -129,6 +130,7 @@ function CalendarInner() {
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' }}
           height="auto"
           nowIndicator
+          scrollTime="08:00:00"
           events={fetchEvents}
           selectable
           select={(info) => setModal({ mode: 'create', initialDate: info.start })}

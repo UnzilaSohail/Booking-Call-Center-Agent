@@ -1,12 +1,14 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Contact, Download, Upload } from 'lucide-react';
+import { Contact, Crown, Download, Mail, Upload, UserPlus, Users } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import Loading from '../../components/Skeleton';
 import EmptyState from '../../components/EmptyState';
+import Avatar from '../../components/Avatar';
+import CountUp from '../../components/CountUp';
 
 function downloadText(filename, text) {
   const blob = new Blob([text], { type: 'text/csv' });
@@ -26,11 +28,12 @@ function CustomersInner() {
   const [error, setError] = useState(null);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef(null);
+  const [shown, setShown] = useState(50);
 
   const load = useCallback((query) => {
     setLoading(true);
     api.listCustomers(query)
-      .then(setCustomers)
+      .then((r) => { setCustomers(r); setShown(50); })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -84,6 +87,23 @@ function CustomersInner() {
         </div>
       </div>
 
+      {!loading && !error && customers.length > 0 && !q && (
+        <div className="stat-cards">
+          {[
+            [Users, 'var(--accent-soft)', 'var(--accent)', 'Customers', customers.length],
+            [Crown, 'var(--warning-soft)', 'var(--warning)', 'VIP regulars', customers.filter((c) => c.tags?.includes('VIP')).length],
+            [UserPlus, 'var(--success-soft)', 'var(--success)', 'New in the last 30 days', customers.filter((c) => Date.now() - new Date(c.created_at ?? 0).getTime() < 30 * 86_400_000).length],
+            [Mail, 'var(--info-soft)', 'var(--info)', 'Reachable by email', customers.filter((c) => c.email).length],
+          ].map(([Icon, bg, fg, label, value]) => (
+            <div key={label} className="stat-card">
+              <div className="icon-badge" style={{ background: bg }}><Icon size={17} color={fg} /></div>
+              <div className="value"><CountUp value={value} /></div>
+              <div className="label">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <form onSubmit={search} className="row">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, phone, or email" style={{ maxWidth: 320 }} />
         <button type="submit" className="ghost">Search</button>
@@ -101,9 +121,9 @@ function CustomersInner() {
           <table>
             <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Tags</th></tr></thead>
             <tbody>
-              {customers.map((c) => (
+              {customers.slice(0, shown).map((c) => (
                 <tr key={c.id}>
-                  <td><Link href={`/customers/${c.id}`}>{c.name || '(no name)'}</Link></td>
+                  <td><span className="row" style={{ alignItems: 'center', gap: 10, flexWrap: 'nowrap' }}><Avatar name={c.name || c.phone} /><Link href={`/customers/${c.id}`}>{c.name || '(no name)'}</Link></span></td>
                   <td>{c.phone}</td>
                   <td>{c.email || '—'}</td>
                   <td>{c.tags?.length ? c.tags.map((t) => <span key={t} className="badge neutral" style={{ marginRight: 4 }}>{t}</span>) : '—'}</td>
@@ -111,6 +131,12 @@ function CustomersInner() {
               ))}
             </tbody>
           </table>
+        )}
+        {!loading && customers.length > shown && (
+          <div className="row" style={{ justifyContent: 'center', alignItems: 'center', marginTop: 14 }}>
+            <span className="muted" style={{ fontSize: 13 }}>Showing {shown} of {customers.length}</span>
+            <button type="button" onClick={() => setShown(shown + 100)}>Show more</button>
+          </div>
         )}
       </div>
     </div>

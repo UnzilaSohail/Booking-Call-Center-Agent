@@ -1,3 +1,4 @@
+import { blocked, fail, forgive, loginBlocked, loginFailed, loginSucceeded } from './rateLimit.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Router } from 'express';
@@ -28,10 +29,13 @@ function signSessionToken(adminId, businessId) {
 authRouter.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body ?? {};
-    if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) return res.status(400).json({ error: 'email and password are required' });
+    const id = email.toLowerCase();
+    if (loginBlocked(req.ip, id)) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
 
-    const result = await verifyCompanyAdmin(email.toLowerCase(), password, req.ip);
-    if (!result) return res.status(401).json({ error: 'invalid credentials' });
+    const result = await verifyCompanyAdmin(id, password, req.ip);
+    if (!result) { loginFailed(req.ip, id); return res.status(401).json({ error: 'invalid credentials' }); }
+    loginSucceeded(id);
 
     if (result.mfaEnabled) return res.json({ mfaRequired: true, mfaToken: signMfaToken(result.adminId, result.businessId) });
     res.json({ token: signSessionToken(result.adminId, result.businessId) });
@@ -56,9 +60,13 @@ authRouter.post('/mfa/verify-login', async (req, res, next) => {
     }
     if (payload.role !== 'mfa_pending') return res.status(401).json({ error: 'invalid token for this endpoint' });
 
+    // 6-digit codes can be guessed, so wrong ones are counted per admin: 6 in 15 minutes locks the second step.
+    const mfaKey = `mfa:${payload.adminId}`;
+    if (blocked(mfaKey, 6)) return res.status(429).json({ error: 'too many wrong codes, log in again in 15 minutes' });
     const db = await getDb();
     const admin = await db.collection('admins').findOne({ _id: payload.adminId });
-    if (!admin?.mfa_enabled || !verifyTotp(admin.mfa_secret, code)) return res.status(401).json({ error: 'invalid code' });
+    if (!admin?.mfa_enabled || !verifyTotp(admin.mfa_secret, String(code))) { fail(mfaKey, 15 * 60_000); return res.status(401).json({ error: 'invalid code' }); }
+    forgive(mfaKey);
 
     res.json({ token: signSessionToken(payload.adminId, payload.businessId) });
   } catch (err) {

@@ -54,7 +54,13 @@ function BookingsInner() {
     setLoading(true);
     setError(null);
     api.listBookings(undefined, undefined, { q: q || undefined, status: status === 'all' ? undefined : status })
-      .then((r) => { setResults(r); setShown(25); })
+      .then((r) => {
+        // upcoming first (soonest at the top), then history (most recent first)
+        const now = Date.now();
+        const up = r.filter((b) => new Date(b.start_time) >= now).sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+        setResults([...up, ...r.filter((b) => new Date(b.start_time) < now).sort((a, b) => new Date(b.start_time) - new Date(a.start_time))]);
+        setShown(25);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [q, status]);
@@ -99,7 +105,7 @@ function BookingsInner() {
           </EmptyState>
         )}
         {!loading && results.length > 0 && (
-          <table>
+          <table className="bookings-table">
             <thead><tr><th>When</th><th>Customer</th><th>Phone</th><th>Service</th><th>Booked via</th><th>Status</th><th>Confirmation</th></tr></thead>
             <tbody>
               {results.slice(0, shown).map((b) => (

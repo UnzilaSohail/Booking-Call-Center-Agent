@@ -71,6 +71,16 @@ try {
     const extra = await sideways(page);
     check(`phone: ${path} does not scroll sideways`, extra <= 1, `${extra}px too wide`);
   }
+  // public pages on a small phone (360 wide): a visitor must never have to scroll sideways
+  await page.setViewportSize({ width: 360, height: 740 });
+  await logout(page);
+  for (const path of ['/find', '/login', '/signup', `/book/${DEMO.slug}`, '/my/' + DEMO.slug]) {
+    await go(page, path, { wait: 1800 });
+    const extra = await sideways(page);
+    check(`phone 360: ${path} does not scroll sideways`, extra <= 1, `${extra}px too wide`);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page, DEMO.owner, DEMO_PASSWORD);
   await go(page, '/', { wait: 1500 });
   check('phone: sidebar is hidden until the menu is opened', !(await page.locator('aside.sidebar').isVisible()));
   await page.getByRole('button', { name: 'Open menu' }).click();

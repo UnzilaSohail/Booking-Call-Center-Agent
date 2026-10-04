@@ -2,7 +2,11 @@
 // removing it leaves real businesses alone. Docs: docs/testing/TEST_CASES.md group DD.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import jwt from 'jsonwebtoken';
 import { createTenant, dropTenants, skip, getDb, newId } from './support/tenantFixture.js';
+import { app } from '../src/app.js';
+import { signCustomerToken } from '../src/customerAuth.js';
 import { addDemoData, removeDemoData, demoStatus } from '../src/services/demoData.js';
 
 describe('demo data', { skip }, () => {
@@ -53,5 +57,25 @@ describe('demo data', { skip }, () => {
       assert.equal(await db.collection(c).countDocuments({ business_id: { $in: ids } }), 0, `${c} left behind`);
     }
     assert.ok(await db.collection('businesses').findOne({ _id: real.businessId }), 'a real business must survive');
+  });
+
+  it('only a platform admin can use the demo-data endpoints (DD-5)', async () => {
+    const server = createServer(app);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${server.address().port}/api/platform/demo-data`;
+    const owner = jwt.sign({ role: 'business', adminId: 'a1', businessId: real.businessId }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const expired = jwt.sign({ role: 'platform', platformAdminId: 'p1' }, process.env.JWT_SECRET, { expiresIn: -10 });
+    const tokens = { none: undefined, garbage: 'x.y.z', businessOwner: owner, customer: signCustomerToken(real.businessId, 'c1'), expiredPlatform: expired };
+    try {
+      for (const [who, token] of Object.entries(tokens)) {
+        for (const method of ['GET', 'POST', 'DELETE']) {
+          const r = await fetch(base, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: method === 'POST' ? '{}' : undefined });
+          assert.ok([401, 403].includes(r.status), `${who} ${method} got ${r.status}`);
+        }
+      }
+      assert.equal(await db.collection('businesses').countDocuments({ demo: true }), 0, 'nothing may have been created');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });

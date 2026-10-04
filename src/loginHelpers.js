@@ -4,6 +4,7 @@
 import bcrypt from 'bcryptjs';
 import { getDb } from './db.js';
 import { sendEmail } from './notifications/email.js';
+import { fakeVerify } from './verification.js';
 
 class LoginError extends Error {
   constructor(status, message) {
@@ -44,7 +45,7 @@ export async function verifyCompanyAdmin(email, password, ip = null) {
   const admin = await db.collection('admins').findOne({ email });
   // An invited-but-not-yet-accepted admin has no password_hash yet — bcrypt.compare
   // against a missing hash throws rather than just failing, so this checks first.
-  if (!admin || !admin.password_hash) return null;
+  if (!admin || !admin.password_hash) { await fakeVerify(password); return null; } // same time as a wrong password
 
   if (!(await bcrypt.compare(password, admin.password_hash))) {
     const recentFailures = (admin.failed_logins ?? []).filter((f) => Date.now() - new Date(f.at).getTime() < FAILED_LOGIN_WINDOW_MS);
@@ -76,6 +77,7 @@ export async function verifyCompanyAdmin(email, password, ip = null) {
 export async function verifyPlatformAdmin(email, password) {
   const db = await getDb();
   const admin = await db.collection('platform_admins').findOne({ email });
-  if (!admin || !(await bcrypt.compare(password, admin.password_hash))) return null;
+  if (!admin) { await fakeVerify(password); return null; }
+  if (!(await bcrypt.compare(password, admin.password_hash))) return null;
   return { platformAdminId: admin._id };
 }

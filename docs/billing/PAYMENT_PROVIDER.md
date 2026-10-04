@@ -10,12 +10,12 @@ with it.
 | Provider | Fee | Needs a US entity? | Handles sales tax? |
 |---|---|---|---|
 | **Stripe** (current) | Cards 2.9% + 30¢; **ACH Direct Debit 0.8%, capped at $5** | Yes — US LLC/corp with EIN + US bank account | No — merchant of record for cards only, not tax |
-| Paddle | ~5% + 50¢ | No | Yes (merchant of record) |
-| Polar | ~4% + 40¢ + extras | No | Yes (merchant of record) |
-| Lemon Squeezy | ~5% + 50¢ | No | Yes (merchant of record) |
+| Paddle | 5% + 50¢, no extra for international or PayPal | No | Yes (merchant of record) |
+| Polar | 5% + 50¢ since 27 May 2026 (was 4% + 40¢), +1.5% international cards | No | Yes (merchant of record) |
+| Lemon Squeezy | 5% + 50¢, +1.5% international cards and PayPal | No | Yes (merchant of record) |
 
 Worked example on a $999 invoice: Stripe card ≈ $29, Stripe ACH ≈ $5 (capped), Paddle/Polar
-≈ $40-50+.
+≈ $50+ (5% + 50¢). Re-checked 5 Oct 2026: the merchant-of-record options are now all priced alike.
 
 ## Recommendation
 
@@ -39,3 +39,7 @@ If there is no qualifying US entity, the fallback is a merchant-of-record provid
 Any code change to the payment flow itself. This is the comparison doc only; activation,
 webhook wiring, and ACH support (Jira 30d-30i) wait on the entity decision above and, for
 activation/webhooks, on production Stripe keys only the teammate with server access has.
+
+## Related
+- Sales tax on our own subscriptions: `docs/billing/SALES_TAX.md` (Jira 30i).
+- If there is no US entity: `docs/billing/MOR_MIGRATION.md` (Jira 30j).

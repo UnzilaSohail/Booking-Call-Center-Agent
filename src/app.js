@@ -40,6 +40,14 @@ app.set('trust proxy', 1);
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map((o) => o.trim());
 app.use(cors({ origin: allowedOrigins ?? true }));
 
+// Basic browser-hardening headers on every API answer (the dashboard sets its own in next.config.mjs).
+app.use((req, res, next) => {
+  res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Strict-Transport-Security': 'max-age=31536000' });
+  res.removeHeader('X-Powered-By');
+  next();
+});
+app.disable('x-powered-by');
+
 // Public routes first: Twilio's inbound call webhook, Stripe's webhook, and Google's
 // OAuth redirect all arrive with no bearer token, so they parse their own body and
 // must not sit behind the app-wide express.json()/requireAuth chain below. Stripe's

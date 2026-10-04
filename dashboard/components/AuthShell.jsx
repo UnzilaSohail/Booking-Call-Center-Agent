@@ -22,7 +22,7 @@ export default function AuthShell({ children }) {
         </ul>
       </aside>
       <main id="main-content" tabIndex={-1} className="split-form" style={{ position: 'relative' }}>
-        <div style={{ position: 'absolute', top: 18, right: 18 }}><ThemeToggle /></div>
+        <div className="auth-toggle"><ThemeToggle /></div>
         {children}
       </main>
     </div>

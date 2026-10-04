@@ -202,7 +202,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); 
 .bubble { padding: 9px 13px; border-radius: 16px; font-size: 14px; line-height: 1.4; max-width: 86%; animation: typeIn 0.5s both; animation-delay: calc(var(--i, 0) * 0.9s + 0.4s); }
 .bubble.ai { background: rgba(255, 255, 255, 0.16); border-bottom-left-radius: 4px; align-self: flex-start; }
 .bubble.caller { background: rgba(94, 234, 212, 0.22); border-bottom-right-radius: 4px; align-self: flex-end; }
-@media (max-width: 900px) { .split { grid-template-columns: 1fr; } .split-art { padding: 28px 22px; min-height: 0; } }
+@media (max-width: 900px) { .split { grid-template-columns: minmax(0, 1fr); } .split-form > .card { width: 100% !important; } .split-art { padding: 28px 22px; min-height: 0; } }
 
 /* ---- Reduced motion: no drifting, no entrance animation, no hover lift ---- */
 @media (prefers-reduced-motion: reduce) {
@@ -243,3 +243,30 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); 
 @media (max-width: 520px) { .stat-cards { grid-template-columns: 1fr; } }
 .search-pill .seg.city { flex: 0 0 210px; }
 @media (max-width: 860px) { .search-pill .seg.city { flex: none; } }
+
+/* Small screens: bigger tap targets, nothing wider than the screen */
+.public-nav nav a { padding: 10px 6px; }
+@media (max-width: 860px) {
+  .search-pill select, .search-pill input { min-height: 44px; }
+  .search-pill button.primary { min-height: 46px; justify-content: center; }
+  .chip-btn { min-height: 40px; }
+}
+@media (pointer: coarse) { .public-wrap a:not(.biz-card a), .split-form a { display: inline-block; padding: 6px 2px; } }
+
+.badge { white-space: nowrap; }
+.bookings-table td:first-child { white-space: nowrap; }
+@media (max-width: 480px) {
+  .public-nav { flex-wrap: wrap; row-gap: 6px; }
+  .public-nav nav { flex-wrap: wrap !important; gap: 0 10px !important; justify-content: flex-end; margin-left: auto; }
+}
+
+.auth-toggle { position: absolute; top: 18px; right: 18px; }
+@media (max-width: 900px) {
+  .split { min-height: 0; }
+  .split-art .call-card, .split-art > p { display: none; }
+  .split-art { padding: 20px 22px; }
+  .split-art h2 { font-size: 22px !important; margin-bottom: 0 !important; }
+  .split-art > .logo { margin-bottom: 12px !important; }
+  .split-form { align-items: flex-start; padding-top: 26px; flex-direction: column; }
+  .auth-toggle { position: static; align-self: flex-end; margin-bottom: 8px; }
+}

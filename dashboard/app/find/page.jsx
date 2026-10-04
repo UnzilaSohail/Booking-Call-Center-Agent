@@ -107,7 +107,7 @@ export default function FindPage() {
         )}
         {data?.results.length === 0 && (
           <div className="card" style={{ padding: 22 }}>
-            <p style={{ margin: '0 0 10px' }}>No businesses match. Try a different word, or clear the filters.</p>
+            <p style={{ margin: '0 0 10px' }}>{q || category || city || near ? 'No businesses match. Try a different word, or clear the filters.' : 'No businesses are listed here yet. Tell us what you need and we will help you find one.'}</p>
             {(q || category || city || near) && <button type="button" onClick={() => { setQ(''); setCategory(''); setCity(''); setNear(null); setPage(1); }}>Clear filters</button>}
           </div>
         )}

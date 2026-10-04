@@ -122,6 +122,31 @@ Only once that number is known, set `MAX_CONCURRENT_CALLS` in `.env` (see
   directly, so no real SMS or email is sent. Real companies are never touched by "remove".
 - Remove it before the first real client signs up if you do not want fake businesses in the public directory.
 
+## 7c. pm2 process file, log rotation and the call limit (Jira 31k, 31l)
+
+One file now describes both processes: `ecosystem.config.cjs` (already sets the 11-minute `kill_timeout`, fork mode, one instance).
+If the server was started by hand with `pm2 start ...`, switch once:
+```
+pm2 delete booking-backend booking-dashboard
+pm2 start ecosystem.config.cjs
+pm2 save          # and `pm2 startup` once, so both come back after a server reboot
+```
+After that, a deploy is `pm2 reload ecosystem.config.cjs --update-env`.
+
+Log rotation (logs grow without limit otherwise), once:
+```
+pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 20M
+pm2 set pm2-logrotate:retain 14
+pm2 set pm2-logrotate:compress true
+```
+`MAX_CONCURRENT_CALLS` goes in the backend `.env` (not the process file). Until the Gemini Live quota is known (AIN-395), start with `MAX_CONCURRENT_CALLS=5`; a call over the limit hears "all lines are busy" and costs nothing. Raise it when Google AI Studio shows a higher concurrent-session quota and a many-phones test (AIN-303) passes.
+
+Check the deployment any time with the smoke test (from any computer):
+```
+npm run smoke -- https://bookingagent.sparkmind.online
+```
+
 ## 8. Housekeeping
 
 - `pm2 logs booking-backend --lines 0` then watch briefly for unexpected errors after

@@ -2,6 +2,7 @@
 // register companies (src/routes/platform.js) — there's no public signup for either
 // role anymore, since companies are meant to be admin-registered, not self-service.
 // There's also no public way to create a platform admin — see scripts/createPlatformAdmin.js.
+import { loginBlocked, loginFailed, loginSucceeded } from './rateLimit.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Router } from 'express';
@@ -19,10 +20,13 @@ export const platformAuthRouter = Router();
 platformAuthRouter.post('/auth/login', async (req, res, next) => {
   try {
     const { email, password } = req.body ?? {};
-    if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) return res.status(400).json({ error: 'email and password are required' });
+    const id = email.toLowerCase();
+    if (loginBlocked(req.ip, id)) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
 
-    const result = await verifyPlatformAdmin(email.toLowerCase(), password);
-    if (!result) return res.status(401).json({ error: 'invalid credentials' });
+    const result = await verifyPlatformAdmin(id, password);
+    if (!result) { loginFailed(req.ip, id); return res.status(401).json({ error: 'invalid credentials' }); }
+    loginSucceeded(id);
 
     const token = jwt.sign({ role: 'platform', ...result }, JWT_SECRET, { expiresIn: '12h' });
     res.json({ token });

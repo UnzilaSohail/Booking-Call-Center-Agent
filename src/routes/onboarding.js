@@ -106,17 +106,13 @@ onboardingRouter.post('/onboarding/verify/confirm', async (req, res, next) => {
     if (!code) return res.status(400).json({ error: 'code is required' });
 
     const db = await getDb();
-    const admin = await db.collection('admins').findOne({ _id: req.adminId });
+    // Count the attempt first, atomically, so a burst of parallel guesses cannot get past the limit.
+    const admin = await db.collection('admins').findOneAndUpdate({ _id: req.adminId }, { $inc: { [`${channel}_code_attempts`]: 1 } }, { returnDocument: 'after' });
     if (!admin) return res.status(404).json({ error: 'admin not found' });
+    if (admin[`${channel}_code_attempts`] > MAX_ATTEMPTS) return res.status(429).json({ error: 'too many attempts — request a new code' });
 
-    const attempts = admin[`${channel}_code_attempts`] ?? 0;
-    if (attempts >= MAX_ATTEMPTS) return res.status(429).json({ error: 'too many attempts — request a new code' });
-
-    const ok = await verifyCode(code, admin[`${channel}_code_hash`], admin[`${channel}_code_expires_at`]);
-    if (!ok) {
-      await db.collection('admins').updateOne({ _id: req.adminId }, { $inc: { [`${channel}_code_attempts`]: 1 } });
-      return res.status(400).json({ error: 'invalid or expired code' });
-    }
+    const ok = await verifyCode(String(code), admin[`${channel}_code_hash`], admin[`${channel}_code_expires_at`]);
+    if (!ok) return res.status(400).json({ error: 'invalid or expired code' });
 
     await db.collection('admins').updateOne({ _id: req.adminId }, {
       $set: { [`${channel}_verified_at`]: new Date() },

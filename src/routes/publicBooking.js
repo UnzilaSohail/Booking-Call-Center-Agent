@@ -268,10 +268,12 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
     if (!name || name.length > 100) return res.status(400).json({ error: 'name is required' });
     if (!/^\+\d{10,15}$/.test(phone)) return res.status(400).json({ error: 'a valid phone number is required' });
     if (email && !EMAIL_RE.test(email)) return res.status(400).json({ error: 'email is not valid' });
-    if (!body.serviceId || !DateTime.fromISO(String(body.startTime ?? ''), { zone: 'utc' }).isValid) {
+    if (typeof body.serviceId !== 'string' || !body.serviceId || !DateTime.fromISO(String(body.startTime ?? ''), { zone: 'utc' }).isValid) {
       return res.status(400).json({ error: 'serviceId and a valid startTime are required' });
     }
     if (new Date(body.startTime).getTime() <= Date.now()) return res.status(409).json({ error: 'that time has already passed, please pick another' });
+    // A stranger's number must not be texted over and over: 8 web bookings per phone per day across ALL businesses.
+    if (tooMany(`phone-all:${phone}`, 8, 24 * 60 * 60_000)) return res.status(429).json({ error: 'too many bookings for this phone number today, please call instead' });
     if (tooMany(`phone:${b._id}:${phone}`, 5, 60 * 60_000)) return res.status(429).json({ error: 'too many bookings for this phone number, try again later' });
     if (tooMany(`cap:${b._id}`, DAILY_CAP, 24 * 60 * 60_000)) return res.status(429).json({ error: 'online booking is full for today, please call instead' });
 
