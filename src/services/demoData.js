@@ -27,7 +27,7 @@ const AHEAD_DAYS = 14;
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6].map((d) => ({ day_of_week: d, open_time: '09:00', close_time: '18:00' }));
 const TENANT_COLLECTIONS = [
   'services', 'staff', 'locations', 'bookings', 'booking_slot_locks', 'customers', 'call_logs', 'failed_bookings', 'sms_sends',
-  'staff_time_off', 'callback_requests', 'voicemails', 'customer_login_codes', 'invoices', 'payment_failures',
+  'staff_time_off', 'callback_requests', 'voicemails', 'customer_login_codes', 'invoices', 'payment_failures', 'audit_logs',
 ];
 
 const NAMES = [
@@ -279,6 +279,19 @@ export async function addDemoData({ listed = false, password = generatePassword(
     _id: newId(), business_id: glow, call_sid: 'CAdemoCB', phone: '+15550100077', preferred_time: null, reason: 'Wants a quote for bridal party colouring',
     created_at: new Date(now.getTime() - 3 * 86_400_000), ...open, status: 'pending',
   });
+
+  // ---- activity history: what the owner and a manager did over the last weeks ----
+  const ownerAdmin = await db.collection('admins').findOne({ business_id: glow, email: DEMO_ACCOUNTS.owner });
+  const trail = [
+    [0.1, 'POST', '/api/bookings'], [0.2, 'PATCH', '/api/bookings/b1'], [0.9, 'PATCH', '/api/exceptions/sms_delivery/x1'], [1.1, 'POST', '/api/exceptions/sms_delivery/x1/retry'],
+    [1.2, 'PATCH', '/api/customers/c1'], [2.1, 'POST', '/api/customers/c2/merge'], [2.3, 'PUT', '/api/knowledge/draft'], [2.3, 'POST', '/api/knowledge/publish'],
+    [3.0, 'PATCH', '/api/services/s1'], [3.1, 'PATCH', '/api/services/s1'], [4.0, 'POST', '/api/staff'], [4.1, 'PATCH', '/api/staff/t1'], [4.2, 'POST', '/api/staff/t1/time-off'],
+    [5.0, 'POST', '/api/team-members/invite'], [5.1, 'PATCH', '/api/team-members/m1'], [6.0, 'PUT', '/api/business-hours'], [6.2, 'PUT', '/api/business/holidays'],
+    [8.0, 'PATCH', '/api/billing/plan'], [9.0, 'POST', '/api/onboarding/test-call'], [9.1, 'POST', '/api/onboarding/go-live'], [12.0, 'POST', '/api/services'],
+  ];
+  await db.collection('audit_logs').insertMany(trail.map(([daysAgo, method, path]) => ({
+    _id: newId(), business_id: glow, admin_id: ownerAdmin._id, method, path, status: 200, ip: '203.0.113.7', created_at: new Date(now.getTime() - daysAgo * 86_400_000),
+  })));
 
   // ---- usage and invoices: two paid months behind us and a current month in progress ----
   const smsDocs = rows.filter((r) => r.status === 'confirmed' && r.created_at >= periodStart && r.created_at <= now)

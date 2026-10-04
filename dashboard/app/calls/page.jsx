@@ -8,6 +8,13 @@ import { DateTime } from '../../lib/datetime';
 import Loading from '../../components/Skeleton';
 import EmptyState from '../../components/EmptyState';
 
+// What the AI was trying to do when something went wrong, in everyday words.
+const TOOL_NAMES = {
+  create_booking: 'Making a booking', check_availability: 'Checking free times', cancel_booking: 'Cancelling a booking',
+  reschedule_booking: 'Moving a booking', find_upcoming_bookings: "Looking up the caller's bookings", request_callback: 'Arranging a call back',
+  flag_emergency: 'Flagging an emergency', transfer_call: 'Transferring the call',
+};
+
 function OutcomeBadge({ log }) {
   if (log.booking) return <span className="badge success">Booked</span>;
   if (log.outcome?.startsWith('emergency')) return <span className="badge danger">Emergency</span>;
@@ -171,10 +178,10 @@ function CallsInner() {
                           )}
                           {log.failed_actions?.length > 0 && (
                             <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
-                              <strong style={{ fontSize: 12.5 }}>Failed actions</strong>
+                              <strong style={{ fontSize: 12.5 }}>Things the AI could not do</strong>
                               <ul style={{ fontSize: 13, margin: '4px 0 0', paddingLeft: 18 }}>
                                 {log.failed_actions.map((f, i) => (
-                                  <li key={i}>{f.tool}: {f.error}</li>
+                                  <li key={i}>{TOOL_NAMES[f.tool] ?? String(f.tool).replace(/_/g, ' ')}: {f.error}</li>
                                 ))}
                               </ul>
                             </div>

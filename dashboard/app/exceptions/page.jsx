@@ -8,14 +8,14 @@ import { DateTime } from '../../lib/datetime';
 import Loading from '../../components/Skeleton';
 
 const TYPE_LABELS = {
-  failed_booking: 'Failed booking',
-  callback_request: 'Callback request',
-  voicemail: 'Voicemail',
-  low_confidence_call: 'Low-confidence call',
-  calendar_sync: 'Calendar sync',
-  sms_delivery: 'SMS delivery',
-  email_delivery: 'Email delivery',
-  payment_failure: 'Payment failure',
+  failed_booking: 'Booking that did not go through',
+  callback_request: 'Someone asked for a call back',
+  voicemail: 'Voicemail left',
+  low_confidence_call: 'Call the AI was unsure about',
+  calendar_sync: 'Booking missing from Google Calendar',
+  sms_delivery: 'Text message not delivered',
+  email_delivery: 'Email not delivered',
+  payment_failure: 'Payment did not go through',
 };
 
 // Unified "needs staff attention" queue (ROADMAP.md §9) — src/routes/exceptions.js

@@ -194,7 +194,7 @@ function PaymentMethodCard({ plan, onChanged }) {
           <span className="badge neutral" style={{ textTransform: 'capitalize' }}>{plan.paymentMethod.brand}</span> ending in {plan.paymentMethod.last4}
         </p>
       ) : !publishableKey ? (
-        <p className="muted" style={{ marginTop: 8 }}>Stripe is not configured — no card can be collected yet. Usage tracking and invoicing still work; charging is skipped until a Stripe key is set.</p>
+        <p className="muted" style={{ marginTop: 8 }}>Card payments are not switched on yet, so no card can be saved for now. Your usage and invoices are still being tracked, and nothing is charged until payments are set up.</p>
       ) : (
         <form id="billing-card-form" className="stack" style={{ marginTop: 8 }}>
           <div id="billing-card-element" style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }} />

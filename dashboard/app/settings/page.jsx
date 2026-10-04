@@ -72,7 +72,7 @@ function BusinessProfileSection() {
         <div className="row" style={{ alignItems: 'flex-end' }}>
           <div className="field" style={{ flex: 1 }}>
             <label>Your business phone number</label>
-            <input value={form.phoneNumber ?? 'Not provisioned yet'} disabled />
+            <input value={form.phoneNumber ?? 'No number yet'} disabled />
           </div>
           <div className="field" style={{ flex: 1 }}>
             <label>Last time to change an appointment (minutes before) <InfoTip term="cutoff" /></label>
@@ -884,10 +884,10 @@ function PhoneNumberSection() {
         <p>Customers call <strong>{phoneNumber}</strong> to book.</p>
       ) : (
         <>
-          <p className="muted">This purchases a real Twilio number and is billed to the Twilio account.</p>
+          <p className="muted">This buys a real phone number for your business. It is added to your bill.</p>
           <div className="row" style={{ alignItems: 'flex-end' }}>
             <div className="field"><label>Area code (optional)</label><input value={areaCode} onChange={(e) => setAreaCode(e.target.value)} placeholder="e.g. 415" /></div>
-            <button className="primary" onClick={provision} disabled={loading}>{loading ? 'Provisioning...' : 'Get a phone number'}</button>
+            <button className="primary" onClick={provision} disabled={loading}>{loading ? 'Getting your number...' : 'Get a phone number'}</button>
           </div>
         </>
       )}
