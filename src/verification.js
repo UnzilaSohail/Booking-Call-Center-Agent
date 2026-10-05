@@ -1,7 +1,7 @@
 // OTP codes for email/phone verification during signup and onboarding
 // (src/routes/signup.js, src/routes/onboarding.js). Pure functions, no DB access, so
 // they're unit-testable without a running MongoDB (test/verification.test.js).
-import { randomInt } from 'node:crypto';
+import { randomInt, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs'; // already a dependency — no new hashing library for this
 
 export const CODE_TTL_MS = 10 * 60 * 1000;
@@ -9,6 +9,14 @@ export const MAX_ATTEMPTS = 5;
 
 export function generateCode() {
   return String(randomInt(0, 1_000_000)).padStart(6, '0');
+}
+
+// A magic-link token (Jira 19d): long and URL-safe, unlike generateCode's short PIN —
+// meant to be clicked, not typed. Hashed and verified the same way as the 6-digit code
+// (same hashCode/verifyCode below), just a different secret on the same login record, so
+// a customer can use whichever the email offers.
+export function generateLinkToken() {
+  return randomBytes(24).toString('base64url');
 }
 
 export function hashCode(code) {

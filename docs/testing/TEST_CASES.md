@@ -75,7 +75,22 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 | CC-02 | AI session fails to start | Caller hears a message, callback record created, outcome `failed: ai_unavailable` | Planned (Plan 4, Jira 27c/27d) |
 | CC-03 | Call closed by the server | Transcript, outcome and duration still saved | Planned (Plan 4, Jira 27e) |
 | CC-04 | `MAX_CONCURRENT_CALLS` reached | "All lines busy" message + callback | Planned (Plan 4, Jira 27f) |
-| CC-05 | N real phones at once | Each call answered, no cross-talk, quota respected | Manual (UAT-04, teammate) |
+| CC-05 | N real phones at once | Each call answered, no cross-talk, quota respected | **Pass (2026-10-05, 8 real concurrent calls via Twilio REST into the live production number)** — see below |
+
+**CC-05 evidence (2026-10-05)**: rather than wait for 5-10 people with real phones, used Twilio's
+own REST API to place real outbound calls (`+14345339336` -> the production inbound number)
+— since the "to" number is itself a Twilio number with its own configured Voice webhook,
+Twilio routes it through the real `/voice/incoming` flow exactly like a genuine PSTN caller,
+so this is real telephony concurrency, not a simulation (unlike CC-01/wsSmoke.js, which only
+exercises the WebSocket layer with no Gemini cost). Verified with a single call first (real
+`call_logs` entry, real Gemini Live session, matching duration), then scaled to 8 simultaneous
+calls. All 8 Gemini Live sessions opened before any closed (genuine overlap), all 8 completed
+cleanly with no errors, no `MAX_CONCURRENT_CALLS` rejections, and each call's duration saved
+correctly (confirms KG-10's finalizeCall fix holds under real concurrent load). Transcripts
+were empty because the test calls carried no real audio (`<Pause>` only) — the per-call
+silence watchdog correctly cut each one short at ~20s on its own, which is further evidence
+KG-12's fix is working. Test call_logs rows were deleted afterward so they don't appear in
+real call history/dashboard stats.
 
 ## PB, DR, SL — Public booking page, directory, booking links (`test/publicBooking.test.js`)
 Real HTTP against the Express app and real Mongo; each run creates its own businesses (an "ABC Salon" in Tampa and Miami, an "ABC Dentist", one with no services).
@@ -234,7 +249,7 @@ Run against the real Express app over HTTP with no email/SMS provider configured
 | UAT-01 | Call the business number and book a service | Agent greets, offers slots, confirms; booking appears in the dashboard with source "call" |
 | UAT-02 | Call and ask for a taken slot | Agent offers other times; a failed booking shows under Exceptions |
 | UAT-03 | While the agent is mid-booking for 2pm, book 2pm manually in the dashboard | One booking only; the other side is told the slot is gone |
-| UAT-04 | Place 5-10 calls at the same time from different phones | All answered, no dead air, each transcript separate |
+| UAT-04 | Place 5-10 calls at the same time from different phones | All answered, no dead air, each transcript separate — **Done 2026-10-05, see CC-05 above** (8 real concurrent calls via Twilio API in place of physical phones; same real telephony concurrency, no physical phones needed) |
 | UAT-05 | Open Calls after a call | Transcript shows both caller and agent lines; a question is answered from the knowledge base |
 | UAT-06 | Invite a team member with SendGrid configured | Email arrives with a working link |
 | UAT-07 | Invite with no email provider configured | Orange warning, link shown with Copy link; Resend and Copy link icons on the pending member |

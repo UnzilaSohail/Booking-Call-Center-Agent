@@ -210,6 +210,8 @@ const asToken = (t) => ({ get: () => t });
 export const customerApi = {
   requestCode: (slug, body) => request(`/api/public/${slug}/portal/code`, { method: 'POST', body }),
   verify: (slug, body) => request(`/api/public/${slug}/portal/verify`, { method: 'POST', body }),
+  // 19d magic link — the id+token pair from the emailed link, not a code someone typed.
+  verifyMagicLink: (slug, id, token) => request(`/api/public/${slug}/portal/magic`, { method: 'POST', body: { id, token } }),
   me: (t) => request('/api/customer/me', { tokenStore: asToken(t) }),
   updateMe: (t, body) => request('/api/customer/me', { method: 'PATCH', body, tokenStore: asToken(t) }),
   appointments: (t) => request('/api/customer/appointments', { tokenStore: asToken(t) }),

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { customerApi, publicApi, ApiError } from '../../../lib/api';
 import Loading from '../../../components/Skeleton';
@@ -71,6 +71,31 @@ function SignIn({ slug, biz, onToken }) {
           </div>
         </form>
       )}
+    </>
+  );
+}
+
+// 19d magic link — a deliberate "Confirm sign-in" click, not an auto-submit on page load.
+// Some corporate/antivirus email scanners pre-fetch links in emails before a person ever
+// sees them; if loading this page alone completed sign-in, a scanner could silently log
+// in as the customer. Requiring a real click here means a passive fetch can't do that.
+function MagicLinkConfirm({ slug, biz, magicId, magicToken, onToken }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function confirm() {
+    setBusy(true); setError(null);
+    try { onToken((await customerApi.verifyMagicLink(slug, magicId, magicToken)).token); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      <h2 style={{ marginTop: 0 }}>Sign in to {biz.name}</h2>
+      <p className="muted" style={{ marginTop: 0 }}>Click below to finish signing in from your email link.</p>
+      {error && <p className="error-text">{error}</p>}
+      <button type="button" className="primary" disabled={busy} onClick={confirm}>{busy ? 'Signing in...' : 'Confirm sign-in'}</button>
     </>
   );
 }
@@ -228,16 +253,27 @@ function Account({ slug, token, me, onSignOut, reload }) {
 
 export default function MyPage() {
   const { slug } = useParams();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [biz, setBiz] = useState(null);
   const [missing, setMissing] = useState(false);
   const [token, setToken] = useState(undefined); // undefined = not read yet
   const [me, setMe] = useState(null);
+  const magicId = searchParams.get('magicId');
+  const magicToken = searchParams.get('magicToken');
 
   useEffect(() => { publicApi.business(slug).then(setBiz).catch(() => setMissing(true)); }, [slug]);
   useEffect(() => { setToken(readToken(slug)); }, [slug]);
 
   const loadMe = (t = token) => customerApi.me(t).then(setMe).catch(() => { writeToken(slug, null); setToken(null); setMe(null); });
   useEffect(() => { if (token) loadMe(token); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleToken(t) {
+    writeToken(slug, t);
+    setToken(t);
+    // Strip the magic-link params so a refresh doesn't try to reuse an already-spent token.
+    if (magicId) router.replace(`/my/${slug}`);
+  }
 
   const signOut = () => { writeToken(slug, null); setToken(null); setMe(null); };
 
@@ -257,7 +293,8 @@ export default function MyPage() {
           </div>
         )}
         {biz && token === undefined && <Loading />}
-        {biz && token === null && <SignIn slug={slug} biz={biz} onToken={(t) => { writeToken(slug, t); setToken(t); }} />}
+        {biz && token === null && magicId && magicToken && <MagicLinkConfirm slug={slug} biz={biz} magicId={magicId} magicToken={magicToken} onToken={handleToken} />}
+        {biz && token === null && !(magicId && magicToken) && <SignIn slug={slug} biz={biz} onToken={handleToken} />}
         {biz && token && !me && <Loading />}
         {biz && token && me && <Account slug={slug} token={token} me={me} onSignOut={signOut} reload={() => loadMe(token)} />}
       </div>

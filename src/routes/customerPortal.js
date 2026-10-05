@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { DateTime } from 'luxon';
 import { getDb, withTenant, newId } from '../db.js';
 import { tooMany } from '../rateLimit.js';
-import { generateCode, hashCode, verifyCode, fakeVerify, CODE_TTL_MS, MAX_ATTEMPTS } from '../verification.js';
+import { generateCode, generateLinkToken, hashCode, verifyCode, fakeVerify, CODE_TTL_MS, MAX_ATTEMPTS } from '../verification.js';
 import { sendSms, smsConfigured } from '../notifications/sms.js';
 import { sendEmail, emailConfigured } from '../notifications/email.js';
 import { signCustomerToken, requireCustomer } from '../customerAuth.js';
@@ -66,14 +66,26 @@ customerPortalRouter.post('/public/:slug/portal/code', loadBusiness, async (req,
       if (existing && Date.now() - new Date(existing.created_at).getTime() < RESEND_COOLDOWN_MS) return;
 
       const code = generateCode();
+      // 19d: email also gets a clickable magic link, same record/expiry/single-use as the
+      // code — the customer can type the code or click the link, whichever the email client
+      // shows first. SMS has no room for a link in a text, so it only ever gets the code.
+      const linkToken = who.kind === 'email' ? generateLinkToken() : null;
       await db.collection('customer_login_codes').replaceOne(
         { _id },
-        { _id, business_id: b._id, customer_id: customer._id, code_hash: await hashCode(code), attempts: 0, created_at: new Date(), expires_at: new Date(Date.now() + CODE_TTL_MS) },
+        {
+          _id, business_id: b._id, customer_id: customer._id, code_hash: await hashCode(code),
+          link_token_hash: linkToken ? await hashCode(linkToken) : null,
+          attempts: 0, created_at: new Date(), expires_at: new Date(Date.now() + CODE_TTL_MS),
+        },
         { upsert: true }
       );
-      const text = `${b.name}: your sign-in code is ${code}. It expires in 10 minutes.`;
-      if (who.kind === 'sms') await sendSms(b._id, customer.phone, text);
-      else await sendEmail(customer.email, `Your sign-in code for ${b.name}`, text);
+      if (who.kind === 'sms') {
+        await sendSms(b._id, customer.phone, `${b.name}: your sign-in code is ${code}. It expires in 10 minutes.`);
+      } else {
+        const link = `${process.env.PUBLIC_DASHBOARD_URL || 'http://localhost:3002'}/my/${req.params.slug}?magicId=${encodeURIComponent(_id)}&magicToken=${linkToken}`;
+        const text = `${b.name}: your sign-in code is ${code}. It expires in 10 minutes.\n\nOr sign in with one click: ${link}`;
+        await sendEmail(customer.email, `Sign in to ${b.name}`, text);
+      }
     } catch (err) {
       console.error('customer sign-in code failed:', err.message);
     }
@@ -100,6 +112,29 @@ customerPortalRouter.post('/public/:slug/portal/verify', loadBusiness, async (re
 
     await db.collection('customer_login_codes').deleteOne({ _id: row._id });
     res.json({ token: signCustomerToken(b._id, customer._id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 19d magic link — the id names which login record (business+customer), the token is the
+// actual secret (same bcrypt check as the 6-digit code, just a longer value meant to be
+// clicked, not typed). Attempt-limited the same way, so guessing a token is no easier than
+// guessing a code. Does NOT require re-entering email/phone — the link carries everything.
+customerPortalRouter.post('/public/:slug/portal/magic', loadBusiness, async (req, res, next) => {
+  try {
+    const id = String(req.body?.id ?? '');
+    const token = String(req.body?.token ?? '');
+    if (!id.startsWith(`${req.business._id}:`) || !token) return badCode(res);
+    if (tooMany(`portal-verify:${req.ip}`, 20, 15 * 60_000)) return res.status(429).json({ error: 'too many attempts, try again later' });
+
+    const db = await getDb();
+    const row = await db.collection('customer_login_codes').findOneAndUpdate({ _id: id }, { $inc: { attempts: 1 } }, { returnDocument: 'after' });
+    if (!row) { await fakeVerify(token); return badCode(res); } // same time as a wrong token
+    if (row.attempts > MAX_ATTEMPTS || !(await verifyCode(token, row.link_token_hash, row.expires_at))) return badCode(res);
+
+    await db.collection('customer_login_codes').deleteOne({ _id: row._id });
+    res.json({ token: signCustomerToken(row.business_id, row.customer_id) });
   } catch (err) {
     next(err);
   }

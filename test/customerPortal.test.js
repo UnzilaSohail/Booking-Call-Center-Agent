@@ -238,4 +238,47 @@ describe('customer portal', { skip: skip || (realProvider ? 'a real SMS/email pr
     const found = await listBookings(salon.businessId, { q: booking.reference.toLowerCase() });
     assert.deepEqual(found.map((b) => b.id), [booking.id]);
   });
+
+  it('CP-18 an email request also stores a magic-link token; an SMS request does not', async () => {
+    fakeProvider(true);
+    const cust = await db.collection('customers').findOne({ business_id: salon.businessId, phone: PHONE });
+    await requestCode({ email: `Sara-${tag}@Example.test` });
+    await wait(400);
+    const emailRow = await db.collection('customer_login_codes').findOne({ _id: `${salon.businessId}:${cust._id}` });
+    assert.ok(emailRow.link_token_hash, 'email request gets a link token');
+
+    await requestCode({ phone: OTHER });
+    await wait(400);
+    const other = await db.collection('customers').findOne({ business_id: salon.businessId, phone: OTHER });
+    const smsRow = await db.collection('customer_login_codes').findOne({ _id: `${salon.businessId}:${other._id}` });
+    assert.equal(smsRow.link_token_hash, null, 'SMS has nowhere to put a link, so it gets none');
+  });
+
+  it('CP-19 the magic link signs in exactly once, same as a code', async () => {
+    const cust = await db.collection('customers').findOne({ business_id: salon.businessId, phone: PHONE });
+    const id = `${salon.businessId}:${cust._id}`;
+    await db.collection('customer_login_codes').replaceOne(
+      { _id: id },
+      { _id: id, business_id: salon.businessId, customer_id: cust._id, code_hash: await hashCode('333333'), link_token_hash: await hashCode('a-real-link-token'), attempts: 0, created_at: new Date(0), expires_at: new Date(Date.now() + 600_000) },
+      { upsert: true }
+    );
+    const res = await api(`/public/${slug}/portal/magic`, { method: 'POST', body: { id, token: 'a-real-link-token' } });
+    assert.equal(res.status, 200);
+    assert.ok((await res.json()).token);
+    const reused = await api(`/public/${slug}/portal/magic`, { method: 'POST', body: { id, token: 'a-real-link-token' } });
+    assert.equal(reused.status, 401, 'a used link is gone');
+  });
+
+  it('CP-20 a wrong token, and an id from another business, are both refused', async () => {
+    const cust = await db.collection('customers').findOne({ business_id: salon.businessId, phone: PHONE });
+    const id = `${salon.businessId}:${cust._id}`;
+    await db.collection('customer_login_codes').replaceOne(
+      { _id: id },
+      { _id: id, business_id: salon.businessId, customer_id: cust._id, code_hash: await hashCode('444444'), link_token_hash: await hashCode('correct-token'), attempts: 0, created_at: new Date(0), expires_at: new Date(Date.now() + 600_000) },
+      { upsert: true }
+    );
+    assert.equal((await api(`/public/${slug}/portal/magic`, { method: 'POST', body: { id, token: 'wrong-token' } })).status, 401);
+    const otherBizId = `${dentist.businessId}:${cust._id}`;
+    assert.equal((await api(`/public/${slug}/portal/magic`, { method: 'POST', body: { id: otherBizId, token: 'correct-token' } })).status, 401, 'an id prefixed with another business is refused outright');
+  });
 });
