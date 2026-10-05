@@ -32,7 +32,14 @@ export function computeOnboardingStatus(business, admin, counts) {
     { key: 'go_live', label: 'Go live', done: business.onboarding_completed_at != null, skippable: false },
   ];
   const requiredRemaining = steps.filter((s) => !s.skippable && s.key !== 'go_live' && !s.done).map((s) => s.key);
-  return { steps, requiredRemaining, readyForGoLive: requiredRemaining.length === 0 };
+  return {
+    steps, requiredRemaining, readyForGoLive: requiredRemaining.length === 0,
+    // Per-channel, not just the combined verify_contact.done above — the dashboard needs
+    // this to show "email done, phone still needed" instead of looking like confirming a
+    // code did nothing when only one of the two channels is actually done yet.
+    emailVerified: !!admin.email_verified_at,
+    phoneVerified: !!admin.phone_verified_at,
+  };
 }
 
 onboardingRouter.get('/onboarding/status', async (req, res, next) => {

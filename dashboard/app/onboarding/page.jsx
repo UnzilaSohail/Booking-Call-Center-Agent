@@ -54,18 +54,29 @@ function VerifyContactStep({ status, onChanged }) {
     try {
       await api.confirmVerificationCode(channel, codeInput[channel]);
       toast.success(`${channel === 'email' ? 'Email' : 'Phone'} verified`);
+      // Without this, the code box stayed on screen after a successful confirm — the
+      // toast is the only thing that changed, and it fades, so verifying looked like it
+      // did nothing once that happened. onChanged() below is what actually marks the
+      // channel verified (via status.emailVerified/phoneVerified from the reload); this
+      // just clears this component's own "a code was sent" state so it doesn't still
+      // offer to re-confirm a code that was already consumed.
+      setPending((p) => ({ ...p, [channel]: false }));
       onChanged();
     } catch (err) {
       setError(err.message);
     }
   }
 
+  const isVerified = { email: status.emailVerified, phone: status.phoneVerified };
+
   return (
     <div className="stack" style={{ gap: 10 }}>
       {['email', 'phone'].map((channel) => (
         <div key={channel} className="row" style={{ alignItems: 'center' }}>
           <span style={{ width: 60, fontSize: 13, textTransform: 'capitalize' }}>{channel}</span>
-          {!pending[channel] ? (
+          {isVerified[channel] ? (
+            <span className="badge success">Verified</span>
+          ) : !pending[channel] ? (
             <button type="button" className="ghost" onClick={() => send(channel)}>Send code</button>
           ) : (
             <>

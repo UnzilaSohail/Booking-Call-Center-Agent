@@ -30,3 +30,12 @@ test('everything set: every step reads done', () => {
   const { steps } = computeOnboardingStatus(business, admin, { services: 2, staff: 1 });
   assert.equal(steps.every((s) => s.done), true);
 });
+
+// The dashboard needs this to show "email done, phone still needed" instead of looking
+// like confirming a code did nothing when only one of the two channels is verified yet.
+test('emailVerified/phoneVerified are reported individually, not just the combined step', () => {
+  const emailOnly = computeOnboardingStatus(bareBusiness, { email_verified_at: new Date(), phone_verified_at: null }, { services: 0, staff: 0 });
+  assert.equal(emailOnly.emailVerified, true);
+  assert.equal(emailOnly.phoneVerified, false);
+  assert.equal(emailOnly.steps.find((s) => s.key === 'verify_contact').done, false, 'the combined step still needs both');
+});
