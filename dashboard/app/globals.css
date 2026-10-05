@@ -293,6 +293,7 @@ tbody tr:hover { background: var(--surface-alt); }
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow-y: auto;
 }
 
 .sidebar-brand {
