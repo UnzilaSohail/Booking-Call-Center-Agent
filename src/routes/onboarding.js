@@ -6,7 +6,7 @@ import twilio from 'twilio';
 import { getDb } from '../db.js';
 import { generateCode, hashCode, verifyCode, CODE_TTL_MS, MAX_ATTEMPTS } from '../verification.js';
 import { sendEmail } from '../notifications/email.js';
-import { sendSms } from '../notifications/sms.js';
+import { sendSms, smsConfigured } from '../notifications/sms.js';
 
 export const onboardingRouter = Router();
 
@@ -97,7 +97,10 @@ onboardingRouter.post('/onboarding/verify/send', async (req, res, next) => {
       deliveryError = result.reason;
     } else {
       delivered = Boolean(await sendSms(null, destination, `Your verification code is ${code}. It expires in 10 minutes.`));
-      if (!delivered) deliveryError = 'SMS sending is not configured on this server';
+      // sendSms now returns null for both "not configured" and "Twilio rejected it" (a bad
+      // number, Geo Permissions, A2P 10DLC — KG-19) — these need different messages, since
+      // only the first one is actually fixable by setting env vars.
+      if (!delivered) deliveryError = smsConfigured() ? 'the code could not be delivered to that number — check it\'s correct, and that SMS is enabled for that region on the Twilio account' : 'SMS sending is not configured on this server';
     }
 
     res.json({ ok: true, delivered, deliveryError });

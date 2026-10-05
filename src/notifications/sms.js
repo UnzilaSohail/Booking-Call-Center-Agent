@@ -28,10 +28,21 @@ export async function sendSms(businessId, to, body) {
     return null;
   }
   const statusCallback = process.env.PUBLIC_HTTPS_URL ? `${process.env.PUBLIC_HTTPS_URL}/webhooks/twilio/sms-status` : undefined;
-  const message = await c.messages.create({ to, from: fromNumber, body, ...(statusCallback ? { statusCallback } : {}) });
-  if (businessId) {
-    await withTenant(businessId, (col) => col('sms_sends').insertOne({ _id: newId(), sid: message.sid, sent_at: new Date() }))
-      .catch((err) => console.error('failed to log sms usage:', err.message));
+  // A real Twilio rejection (bad number, Geo Permissions not enabled for that region, A2P
+  // 10DLC unregistered — see docs/testing/KNOWN_GAPS.md KG-19) used to throw straight out
+  // of here. sendEmail already never throws; this brings sendSms in line so every caller
+  // degrades gracefully instead of only the ones that happened to wrap their own try/catch
+  // around it (most callers did; src/routes/onboarding.js's verify/send didn't, which is
+  // what turned a routine SMS failure into a raw 500 "internal error").
+  try {
+    const message = await c.messages.create({ to, from: fromNumber, body, ...(statusCallback ? { statusCallback } : {}) });
+    if (businessId) {
+      await withTenant(businessId, (col) => col('sms_sends').insertOne({ _id: newId(), sid: message.sid, sent_at: new Date() }))
+        .catch((err) => console.error('failed to log sms usage:', err.message));
+    }
+    return message.sid;
+  } catch (err) {
+    console.error(`SMS send to ${to} failed:`, err.message);
+    return null;
   }
-  return message.sid;
 }
