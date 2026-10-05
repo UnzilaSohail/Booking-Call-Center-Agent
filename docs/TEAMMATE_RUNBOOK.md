@@ -57,6 +57,8 @@ value produces working-but-wrong links, not an error).
 
 ## 4. Email (Gmail SMTP or SendGrid) — Jira 29k/29l/29m
 
+To make emails reach the inbox instead of spam (SPF, DKIM, DMARC), follow `docs/guides/EMAIL_SPF_DKIM.md` (Jira 29n).
+
 Team invites and verification codes are silently skipped without one of these configured
 (`src/notifications/email.js` — `sendEmail` now returns `{sent, reason}` so the dashboard
 can show *why*, but nothing fixes a missing provider itself). Gmail is tried first if set,
@@ -89,6 +91,8 @@ by hand (Jira 29h) — works regardless of email provider status.
 
 ## 5. Twilio (31h, 31i)
 
+Step-by-step guide with the error codes: `docs/guides/TWILIO_SETUP.md`. Test a text with `npm run sms:check -- +<phone>`.
+
 - **"not eligible for recording"** in the logs: check the Twilio console for recording
   permissions on the account/number — trial accounts often can't record.
 - **SMS limits**: US numbers need A2P 10DLC registration for SMS at volume; trial accounts
@@ -102,6 +106,8 @@ Only once that number is known, set `MAX_CONCURRENT_CALLS` in `.env` (see
 (too low) or does nothing (too high).
 
 ## 7. Smoke test (31g, 31j)
+
+Full test-call checklist: `docs/guides/POST_DEPLOY_CALL_TEST.md`. After a call, `npm run call:check` says whether everything was saved.
 
 - Health check: `curl https://<domain>/health` (or whatever the app's health route is).
 - WebSocket upgrade: confirm `/voice/stream` accepts a connection (a real inbound call is
