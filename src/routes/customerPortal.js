@@ -84,7 +84,7 @@ customerPortalRouter.post('/public/:slug/portal/code', loadBusiness, async (req,
       } else {
         const link = `${process.env.PUBLIC_DASHBOARD_URL || 'http://localhost:3002'}/my/${req.params.slug}?magicId=${encodeURIComponent(_id)}&magicToken=${linkToken}`;
         const text = `${b.name}: your sign-in code is ${code}. It expires in 10 minutes.\n\nOr sign in with one click: ${link}`;
-        await sendEmail(customer.email, `Sign in to ${b.name}`, text);
+        await sendEmail(customer.email, `Sign in to ${b.name}`, text, b.contact_email || undefined);
       }
     } catch (err) {
       console.error('customer sign-in code failed:', err.message);

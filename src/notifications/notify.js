@@ -80,7 +80,7 @@ async function sendGated(business, booking, smsText, emailSubject, emailText) {
     updates.confirmation_email_error = null;
   } else {
     try {
-      const { status, error } = emailDelivery(await sendEmail(booking.customer_email, emailSubject, emailText));
+      const { status, error } = emailDelivery(await sendEmail(booking.customer_email, emailSubject, emailText, business.contact_email || undefined));
       updates.confirmation_email_status = status;
       updates.confirmation_email_error = error;
     } catch (err) {

@@ -12,8 +12,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sendSms } from '../src/notifications/sms.js';
+import { createTenant, dropTenants, skip, getDb } from './support/tenantFixture.js';
 
 test('sendSms returns null instead of throwing on a rejected request', async () => {
   const result = await sendSms(null, 'not-a-real-phone-number', 'test');
   assert.equal(result, null);
+});
+
+// A tenant's own number (the same one its customers call) should be looked up and used
+// as the sender — not a single platform-wide number shared across every business — so this
+// just needs to confirm the new DB lookup path doesn't break the existing never-throws
+// guarantee, for a business that has its own number as well as one that doesn't.
+test('sendSms still never throws when resolving a business-specific sending number', { skip }, async () => {
+  const t = await createTenant({ name: '__sms_from__' });
+  const db = await getDb();
+  await db.collection('businesses').updateOne({ _id: t.businessId }, { $set: { phone_number: '+15559998888' } });
+  try {
+    const withOwnNumber = await sendSms(t.businessId, 'not-a-real-phone-number', 'test');
+    assert.equal(withOwnNumber, null);
+
+    await db.collection('businesses').updateOne({ _id: t.businessId }, { $unset: { phone_number: '' } });
+    const withoutOwnNumber = await sendSms(t.businessId, 'not-a-real-phone-number', 'test');
+    assert.equal(withoutOwnNumber, null, 'falls back to the platform number (or null if that is unset too) without crashing');
+  } finally {
+    await dropTenants(t.businessId);
+  }
 });

@@ -35,12 +35,19 @@ export const emailConfigured = () => Boolean((process.env.GMAIL_USER && process.
 // that need the caller (e.g. team invites, KG "Aiza's invite never arrived") to know
 // whether the email actually went out, not just whether the request completed.
 // Gmail is tried first when configured, falling back to SendGrid.
-export async function sendEmail(to, subject, text) {
+//
+// replyTo (optional): a business's own contact email, so a customer who replies to a
+// booking confirmation reaches that business, not the platform's own sending account.
+// The actual SMTP "From" stays the platform's authenticated address either way — you
+// cannot send AS an arbitrary unauthenticated address (that's email spoofing, and every
+// provider blocks it); Reply-To is the real, correct way to put a tenant's own address in
+// the loop without that account being the one actually authenticated to send.
+export async function sendEmail(to, subject, text, replyTo) {
   if (!to) return { sent: false, reason: 'no recipient address' };
 
   if (ensureGmail()) {
     try {
-      await gmailTransport.sendMail({ from: gmailUser, to, subject, text });
+      await gmailTransport.sendMail({ from: gmailUser, to, subject, text, ...(replyTo ? { replyTo } : {}) });
       return { sent: true, reason: null };
     } catch (err) {
       console.error('Gmail SMTP send failed:', err.message);
@@ -50,7 +57,7 @@ export async function sendEmail(to, subject, text) {
 
   if (ensureSendgrid()) {
     try {
-      await sgMail.send({ to, from: sendgridFrom, subject, text });
+      await sgMail.send({ to, from: sendgridFrom, subject, text, ...(replyTo ? { replyTo } : {}) });
       return { sent: true, reason: null };
     } catch (err) {
       console.error('SendGrid send failed:', err.message);

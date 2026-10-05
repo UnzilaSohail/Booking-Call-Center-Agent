@@ -176,11 +176,11 @@ teamRouter.post('/team-members/invite', gate, requireOwner, async (req, res, nex
       throw err;
     }
 
-    const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { name: 1 } });
+    const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { name: 1, contact_email: 1 } });
     const link = `${process.env.PUBLIC_DASHBOARD_URL || 'http://localhost:3002'}/accept-invite/${signInviteToken(adminId)}`;
     // Jira 29c: the invite must never be a black hole when email delivery is broken —
     // the caller gets the link back either way and can hand it to the invitee directly.
-    const { sent, reason } = await sendEmail(email.toLowerCase(), `You're invited to join ${business.name}`, `You've been invited to join ${business.name} as a ${role}. Set your password: ${link}`);
+    const { sent, reason } = await sendEmail(email.toLowerCase(), `You're invited to join ${business.name}`, `You've been invited to join ${business.name} as a ${role}. Set your password: ${link}`, business.contact_email || undefined);
 
     res.status(201).json({ ok: true, emailSent: sent, emailError: sent ? null : reason, inviteLink: link });
   } catch (err) {
@@ -197,12 +197,12 @@ teamRouter.post('/team-members/:id/resend-invite', gate, requireOwner, async (re
     if (!target) return res.status(404).json({ error: 'team member not found' });
     if (target.status !== 'invited') return res.status(400).json({ error: 'this team member has already accepted their invite' });
 
-    const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { name: 1 } });
+    const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { name: 1, contact_email: 1 } });
     const link = `${process.env.PUBLIC_DASHBOARD_URL || 'http://localhost:3002'}/accept-invite/${signInviteToken(target._id)}`;
     // sendEmail:false is the dashboard's "Copy invite link" — hand back the link without emailing it.
     const shouldEmail = req.body?.sendEmail !== false;
     const { sent, reason } = shouldEmail
-      ? await sendEmail(target.email, `You're invited to join ${business.name}`, `You've been invited to join ${business.name} as a ${target.role}. Set your password: ${link}`)
+      ? await sendEmail(target.email, `You're invited to join ${business.name}`, `You've been invited to join ${business.name} as a ${target.role}. Set your password: ${link}`, business.contact_email || undefined)
       : { sent: false, reason: null };
 
     res.json({ ok: true, emailSent: sent, emailError: sent ? null : reason, inviteLink: link });

@@ -96,7 +96,10 @@ onboardingRouter.post('/onboarding/verify/send', async (req, res, next) => {
       delivered = result.sent;
       deliveryError = result.reason;
     } else {
-      delivered = Boolean(await sendSms(null, destination, `Your verification code is ${code}. It expires in 10 minutes.`));
+      // req.businessId so this prefers the business's own number once they have one
+      // (sendSms falls back to the platform number automatically when they don't yet —
+      // true during this exact step, "Verify email & phone" comes before "Get a phone number").
+      delivered = Boolean(await sendSms(req.businessId, destination, `Your verification code is ${code}. It expires in 10 minutes.`));
       // sendSms now returns null for both "not configured" and "Twilio rejected it" (a bad
       // number, Geo Permissions, A2P 10DLC — KG-19) — these need different messages, since
       // only the first one is actually fixable by setting env vars.
