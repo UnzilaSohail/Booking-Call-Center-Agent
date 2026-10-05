@@ -340,7 +340,7 @@ function ChangePasswordSection() {
         </div>
         <div className="field" style={{ flex: 1 }}>
           <label>New password</label>
-          <input type="password" required minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          <input type="password" required minLength={10} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
         </div>
         <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving...' : 'Change'}</button>
       </form>
@@ -1042,13 +1042,37 @@ function SettingsTabs() {
   );
 }
 
+// The three things an owner most often comes here for, at a glance: the business, its public booking link, its phone number.
+function SettingsHero() {
+  const toast = useToast();
+  const [b, setB] = useState(null);
+  useEffect(() => { Promise.all([api.getBusiness(), api.getListing()]).then(([biz, listing]) => setB({ ...biz, slug: listing.slug })).catch(() => {}); }, []);
+  if (!b) return null;
+  const link = b.slug ? `${window.location.origin}/book/${b.slug}` : null;
+  return (
+    <div className="hero-card fade-up" style={{ padding: '20px 24px' }}>
+      <div>
+        <h1 style={{ fontSize: 26 }}>{b.name}</h1>
+        <p style={{ margin: '4px 0 0' }}>{b.phoneNumber ? `Customers call ${b.phoneNumber}` : 'No business phone number yet'}{b.address ? ` · ${b.address}` : ''}</p>
+      </div>
+      {link && (
+        <div className="agent-card" style={{ minWidth: 280 }}>
+          <small>Your booking link: share it anywhere</small>
+          <div className="row" style={{ alignItems: 'center', marginTop: 6, flexWrap: 'nowrap' }}>
+            <code style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{link.replace(/^https?:\/\//, '')}</code>
+            <button type="button" className="primary" style={{ padding: '6px 12px' }} onClick={async () => { if (await copyText(link)) toast.success('Link copied'); }}>Copy</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <RequireAuth area="settings">
       <div className="stack">
-        <div>
-          <h1>Settings</h1>
-        </div>
+        <SettingsHero />
         <SettingsTabs />
       </div>
     </RequireAuth>

@@ -136,7 +136,7 @@ export default function SignupPage() {
               </div>
               <div className="row">
                 <div className="field" style={{ flex: 1 }}>
-                  <TextField label="Password" required type="password" value={ownerPassword} onChange={setOwnerPassword} validate={validatePassword} hint="At least 8 characters." autoComplete="new-password" style={{ margin: 0 }} />
+                  <TextField label="Password" required type="password" value={ownerPassword} onChange={setOwnerPassword} validate={validatePassword} hint="At least 10 characters that are not easy to guess." autoComplete="new-password" style={{ margin: 0 }} />
                 </div>
                 <div className="field" style={{ flex: 1 }}>
                   <TextField label="Confirm password" required type="password" value={confirmPassword} onChange={setConfirmPassword} validate={(v) => (v && v !== ownerPassword ? 'The two passwords do not match.' : validatePassword(v))} autoComplete="new-password" style={{ margin: 0 }} />

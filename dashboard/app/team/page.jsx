@@ -10,6 +10,7 @@ import { copyText } from '../../lib/clipboard';
 import Loading from '../../components/Skeleton';
 import { useConfirm } from '../../lib/confirm';
 import EmptyState from '../../components/EmptyState';
+import CountUp from '../../components/CountUp';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const ROLES = ['manager', 'receptionist', 'staff', 'billing', 'custom'];
@@ -257,7 +258,7 @@ function StaffSection() {
 
   return (
     <div className="card">
-      <h2>All team members</h2>
+      <h2>People customers can book</h2>
       <p className="muted" style={{ marginTop: -8 }}>Leave empty if this business has a single shared calendar — bookings won&apos;t ask for a staff member.</p>
       <table>
         <tbody>
@@ -403,7 +404,7 @@ function TeamMembersSection() {
 
   return (
     <div className="card">
-      <h2>Team members &amp; access</h2>
+      <h2>Who can log in</h2>
       <p className="muted" style={{ marginTop: -8 }}>Who can log into this dashboard, and what they can see.</p>
       <table>
         <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th>{isOwner && <th></th>}</tr></thead>
@@ -491,13 +492,41 @@ function TeamMembersSection() {
   );
 }
 
+// Four numbers at the top, like the Overview: who customers can book, who can log in, who still has to accept.
+function TeamSummary() {
+  const [staff, setStaff] = useState(null);
+  const [members, setMembers] = useState(null);
+  useEffect(() => {
+    api.listStaff().then(setStaff).catch(() => setStaff([]));
+    api.listTeamMembers().then(setMembers).catch(() => setMembers([]));
+  }, []);
+  const cards = [
+    [Users, 'var(--accent-soft)', 'var(--accent)', 'People customers can book', staff?.length],
+    [UserCheck, 'var(--success-soft)', 'var(--success)', 'People who can log in', members?.filter((m) => m.status === 'active').length],
+    [Send, 'var(--warning-soft)', 'var(--warning)', 'Invitations waiting', members?.filter((m) => m.status === 'invited').length],
+    [UserX, 'var(--danger-soft)', 'var(--danger)', 'Logins switched off', members?.filter((m) => m.status === 'suspended').length],
+  ];
+  return (
+    <div className="stat-cards">
+      {cards.map(([Icon, bg, fg, label, value]) => (
+        <div key={label} className="stat-card">
+          <div className="icon-badge" style={{ background: bg }}><Icon size={17} color={fg} /></div>
+          <div className="value"><CountUp value={value ?? '—'} /></div>
+          <div className="label">{label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TeamInner() {
   return (
     <div className="stack">
       <div>
         <h1>Team</h1>
-        <p className="muted" style={{ marginTop: 4 }}>Staff members bookings can be assigned to, and who has access to this dashboard.</p>
+        <p className="muted" style={{ marginTop: 4 }}>The people customers can book with, and the people who can log in to this dashboard.</p>
       </div>
+      <TeamSummary />
       <StaffSection />
       <TeamMembersSection />
     </div>

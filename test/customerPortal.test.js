@@ -14,6 +14,7 @@ import { clearRateLimits } from '../src/rateLimit.js';
 import { hashCode } from '../src/verification.js';
 import { createBooking, listBookings } from '../src/services/bookingService.js';
 import { upsertCustomer } from '../src/services/customerService.js';
+import { signCustomerToken } from '../src/customerAuth.js';
 
 const tag = newId().slice(0, 8);
 const slot = (days, hh = 10) => DateTime.utc().plus({ days }).set({ hour: hh, minute: 0, second: 0, millisecond: 0 }).toISO();
@@ -21,6 +22,8 @@ const date = (days) => slot(days).slice(0, 10);
 const PHONE = '+15550400001';
 const OTHER = '+15550400002';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// The code is written after the reply (two password hashes), so wait for the row instead of guessing how long.
+const row = async (find) => { for (let i = 0; i < 40; i++) { const r = await find(); if (r) return r; await wait(100); } return null; };
 const realProvider = process.env.TWILIO_ACCOUNT_SID || process.env.GMAIL_USER || process.env.SENDGRID_API_KEY;
 
 describe('customer portal', { skip: skip || (realProvider ? 'a real SMS/email provider is configured; this file fakes one' : false) }, () => {
@@ -87,7 +90,8 @@ describe('customer portal', { skip: skip || (realProvider ? 'a real SMS/email pr
     const unknown = await requestCode({ phone: '+15559990000' });
     assert.equal(known.status, unknown.status);
     assert.deepEqual(await known.json(), await unknown.json());
-    await wait(600);
+    await row(() => db.collection('customer_login_codes').findOne({ business_id: salon.businessId })); // the code is written after the reply
+    await wait(300); // time for a (wrongly) created second row to show up
     const rows = await db.collection('customer_login_codes').find({ business_id: salon.businessId }).toArray();
     assert.equal(rows.length, 1, 'only the real customer has a code');
     assert.ok(rows[0].code_hash && rows[0].expires_at > new Date());
@@ -96,7 +100,7 @@ describe('customer portal', { skip: skip || (realProvider ? 'a real SMS/email pr
   it('CP-03 a resend within a minute does not replace the code', async () => {
     const before1 = await db.collection('customer_login_codes').findOne({ business_id: salon.businessId });
     await requestCode({ phone: PHONE });
-    await wait(400);
+    await wait(800);
     const after1 = await db.collection('customer_login_codes').findOne({ business_id: salon.businessId });
     assert.equal(String(after1.created_at), String(before1.created_at));
   });
@@ -228,7 +232,7 @@ describe('customer portal', { skip: skip || (realProvider ? 'a real SMS/email pr
     const codes = [];
     for (let i = 0; i < 6; i++) codes.push((await requestCode({ phone: '+15550400099' })).status);
     assert.equal(codes.at(-1), 429);
-    clearRateLimits();
+    await clearRateLimits();
     assert.equal((await requestCode({ phone: '123' })).status, 400, 'bad number');
   });
 
@@ -242,15 +246,15 @@ describe('customer portal', { skip: skip || (realProvider ? 'a real SMS/email pr
   it('CP-18 an email request also stores a magic-link token; an SMS request does not', async () => {
     fakeProvider(true);
     const cust = await db.collection('customers').findOne({ business_id: salon.businessId, phone: PHONE });
+    await db.collection('customer_login_codes').deleteMany({ business_id: salon.businessId }); // start clean so the row we wait for is the new one
     await requestCode({ email: `Sara-${tag}@Example.test` });
-    await wait(400);
-    const emailRow = await db.collection('customer_login_codes').findOne({ _id: `${salon.businessId}:${cust._id}` });
+    const emailRow = await row(() => db.collection('customer_login_codes').findOne({ _id: `${salon.businessId}:${cust._id}` }));
     assert.ok(emailRow.link_token_hash, 'email request gets a link token');
 
+    await db.collection('customer_login_codes').deleteMany({ business_id: salon.businessId });
     await requestCode({ phone: OTHER });
-    await wait(400);
     const other = await db.collection('customers').findOne({ business_id: salon.businessId, phone: OTHER });
-    const smsRow = await db.collection('customer_login_codes').findOne({ _id: `${salon.businessId}:${other._id}` });
+    const smsRow = await row(() => db.collection('customer_login_codes').findOne({ _id: `${salon.businessId}:${other._id}` }));
     assert.equal(smsRow.link_token_hash, null, 'SMS has nowhere to put a link, so it gets none');
   });
 
@@ -280,5 +284,28 @@ describe('customer portal', { skip: skip || (realProvider ? 'a real SMS/email pr
     assert.equal((await api(`/public/${slug}/portal/magic`, { method: 'POST', body: { id, token: 'wrong-token' } })).status, 401);
     const otherBizId = `${dentist.businessId}:${cust._id}`;
     assert.equal((await api(`/public/${slug}/portal/magic`, { method: 'POST', body: { id: otherBizId, token: 'correct-token' } })).status, 401, 'an id prefixed with another business is refused outright');
+  });
+
+  it('CP-21 wrong link guesses do not use up the code attempts, and the reverse (Jira 36)', async () => {
+    const cust = await db.collection('customers').findOne({ business_id: salon.businessId, phone: PHONE });
+    const id = `${salon.businessId}:${cust._id}`;
+    await db.collection('customer_login_codes').replaceOne(
+      { _id: id },
+      { _id: id, business_id: salon.businessId, customer_id: cust._id, code_hash: await hashCode('555555'), link_token_hash: await hashCode('good-link'), attempts: 0, link_attempts: 0, created_at: new Date(0), expires_at: new Date(Date.now() + 600_000) },
+      { upsert: true }
+    );
+    for (let i = 0; i < 5; i++) await api(`/public/${slug}/portal/magic`, { method: 'POST', body: { id, token: 'bad' } });
+    assert.equal((await api(`/public/${slug}/portal/verify`, { method: 'POST', body: { phone: PHONE, code: '555555' } })).status, 200, 'the real code still works');
+  });
+
+  it('CP-22 "sign out everywhere" ends every earlier sign-in at once (Jira 36i)', async () => {
+    const cust = await db.collection('customers').findOne({ business_id: salon.businessId, phone: PHONE });
+    const first = signCustomerToken(salon.businessId, cust._id);
+    assert.equal((await api('/customer/me', { auth: first })).status, 200);
+    await new Promise((r) => setTimeout(r, 1100)); // tokens are stamped to the second
+    assert.equal((await api('/customer/sign-out-everywhere', { method: 'POST', auth: first })).status, 200);
+    assert.equal((await api('/customer/me', { auth: first })).status, 401, 'the old token is dead');
+    await new Promise((r) => setTimeout(r, 1100));
+    assert.equal((await api('/customer/me', { auth: signCustomerToken(salon.businessId, cust._id) })).status, 200, 'a fresh sign-in works');
   });
 });

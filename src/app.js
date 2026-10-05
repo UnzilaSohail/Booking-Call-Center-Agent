@@ -26,6 +26,7 @@ import { billingRouter } from './routes/billing.js';
 import { twilioWebhookRouter } from './webhooks/twilio.js';
 import { stripeWebhookRouter } from './webhooks/stripe.js';
 import { auditLogger } from './auditLog.js';
+import { clearDirectoryCache } from './services/directoryCache.js';
 
 export const app = express();
 
@@ -58,6 +59,12 @@ app.use(stripeWebhookRouter);
 app.use('/api', calendarOAuthRouter);
 
 app.use(express.json());
+
+// Anything changed through the dashboard or platform console may change who is listed: forget the cached directory.
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && !req.path.startsWith('/api/public')) res.on('finish', () => { if (res.statusCode < 400) clearDirectoryCache(); });
+  next();
+});
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/api', unifiedLoginRouter);

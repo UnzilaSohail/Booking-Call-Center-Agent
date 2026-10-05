@@ -147,6 +147,15 @@ Check the deployment any time with the smoke test (from any computer):
 npm run smoke -- https://bookingagent.sparkmind.online
 ```
 
+## 7d. Content-Security-Policy and other new switches (Jira 36)
+
+- The dashboard now sends a Content-Security-Policy (`dashboard/proxy.js`). If a page ever looks broken after a deploy, set `CSP_MODE=report` in the dashboard's environment and restart it (`pm2 reload ecosystem.config.cjs --update-env`): the browser then only logs problems in its console and blocks nothing. `CSP_MODE=off` removes it. Default is enforcing.
+- Pages are now built per request (needed for the one-time script code); nothing to do, but you will see `ƒ` next to every page in the `npm run build` output.
+- `npm run migrate` adds one new index (`rate_limits`). Run it as usual when deploying.
+- Optional: `DIRECTORY_CACHE_MS` (backend `.env`, default 30000) is how long the public directory is remembered; `0` turns it off.
+- Locked accounts: after 8 wrong passwords a login is locked for 15 minutes and the owner is emailed. The platform console, company page, shows **Locked** with an **Unlock login** button.
+- Passwords set from now on need at least 10 characters and must not be a common password.
+
 ## 8. Housekeeping
 
 - `pm2 logs booking-backend --lines 0` then watch briefly for unexpected errors after

@@ -219,6 +219,7 @@ export const customerApi = {
   reschedule: (t, id, startTime) => request(`/api/customer/appointments/${id}/reschedule`, { method: 'POST', body: { startTime }, tokenStore: asToken(t) }),
   cancel: (t, id) => request(`/api/customer/appointments/${id}/cancel`, { method: 'POST', tokenStore: asToken(t) }),
   exportData: (t) => request('/api/customer/export', { tokenStore: asToken(t) }),
+  signOutEverywhere: (t) => request('/api/customer/sign-out-everywhere', { method: 'POST', tokenStore: asToken(t) }),
   requestDeletion: (t) => request('/api/customer/delete-request', { method: 'POST', tokenStore: asToken(t) }),
 };
 
@@ -244,6 +245,7 @@ export const platformApi = {
   setCompanyStatus: (id, status) => request(`/api/platform/businesses/${id}/status`, { method: 'PATCH', body: { status }, tokenStore: platformTokenStore }),
   setCompanyListingHidden: (id, hidden) => request(`/api/platform/businesses/${id}/listing`, { method: 'PATCH', body: { hidden }, tokenStore: platformTokenStore }),
   deleteCompany: (id, confirmName) => request(`/api/platform/businesses/${id}`, { method: 'DELETE', body: { confirmName }, tokenStore: platformTokenStore }),
+  unlockAdmin: (adminId) => request(`/api/platform/admins/${adminId}/unlock`, { method: 'POST', tokenStore: platformTokenStore }),
   resetAdminPassword: (adminId, newPassword) => request(`/api/platform/admins/${adminId}/password`, { method: 'PATCH', body: { newPassword }, tokenStore: platformTokenStore }),
   registerCompany: (payload) => request('/api/platform/businesses', { method: 'POST', body: payload, tokenStore: platformTokenStore }),
   getStats: () => request('/api/platform/stats', { tokenStore: platformTokenStore }),

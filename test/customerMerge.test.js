@@ -26,7 +26,7 @@ describe('duplicates, merge and moderation', { skip }, () => {
   const customer = (t, phone) => db.collection('customers').findOne({ business_id: t.businessId, phone });
 
   before(async () => {
-    clearRateLimits();
+    await clearRateLimits();
     db = await getDb();
     salon = await createTenant({ name: '__merge_salon__', staff: ['Jessica'] });
     dentist = await createTenant({ name: '__merge_dentist__', staff: ['Dr Khan'] });

@@ -128,7 +128,7 @@ export default function RegisterCompanyForm({ onRegistered }) {
           </div>
           <div className="field" style={{ flex: 1 }}>
             <label>Admin password</label>
-            <input type="password" required minLength={8} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
+            <input type="password" required minLength={10} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
           </div>
         </div>
       </div>

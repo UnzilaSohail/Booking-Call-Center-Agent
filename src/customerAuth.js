@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import { getDb, withTenant } from './db.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const SESSION_DAYS = 7;
+const SESSION_DAYS = 1; // short on purpose: coming back means one new code, and a lost phone stops working by tomorrow
 
 export function signCustomerToken(businessId, customerId) {
   return jwt.sign({ role: 'customer', purpose: 'customer-session', businessId, customerId }, JWT_SECRET, { expiresIn: `${SESSION_DAYS}d` });
@@ -30,6 +30,8 @@ export async function requireCustomer(req, res, next) {
     if (business?.status !== 'active') return res.status(401).json({ error: 'please sign in' });
     const customer = await withTenant(payload.businessId, (c) => c('customers').findOne({ _id: payload.customerId }));
     if (!customer) return res.status(401).json({ error: 'please sign in' });
+    // "Sign out on all devices" stamps this time; any token issued before it is dead.
+    if (customer.sessions_valid_after && payload.iat < Math.floor(new Date(customer.sessions_valid_after).getTime() / 1000)) return res.status(401).json({ error: 'your session has ended, please sign in again' });
 
     req.businessId = payload.businessId;
     req.customer = customer;

@@ -52,6 +52,8 @@ export async function ensureIndexes(db) {
 
   // Customer sign-in codes (src/routes/customerPortal.js): one row per customer, expires itself.
   await db.collection('customer_login_codes').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
+  // Rate-limit counters (src/rateLimit.js): MongoDB deletes each row when its window has ended.
+  await db.collection('rate_limits').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
 
   await db.collection('admins').createIndex({ email: 1 }, { unique: true });
   await db.collection('admins').createIndex({ business_id: 1 });

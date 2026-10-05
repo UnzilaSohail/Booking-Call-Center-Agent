@@ -6,7 +6,7 @@ import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
 
 const base = (process.env.MONGODB_DB_NAME || 'booking_call_center').replace(/_test$/, '');
-const env = { ...process.env, MONGODB_DB_NAME: `${base}_test` };
+const env = { ...process.env, MONGODB_DB_NAME: `${base}_test`, DIRECTORY_CACHE_MS: '0' };
 
 if (env.MONGODB_URI) {
   console.log(`tests use database "${env.MONGODB_DB_NAME}" (your "${base}" data is not touched)`);

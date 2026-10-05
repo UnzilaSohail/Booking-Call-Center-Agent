@@ -3,6 +3,8 @@
 // role anymore, since companies are meant to be admin-registered, not self-service.
 // There's also no public way to create a platform admin — see scripts/createPlatformAdmin.js.
 import { loginBlocked, loginFailed, loginSucceeded } from './rateLimit.js';
+import { notifyLockout } from './lockoutNotice.js';
+import { checkPassword } from './passwordPolicy.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Router } from 'express';
@@ -22,11 +24,11 @@ platformAuthRouter.post('/auth/login', async (req, res, next) => {
     const { email, password } = req.body ?? {};
     if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) return res.status(400).json({ error: 'email and password are required' });
     const id = email.toLowerCase();
-    if (loginBlocked(req.ip, id)) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
+    if (await loginBlocked(req.ip, id)) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
 
     const result = await verifyPlatformAdmin(id, password);
-    if (!result) { loginFailed(req.ip, id); return res.status(401).json({ error: 'invalid credentials' }); }
-    loginSucceeded(id);
+    if (!result) { if (await loginFailed(req.ip, id)) notifyLockout(id); return res.status(401).json({ error: 'invalid credentials' }); }
+    await loginSucceeded(id);
 
     const token = jwt.sign({ role: 'platform', ...result }, JWT_SECRET, { expiresIn: '12h' });
     res.json({ token });
@@ -69,7 +71,8 @@ platformAuthRouter.patch('/auth/password', requirePlatformAuth, async (req, res,
   try {
     const { currentPassword, newPassword } = req.body ?? {};
     if (!currentPassword || !newPassword) return res.status(400).json({ error: 'currentPassword and newPassword are required' });
-    if (newPassword.length < 8) return res.status(400).json({ error: 'newPassword must be at least 8 characters' });
+    const weak = checkPassword(newPassword);
+    if (weak) return res.status(400).json({ error: weak });
 
     const db = await getDb();
     const admin = await db.collection('platform_admins').findOne({ _id: req.platformAdminId });

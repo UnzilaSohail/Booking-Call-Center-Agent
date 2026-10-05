@@ -27,7 +27,7 @@ function AcceptInviteInner() {
   async function submit(e) {
     e.preventDefault();
     setFormError(null);
-    if (password.length < 8) return setFormError('password must be at least 8 characters');
+    if (password.length < 10) return setFormError('Use at least 10 characters that are not easy to guess.');
     if (password !== confirmPassword) return setFormError('passwords do not match');
 
     setSaving(true);

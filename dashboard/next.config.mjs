@@ -11,13 +11,13 @@ const nextConfig = {
   turbopack: { root: __dirname },
   poweredByHeader: false,
   // Browser hardening. Referrer-Policy matters most: booking "manage" links carry a secret in the address, and this
-  // stops it being sent to other sites. Geolocation stays allowed for "Near me". No CSP yet (see docs/SECURITY_REVIEW.md).
+  // stops it being sent to other sites. Geolocation stays allowed for "Near me". The Content-Security-Policy is set per request in proxy.js.
   async headers() {
     return [{
       source: '/:path*',
       headers: [
         { key: 'X-Content-Type-Options', value: 'nosniff' },
-        { key: 'X-Frame-Options', value: 'DENY' },
+        { key: 'X-Frame-Options', value: 'SAMEORIGIN' }, // same address only (the demo phone frame); CSP frame-ancestors says the same
         { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         { key: 'Permissions-Policy', value: 'geolocation=(self), camera=(), microphone=(), payment=()' },
         { key: 'Strict-Transport-Security', value: 'max-age=31536000' },

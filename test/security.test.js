@@ -7,6 +7,9 @@ import { createTenant, dropTenants, skip, getDb, newId } from './support/tenantF
 import { app } from '../src/app.js';
 import { clearRateLimits, blocked, fail, forgive } from '../src/rateLimit.js';
 import { fakeVerify } from '../src/verification.js';
+import { checkPassword } from '../src/passwordPolicy.js';
+import { createCache } from '../src/services/directoryCache.js';
+import jwt from 'jsonwebtoken';
 
 describe('login and input protections', { skip }, () => {
   let db; let server; let base; let t; const email = `sec-${newId().slice(0, 8)}@example.test`;
@@ -59,11 +62,11 @@ describe('login and input protections', { skip }, () => {
     assert.equal(r.status, 400);
   });
 
-  it('failure counters count wrong answers only and can be forgiven (SEC-07)', () => {
-    for (let i = 0; i < 3; i++) fail('k', 1000);
-    assert.equal(blocked('k', 3), true);
-    forgive('k');
-    assert.equal(blocked('k', 3), false);
+  it('failure counters count wrong answers only and can be forgiven (SEC-07)', async () => {
+    for (let i = 0; i < 3; i++) await fail('k', 1000);
+    assert.equal(await blocked('k', 3), true);
+    await forgive('k');
+    assert.equal(await blocked('k', 3), false);
   });
 
   it('a lookup with nobody to check costs as much as a real check (SEC-08)', async () => {
@@ -76,5 +79,59 @@ describe('login and input protections', { skip }, () => {
     const r = await fetch(`${base}/health`);
     assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(r.headers.get('x-powered-by'), null);
+  });
+
+  it('counters live in the database, so a restart does not reset them (SEC-10)', async () => {
+    await fail('persisted', 60_000);
+    const row = await db.collection('rate_limits').findOne({ _id: { $regex: 'persisted$' } });
+    assert.equal(row.count, 1);
+    assert.ok(row.expires_at > new Date(), 'removed by the database when the window ends');
+  });
+
+  it('the platform team can see and lift a lock; the owner is not stuck for 15 minutes (SEC-11)', async () => {
+    const platform = jwt.sign({ role: 'platform', platformAdminId: 'p1' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const adminId = (await db.collection('admins').findOne({ email }))._id;
+    const detail = () => fetch(`${base}/api/platform/businesses/${t.businessId}`, { headers: { authorization: `Bearer ${platform}` } }).then((r) => r.json());
+    for (let i = 0; i < 8; i++) await login({ email, password: 'nope' });
+    assert.equal((await detail()).admins.find((a) => a.id === adminId).locked, true);
+    assert.equal((await login({ email, password: 'Right-Pass-1' })).status, 429);
+    const unlock = await fetch(`${base}/api/platform/admins/${adminId}/unlock`, { method: 'POST', headers: { authorization: `Bearer ${platform}` } });
+    assert.equal(unlock.status, 200);
+    assert.equal((await detail()).admins.find((a) => a.id === adminId).locked, false);
+    assert.equal((await login({ email, password: 'Right-Pass-1' })).status, 200);
+    const owner = jwt.sign({ role: 'business', adminId: 'a1', businessId: t.businessId }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    assert.equal((await fetch(`${base}/api/platform/admins/${adminId}/unlock`, { method: 'POST', headers: { authorization: `Bearer ${owner}` } })).status, 401, 'only the platform team can unlock');
+  });
+
+  it('weak and common passwords are refused in plain words (SEC-12)', () => {
+    assert.match(checkPassword('short1'), /too short/);
+    assert.match(checkPassword('password123'), /too short|too common/);
+    assert.match(checkPassword('Password12345'), /too common/);
+    assert.match(checkPassword('qwertyuiop1'), /too common/);
+    assert.match(checkPassword('aaaaaaaaaaaa'), /repeats/);
+    assert.match(checkPassword('maria.lopez-2024', 'maria.lopez@example.test'), /email name/);
+    assert.equal(checkPassword('purple-bicycle-orbit-7'), null);
+  });
+
+  it('signup and password changes refuse a weak password (SEC-13)', async () => {
+    const r = await fetch(`${base}/api/signup`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ businessName: 'Weak Pw Salon', ownerEmail: 'weak@example.test', ownerPhone: '+15550107701', ownerPassword: 'Welcome123', termsAccepted: true }) });
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /too common/);
+    assert.equal(await db.collection('businesses').countDocuments({ name: 'Weak Pw Salon' }), 0, 'nothing created');
+  });
+
+  it('the directory cache answers repeats from memory, expires, and can be cleared (SEC-14)', async () => {
+    let loads = 0;
+    const c = createCache(80);
+    const load = async () => ++loads;
+    assert.equal(await c.cached('a', load), 1);
+    assert.equal(await c.cached('a', load), 1, 'second ask is from memory');
+    c.clear();
+    assert.equal(await c.cached('a', load), 2, 'cleared after a change');
+    await new Promise((r) => setTimeout(r, 120));
+    assert.equal(await c.cached('a', load), 3, 'expired by itself');
+    const off = createCache(0);
+    assert.equal(await off.cached('a', load), 4);
+    assert.equal(await off.cached('a', load), 5, 'ttl 0 never caches');
   });
 });

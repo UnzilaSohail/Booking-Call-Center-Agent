@@ -50,7 +50,7 @@ customerPortalRouter.post('/public/:slug/portal/code', loadBusiness, async (req,
     if (!available) {
       return res.status(503).json({ error: `Sign-in codes by ${who.kind === 'sms' ? 'text message' : 'email'} are not available right now, please call ${b.name}` });
     }
-    if (tooMany(`portal-ip:${req.ip}`, 10, 15 * 60_000) || tooMany(`portal-id:${b._id}:${who.value.toLowerCase()}`, 5, 60 * 60_000)) {
+    if (await tooMany(`portal-ip:${req.ip}`, 10, 15 * 60_000) || await tooMany(`portal-id:${b._id}:${who.value.toLowerCase()}`, 5, 60 * 60_000)) {
       return res.status(429).json({ error: 'too many attempts, try again later' });
     }
 
@@ -99,7 +99,7 @@ customerPortalRouter.post('/public/:slug/portal/verify', loadBusiness, async (re
     const who = identify(req.body ?? {});
     const code = String(req.body?.code ?? '').trim();
     if (!who || !/^\d{6}$/.test(code)) return badCode(res);
-    if (tooMany(`portal-verify:${req.ip}`, 20, 15 * 60_000)) return res.status(429).json({ error: 'too many attempts, try again later' });
+    if (await tooMany(`portal-verify:${req.ip}`, 20, 15 * 60_000)) return res.status(429).json({ error: 'too many attempts, try again later' });
     const b = req.business;
 
     const customer = await findCustomer(b._id, who);
@@ -126,12 +126,12 @@ customerPortalRouter.post('/public/:slug/portal/magic', loadBusiness, async (req
     const id = String(req.body?.id ?? '');
     const token = String(req.body?.token ?? '');
     if (!id.startsWith(`${req.business._id}:`) || !token) return badCode(res);
-    if (tooMany(`portal-verify:${req.ip}`, 20, 15 * 60_000)) return res.status(429).json({ error: 'too many attempts, try again later' });
+    if (await tooMany(`portal-verify:${req.ip}`, 20, 15 * 60_000)) return res.status(429).json({ error: 'too many attempts, try again later' });
 
     const db = await getDb();
-    const row = await db.collection('customer_login_codes').findOneAndUpdate({ _id: id }, { $inc: { attempts: 1 } }, { returnDocument: 'after' });
+    const row = await db.collection('customer_login_codes').findOneAndUpdate({ _id: id }, { $inc: { link_attempts: 1 } }, { returnDocument: 'after' });
     if (!row) { await fakeVerify(token); return badCode(res); } // same time as a wrong token
-    if (row.attempts > MAX_ATTEMPTS || !(await verifyCode(token, row.link_token_hash, row.expires_at))) return badCode(res);
+    if (row.link_attempts > MAX_ATTEMPTS || !(await verifyCode(token, row.link_token_hash, row.expires_at))) return badCode(res);
 
     await db.collection('customer_login_codes').deleteOne({ _id: row._id });
     res.json({ token: signCustomerToken(row.business_id, row.customer_id) });
@@ -149,6 +149,16 @@ const profile = (c) => ({
   name: c.name ?? null, phone: c.phone, email: c.email ?? null,
   smsOptIn: c.consent?.smsOptIn !== false, emailOptIn: c.consent?.emailOptIn !== false,
   language: c.preferences?.language ?? null,
+});
+
+// Ends every sign-in this customer has, on every device (the token that made this call included).
+me.post('/sign-out-everywhere', async (req, res, next) => {
+  try {
+    await withTenant(req.businessId, (c) => c('customers').updateOne({ _id: req.customer._id }, { $set: { sessions_valid_after: new Date() } }));
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
 });
 
 me.get('/me', async (req, res, next) => {

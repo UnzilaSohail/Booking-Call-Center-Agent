@@ -21,6 +21,8 @@ await seedDemo();
 const { browser, page } = await startBrowser({ overlay: false });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message.slice(0, 140)));
+// A blocked script, style or connection (Content-Security-Policy) is a real bug for the person using the page.
+page.on('console', (m) => { if (/content security policy/i.test(m.text())) errors.push(`CSP: ${m.text().slice(0, 160)}`); });
 try {
   await login(page, DEMO.owner, DEMO_PASSWORD);
 

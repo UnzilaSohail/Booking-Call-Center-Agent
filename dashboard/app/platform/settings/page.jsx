@@ -37,7 +37,7 @@ function ChangePasswordCard() {
         </div>
         <div className="field" style={{ flex: 1 }}>
           <label>New password</label>
-          <input type="password" required minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          <input type="password" required minLength={10} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
         </div>
         <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving...' : 'Change'}</button>
       </form>

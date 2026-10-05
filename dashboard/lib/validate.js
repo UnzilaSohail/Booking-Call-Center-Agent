@@ -18,4 +18,4 @@ export const validateEmail = (v) => {
 
 export const validateRequiredEmail = (v) => (String(v ?? '').trim() ? validateEmail(v) : 'Please enter an email address.');
 
-export const validatePassword = (v) => (String(v ?? '').length >= 8 ? '' : 'Use at least 8 characters.');
+export const validatePassword = (v) => (String(v ?? '').length >= 10 ? '' : 'Use at least 10 characters.');

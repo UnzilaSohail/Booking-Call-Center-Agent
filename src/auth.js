@@ -1,4 +1,6 @@
 import { blocked, fail, forgive, loginBlocked, loginFailed, loginSucceeded } from './rateLimit.js';
+import { notifyLockout } from './lockoutNotice.js';
+import { checkPassword } from './passwordPolicy.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Router } from 'express';
@@ -31,11 +33,11 @@ authRouter.post('/login', async (req, res, next) => {
     const { email, password } = req.body ?? {};
     if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) return res.status(400).json({ error: 'email and password are required' });
     const id = email.toLowerCase();
-    if (loginBlocked(req.ip, id)) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
+    if (await loginBlocked(req.ip, id)) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
 
     const result = await verifyCompanyAdmin(id, password, req.ip);
-    if (!result) { loginFailed(req.ip, id); return res.status(401).json({ error: 'invalid credentials' }); }
-    loginSucceeded(id);
+    if (!result) { if (await loginFailed(req.ip, id)) notifyLockout(id); return res.status(401).json({ error: 'invalid credentials' }); }
+    await loginSucceeded(id);
 
     if (result.mfaEnabled) return res.json({ mfaRequired: true, mfaToken: signMfaToken(result.adminId, result.businessId) });
     res.json({ token: signSessionToken(result.adminId, result.businessId) });
@@ -62,11 +64,11 @@ authRouter.post('/mfa/verify-login', async (req, res, next) => {
 
     // 6-digit codes can be guessed, so wrong ones are counted per admin: 6 in 15 minutes locks the second step.
     const mfaKey = `mfa:${payload.adminId}`;
-    if (blocked(mfaKey, 6)) return res.status(429).json({ error: 'too many wrong codes, log in again in 15 minutes' });
+    if (await blocked(mfaKey, 6)) return res.status(429).json({ error: 'too many wrong codes, log in again in 15 minutes' });
     const db = await getDb();
     const admin = await db.collection('admins').findOne({ _id: payload.adminId });
-    if (!admin?.mfa_enabled || !verifyTotp(admin.mfa_secret, String(code))) { fail(mfaKey, 15 * 60_000); return res.status(401).json({ error: 'invalid code' }); }
-    forgive(mfaKey);
+    if (!admin?.mfa_enabled || !verifyTotp(admin.mfa_secret, String(code))) { await fail(mfaKey, 15 * 60_000); return res.status(401).json({ error: 'invalid code' }); }
+    await forgive(mfaKey);
 
     res.json({ token: signSessionToken(payload.adminId, payload.businessId) });
   } catch (err) {
@@ -167,7 +169,8 @@ authRouter.patch('/password', requireAuth, async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body ?? {};
     if (!currentPassword || !newPassword) return res.status(400).json({ error: 'currentPassword and newPassword are required' });
-    if (newPassword.length < 8) return res.status(400).json({ error: 'newPassword must be at least 8 characters' });
+    const weak = checkPassword(newPassword);
+    if (weak) return res.status(400).json({ error: weak });
 
     const db = await getDb();
     const admin = await db.collection('admins').findOne({ _id: req.adminId });

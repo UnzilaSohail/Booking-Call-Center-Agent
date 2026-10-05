@@ -3,13 +3,16 @@ import './theme.css';
 import { ToastProvider } from '../lib/Toast';
 import { ConfirmProvider } from '../lib/confirm';
 import A11yLabels from '../components/A11yLabels';
+import { headers } from 'next/headers';
 
 export const metadata = {
   title: 'Booking Admin',
   description: 'Admin dashboard for the AI call center booking agent',
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  // The one-time code proxy.js made for this page view; the inline theme script must carry it (Content-Security-Policy).
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -21,7 +24,7 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
         {/* Sets light or dark before the first paint (the person's saved choice, else their system setting), so there is no flash. */}
-        <script dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('theme');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}catch(e){}" }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('theme');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}catch(e){}" }} />
       </head>
       {/* suppressHydrationWarning: browser extensions (Grammarly, etc.) inject their own
           attributes onto <body> before React hydrates — a real mismatch, but a harmless

@@ -199,7 +199,7 @@ function Details({ me, token, onSaved }) {
   );
 }
 
-function Account({ slug, token, me, onSignOut, reload }) {
+function Account({ slug, token, me, onSignOut, onSignOutEverywhere, reload }) {
   const confirm = useConfirm();
   const [list, setList] = useState(null);
   const [note, setNote] = useState(null);
@@ -222,7 +222,10 @@ function Account({ slug, token, me, onSignOut, reload }) {
     <>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>Hi{me.name ? `, ${me.name.split(' ')[0]}` : ''}</h2>
-        <button type="button" className="ghost" onClick={onSignOut}>Sign out</button>
+        <span className="row" style={{ flexWrap: 'nowrap' }}>
+          <button type="button" className="ghost" onClick={onSignOut}>Sign out</button>
+          <button type="button" className="ghost" onClick={onSignOutEverywhere} title="Ends your sign-in on every phone and computer">Sign out everywhere</button>
+        </span>
       </div>
 
       <h3 style={{ fontSize: 15 }}>Upcoming</h3>
@@ -259,8 +262,16 @@ export default function MyPage() {
   const [missing, setMissing] = useState(false);
   const [token, setToken] = useState(undefined); // undefined = not read yet
   const [me, setMe] = useState(null);
-  const magicId = searchParams.get('magicId');
-  const magicToken = searchParams.get('magicToken');
+  // The one-click link's secret is moved into memory and removed from the address bar at once, so it cannot end up
+  // in history, a screenshot or a shared screen.
+  const [magic, setMagic] = useState(null);
+  const urlId = searchParams.get('magicId');
+  const urlToken = searchParams.get('magicToken');
+  useEffect(() => {
+    if (urlId && urlToken) { setMagic({ id: urlId, token: urlToken }); router.replace(`/my/${slug}`); }
+  }, [urlId, urlToken, slug]); // eslint-disable-line react-hooks/exhaustive-deps
+  const magicId = magic?.id;
+  const magicToken = magic?.token;
 
   useEffect(() => { publicApi.business(slug).then(setBiz).catch(() => setMissing(true)); }, [slug]);
   useEffect(() => { setToken(readToken(slug)); }, [slug]);
@@ -271,11 +282,11 @@ export default function MyPage() {
   function handleToken(t) {
     writeToken(slug, t);
     setToken(t);
-    // Strip the magic-link params so a refresh doesn't try to reuse an already-spent token.
-    if (magicId) router.replace(`/my/${slug}`);
+    setMagic(null); // the link is single-use and now spent
   }
 
   const signOut = () => { writeToken(slug, null); setToken(null); setMe(null); };
+  const signOutEverywhere = async () => { try { await customerApi.signOutEverywhere(token); } catch { /* the token may already be dead */ } signOut(); };
 
   return (
     <div className="public-shell">
@@ -294,9 +305,9 @@ export default function MyPage() {
         )}
         {biz && token === undefined && <Loading />}
         {biz && token === null && magicId && magicToken && <MagicLinkConfirm slug={slug} biz={biz} magicId={magicId} magicToken={magicToken} onToken={handleToken} />}
-        {biz && token === null && !(magicId && magicToken) && <SignIn slug={slug} biz={biz} onToken={handleToken} />}
+        {biz && token === null && !(magicId && magicToken) && !(urlId && urlToken) && <SignIn slug={slug} biz={biz} onToken={handleToken} />}
         {biz && token && !me && <Loading />}
-        {biz && token && me && <Account slug={slug} token={token} me={me} onSignOut={signOut} reload={() => loadMe(token)} />}
+        {biz && token && me && <Account slug={slug} token={token} me={me} onSignOut={signOut} onSignOutEverywhere={signOutEverywhere} reload={() => loadMe(token)} />}
       </div>
     </main>
     </div>

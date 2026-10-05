@@ -8,6 +8,8 @@ import { initialBillingFields, getPlan } from '../billing/plans.js';
 import { uniqueSlug } from '../services/slug.js';
 import { computeUsage, computeInvoiceAmounts } from '../services/billingService.js';
 import { addDemoData, removeDemoData, demoStatus } from '../services/demoData.js';
+import { isLocked, unlockLogin } from '../rateLimit.js';
+import { checkPassword } from '../passwordPolicy.js';
 
 export const platformRouter = Router();
 
@@ -72,7 +74,7 @@ platformRouter.get('/businesses/:id', async (req, res, next) => {
       listing: { listed: business.listing?.listed === true, hiddenByPlatform: business.listing?.hidden_by_platform === true },
       calendarConnected: business.google_refresh_token != null,
       createdAt: business.created_at,
-      admins: admins.map((a) => ({ id: a._id, name: a.name, email: a.email, createdAt: a.created_at })),
+      admins: await Promise.all(admins.map(async (a) => ({ id: a._id, name: a.name, email: a.email, createdAt: a.created_at, locked: await isLocked(a.email) }))),
       serviceCount, staffCount, upcomingBookings,
     });
   } catch (err) {
@@ -181,12 +183,25 @@ platformRouter.delete('/businesses/:id', async (req, res, next) => {
   }
 });
 
+// Lifts a temporary login lock (8 wrong passwords) right away instead of waiting 15 minutes.
+platformRouter.post('/admins/:adminId/unlock', async (req, res, next) => {
+  try {
+    const admin = await (await getDb()).collection('admins').findOne({ _id: req.params.adminId }, { projection: { email: 1 } });
+    if (!admin) return res.status(404).json({ error: 'admin not found' });
+    await unlockLogin(admin.email);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Reset a company admin's password without needing their old one — the actual point of
 // this being a platform-admin action rather than the self-service change in src/auth.js.
 platformRouter.patch('/admins/:adminId/password', async (req, res, next) => {
   try {
     const { newPassword } = req.body ?? {};
-    if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'newPassword must be at least 8 characters' });
+    const weak = checkPassword(newPassword);
+    if (weak) return res.status(400).json({ error: weak });
 
     const db = await getDb();
     const password_hash = await bcrypt.hash(newPassword, 10);
@@ -522,6 +537,8 @@ platformRouter.post('/businesses', async (req, res, next) => {
   if (!businessName || !adminEmail || !adminPassword) {
     return res.status(400).json({ error: 'businessName, adminEmail and adminPassword are required' });
   }
+  const weakPassword = checkPassword(adminPassword, adminEmail);
+  if (weakPassword) return res.status(400).json({ error: weakPassword });
 
   const { docs: serviceDocs, error: serviceError } = validateServices(services);
   if (serviceError) return res.status(400).json({ error: serviceError });

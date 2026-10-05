@@ -1,5 +1,6 @@
 // Public — a newly-invited team member has no bearer token yet, so this mirrors
 // src/routes/myBooking.js's public-token-router shape (mounted before requireAuth).
+import { checkPassword } from '../passwordPolicy.js';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -33,7 +34,8 @@ acceptInviteRouter.get('/accept-invite/:token', async (req, res, next) => {
 acceptInviteRouter.post('/accept-invite/:token', async (req, res, next) => {
   try {
     const { password } = req.body ?? {};
-    if (!password || password.length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
+    const weak = checkPassword(password);
+    if (weak) return res.status(400).json({ error: weak });
 
     const { error, admin } = await loadInvite(req.params.token);
     if (error) return res.status(404).json({ error });

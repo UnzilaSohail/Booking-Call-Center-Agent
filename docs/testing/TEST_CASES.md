@@ -145,6 +145,9 @@ Real HTTP. The provider env vars are switched on so the code path runs (the send
 | CP-15 | Export and delete request | Only own data; one pending request in the owner's Exceptions queue | Pass |
 | CP-16 | Code requests per number and per IP | 429 after the limit | Pass |
 | CP-17 | Booking reference code | 6 unambiguous characters; Bookings search finds it | Pass |
+| CP-18 to CP-20 | Magic link in the sign-in email | Stored with the code; works once; wrong token or another business's id refused | Pass |
+| CP-21 | Wrong magic-link guesses | Do not use up the 5 code attempts | Pass |
+| CP-22 | "Sign out everywhere" | Every earlier sign-in refused at once; a new one works | Pass |
 
 ## DU, PH — Duplicates, merge, directory moderation (`test/customerMerge.test.js`)
 | ID | Scenario | Expected | Status |
@@ -230,6 +233,11 @@ Also: the colour-contrast test (`test/contrast.test.js`) now checks the light an
 | SEC-07 | Failure counters | Count wrong answers only; forgiven on success | Pass |
 | SEC-08 | No such person | Costs as much as a real check | Pass |
 | SEC-09 | API headers | nosniff, no X-Powered-By | Pass |
+| SEC-10 | A counter after a "restart" | Stored in the database with an expiry | Pass |
+| SEC-11 | Locked account | Platform team sees "locked", can unlock; owners cannot | Pass |
+| SEC-12 | Weak passwords | Refused with plain reasons (short, common, repeated, contains email name) | Pass |
+| SEC-13 | Signup with a weak password | 400, nothing created | Pass |
+| SEC-14 | Directory cache | Answers repeats from memory, expires, can be cleared, off at 0 | Pass |
 
 ## EM — Email and invites (`test/emailInvite.test.js`)
 Run against the real Express app over HTTP with no email/SMS provider configured (skips itself if a provider is configured).

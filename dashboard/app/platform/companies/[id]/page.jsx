@@ -14,6 +14,17 @@ function ResetPasswordRow({ admin }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  const [locked, setLocked] = useState(admin.locked);
+  async function unlock() {
+    try {
+      await platformApi.unlockAdmin(admin.id);
+      setLocked(false);
+      toast.success(`${admin.email} can log in again`);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   async function submit(e) {
     e.preventDefault();
     setSaving(true);
@@ -33,17 +44,20 @@ function ResetPasswordRow({ admin }) {
   return (
     <tr>
       <td>{admin.name || '—'}</td>
-      <td>{admin.email}</td>
+      <td>{admin.email} {locked && <span className="badge danger" title="Too many wrong passwords. It unlocks by itself after 15 minutes.">Locked</span>}</td>
       <td>{new Date(admin.createdAt).toLocaleDateString()}</td>
       <td>
         {open ? (
           <form onSubmit={submit} className="row" style={{ alignItems: 'center', flexWrap: 'nowrap' }}>
-            <input type="password" required minLength={8} autoFocus placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} style={{ width: 160 }} />
+            <input type="password" required minLength={10} autoFocus placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} style={{ width: 160 }} />
             <button type="submit" className="primary" disabled={saving}>{saving ? '...' : 'Set'}</button>
             <button type="button" className="ghost" onClick={() => setOpen(false)}>Cancel</button>
           </form>
         ) : (
-          <button className="ghost" onClick={() => setOpen(true)}><KeyRound size={14} /> Reset password</button>
+          <span className="row" style={{ flexWrap: 'nowrap' }}>
+            {locked && <button className="primary" onClick={unlock}>Unlock login</button>}
+            <button className="ghost" onClick={() => setOpen(true)}><KeyRound size={14} /> Reset password</button>
+          </span>
         )}
         {error && <p className="error-text" style={{ marginTop: 4 }}>{error}</p>}
       </td>

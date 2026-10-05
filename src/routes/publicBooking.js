@@ -5,7 +5,8 @@
 import { Router } from 'express';
 import { DateTime } from 'luxon';
 import { getDb, withTenant, newId } from '../db.js';
-import { tooMany } from '../rateLimit.js';
+import { tooMany, tooManyLocal } from '../rateLimit.js';
+import { cached } from '../services/directoryCache.js';
 import { signManageToken } from '../customerLink.js';
 import { isListingEligible } from '../services/listingService.js';
 import { distanceKm } from '../services/geocoding.js';
@@ -23,7 +24,7 @@ const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // Scoped to /public — this router is mounted at the shared /api prefix, so an unscoped
 // use() would throttle every dashboard request too.
 publicBookingRouter.use('/public', (req, res, next) => {
-  if (tooMany(`read:${req.ip}`, 120, 60_000)) return res.status(429).json({ error: 'too many requests, slow down' });
+  if (tooManyLocal(`read:${req.ip}`, 120, 60_000)) return res.status(429).json({ error: 'too many requests, slow down' });
   next();
 });
 
@@ -33,7 +34,9 @@ publicBookingRouter.use('/public', (req, res, next) => {
 // services for those ids) and the eligibility check in JS. ponytail: scans up to 500
 // candidates per request, fine at this scale; move to a denormalised search field / Atlas
 // Search when the directory outgrows that.
-async function liveBusinesses(filter = {}) {
+const liveBusinesses = (filter = {}) => cached(JSON.stringify(filter), () => loadLiveBusinesses(filter));
+
+async function loadLiveBusinesses(filter) {
   const db = await getDb();
   const businesses = await db.collection('businesses').find({
     status: 'active', onboarding_completed_at: { $ne: null },
@@ -106,7 +109,7 @@ publicBookingRouter.post('/public/leads', async (req, res, next) => {
     const body = req.body ?? {};
     // Honeypot, same pattern/field name as the booking form above.
     if (body.website) return res.status(201).json({ ok: true });
-    if (tooMany(`lead:${req.ip}`, 5, 10 * 60_000)) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (await tooMany(`lead:${req.ip}`, 5, 10 * 60_000)) return res.status(429).json({ error: 'too many requests, try again later' });
 
     const name = String(body.name ?? '').trim();
     const contact = String(body.contact ?? '').trim();
@@ -260,7 +263,7 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
     // success so the bot doesn't learn it was caught.
     if (body.website) return res.status(201).json({ booking: { id: 'ok' } });
 
-    if (tooMany(`book:${req.ip}`, 10, 10 * 60_000)) return res.status(429).json({ error: 'too many booking attempts, try again later' });
+    if (await tooMany(`book:${req.ip}`, 10, 10 * 60_000)) return res.status(429).json({ error: 'too many booking attempts, try again later' });
 
     const name = String(body.name ?? '').trim();
     const phone = normalizePhone(String(body.phone ?? ''));
@@ -273,9 +276,9 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
     }
     if (new Date(body.startTime).getTime() <= Date.now()) return res.status(409).json({ error: 'that time has already passed, please pick another' });
     // A stranger's number must not be texted over and over: 8 web bookings per phone per day across ALL businesses.
-    if (tooMany(`phone-all:${phone}`, 8, 24 * 60 * 60_000)) return res.status(429).json({ error: 'too many bookings for this phone number today, please call instead' });
-    if (tooMany(`phone:${b._id}:${phone}`, 5, 60 * 60_000)) return res.status(429).json({ error: 'too many bookings for this phone number, try again later' });
-    if (tooMany(`cap:${b._id}`, DAILY_CAP, 24 * 60 * 60_000)) return res.status(429).json({ error: 'online booking is full for today, please call instead' });
+    if (await tooMany(`phone-all:${phone}`, 8, 24 * 60 * 60_000)) return res.status(429).json({ error: 'too many bookings for this phone number today, please call instead' });
+    if (await tooMany(`phone:${b._id}:${phone}`, 5, 60 * 60_000)) return res.status(429).json({ error: 'too many bookings for this phone number, try again later' });
+    if (await tooMany(`cap:${b._id}`, DAILY_CAP, 24 * 60 * 60_000)) return res.status(429).json({ error: 'online booking is full for today, please call instead' });
 
     const locationId = body.locationId ? String(body.locationId) : undefined;
     const candidates = await candidatesFor(b._id, body.serviceId, body.staffId, locationId);
