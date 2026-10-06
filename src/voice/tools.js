@@ -8,6 +8,7 @@ import {
 import { withTenant, newId } from '../db.js';
 import { sendSms } from '../notifications/sms.js';
 import { createHash } from 'node:crypto';
+import { DateTime } from 'luxon';
 
 export const toolDeclarations = [
   {
@@ -35,6 +36,7 @@ export const toolDeclarations = [
         startTime: { type: 'STRING', description: 'Exact start time as an ISO 8601 datetime in UTC, taken from a slot previously returned by check_availability.' },
         customerName: { type: 'STRING' },
         phone: { type: 'STRING', description: "Caller's callback phone number, digits only with country code if given." },
+        customerEmail: { type: 'STRING', description: "Caller's email address for the confirmation email. Ask for it and spell it back to confirm." },
       },
       required: ['serviceName', 'startTime', 'customerName', 'phone'],
     },
@@ -120,6 +122,10 @@ export const toolDeclarations = [
   },
 ];
 
+// Slots come back as UTC ISO; the model reads them aloud, so give it the business-local
+// wording too instead of trusting it to convert time zones mid-call.
+const localTimes = (slots, zone) => slots.map((s) => DateTime.fromISO(s).setZone(zone).toFormat('h:mm a'));
+
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -197,14 +203,14 @@ export function createToolHandlers(business, callSid, { isTest = false } = {}) {
       const staffId = await resolveStaffId(business.id, staffName);
       try {
         const { slots, durationMinutes } = await getAvailability(business.id, { serviceId, date, staffId });
-        return { slots, durationMinutes, timezone: business.timezone };
+        return { slots, localTimes: localTimes(slots, business.timezone), durationMinutes, timezone: business.timezone };
       } catch (err) {
         if (err instanceof BookingError) return { error: err.message };
         throw err;
       }
     },
 
-    async create_booking({ serviceName, staffName, locationName, startTime, customerName, phone }) {
+    async create_booking({ serviceName, staffName, locationName, startTime, customerName, phone, customerEmail }) {
       const serviceId = await resolveServiceId(business.id, serviceName);
       if (!serviceId) return { error: `no service found matching "${serviceName}"` };
       // KG-04/28a: a name that doesn't match any staff must be an error, not a silent
@@ -218,12 +224,19 @@ export function createToolHandlers(business, callSid, { isTest = false } = {}) {
       // KG-02/28b: re-check the requested time against the same slots check_availability
       // would offer right now — a stale slot (hours changed, day now full) is refused
       // here instead of silently booking outside business hours.
+      // When the requested time is taken, hand back that day's still-free slots so the model can
+      // say "that one's booked, but these are free" without another round trip.
+      const alternatives = async () => {
+        const date = DateTime.fromISO(startTime, { zone: 'utc' }).setZone(business.timezone).toISODate();
+        const { slots } = await getAvailability(business.id, { serviceId, date, staffId });
+        return { date, freeSlots: slots, freeLocalTimes: localTimes(slots, business.timezone), timezone: business.timezone };
+      };
       if (!(await isSlotOffered(business.id, { serviceId, staffId, startTime }))) {
-        return { error: 'that time is not available — call check_availability again for current slots' };
+        return { error: 'that time is not available', ...(await alternatives().catch(() => ({}))) };
       }
       try {
         const { booking } = await createBooking(business.id, {
-          customerName, phone, serviceId, staffId, locationId, startTime,
+          customerName, phone, customerEmail, serviceId, staffId, locationId, startTime,
           idempotencyKey: idempotencyKeyFor(callSid, { serviceId, staffId, startTime, phone }),
           createdVia: isTest ? 'test' : 'call',
         });
@@ -239,7 +252,7 @@ export function createToolHandlers(business, callSid, { isTest = false } = {}) {
             requested_start_time: startTime ? new Date(startTime) : null, error_message: err.message,
             created_at: new Date(), status: 'open', assigned_to: null, resolved_at: null, resolved_by: null, resolution_notes: null,
           })).catch(() => {});
-          return { error: err.message };
+          return { error: err.message, ...(err.status === 409 ? await alternatives().catch(() => ({})) : {}) };
         }
         throw err;
       }

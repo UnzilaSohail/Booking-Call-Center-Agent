@@ -47,6 +47,8 @@ function timeOnDay(day, timeStr) {
   return day.set({ hour: h, minute: m });
 }
 
+const SLOT_STEP_MINUTES = 30;
+
 export async function getAvailability(businessId, { serviceId, date, staffId, excludeBookingId, excludeExistingBookings = false }) {
   const business = await getBusiness(businessId);
   const zone = business.timezone;
@@ -146,7 +148,9 @@ export async function getAvailability(businessId, { serviceId, date, staffId, ex
   ];
 
   const slots = [];
-  for (let start = open; start.plus({ minutes: slotMinutes }) <= close; start = start.plus({ minutes: slotMinutes })) {
+  // Offered start times sit on a fixed half-hour grid; a longer service still blocks its full
+  // duration+buffer window via the overlap check, so a 60-min job at 9:00 hides 9:30 too.
+  for (let start = open; start.plus({ minutes: slotMinutes }) <= close; start = start.plus({ minutes: SLOT_STEP_MINUTES })) {
     const end = start.plus({ minutes: slotMinutes });
     const overlaps = busyRanges.some((b) => start.toUTC() < b.end && end.toUTC() > b.start);
     if (!overlaps) slots.push(start.toUTC().toISO());

@@ -112,7 +112,9 @@ export function formatSystemInstruction(business, services, staff) {
     ? `Open the call by saying, in your own natural voice, essentially: "${k.greeting}"${open === false ? ' — then let them know you\'re currently closed.' : '.'}`
     : `Open the call with a brief, warm greeting naming the business (e.g. "Thanks for calling ${business.name}, how can I help?")${open === false ? ', and let them know you\'re currently closed.' : '.'}`;
 
-  return `You are the phone receptionist for "${business.name}". Speak naturally and concisely, like a helpful receptionist — this is a live phone call, not a chat.
+  return `HARD RULE, overrides everything else: you speak and understand ONLY English. Never say a single word in any other language (Urdu, Hindi, Arabic, Spanish, anything), not even a greeting or translation, no matter what the caller says or asks. If the caller speaks another language, reply in English only: "I'm sorry, I can only help in English," then offer transfer_to_human.
+
+You are the phone receptionist for "${business.name}". Speak naturally and concisely, like a helpful receptionist — this is a live phone call, not a chat.
 ${pronunciationText ? `\nPronunciation: ${pronunciationText}` : ''}
 
 ${openingLine}
@@ -129,7 +131,10 @@ ${k.restricted_topics ? `\nDo NOT discuss or advise on: ${k.restricted_topics}. 
 ${k.emergency_rules ? `\nEmergency rules for this business: ${k.emergency_rules}\nIf the caller's situation matches this, say what these rules say to say, then call flag_emergency with a brief reason (in addition to transfer_to_human if the rules call for that).` : ''}
 
 Rules:
+- Speak ONLY English, always, even if the caller speaks Urdu, Hindi or another language. If they don't speak English, politely say in English that you can only help in English, and offer transfer_to_human.
 - Always call check_availability before offering a time slot. Never invent times.
+- When the caller wants to book, first call check_availability for their date and tell them the free times (half-hour slots, using the localTimes values — read a handful, not the whole list). If they name a specific time, book exactly that time.
+- Before create_booking, ask for the caller's email so a confirmation goes to them, and spell it back. If create_booking says the time is booked, tell them that slot is taken and read out the freeLocalTimes for that day so they can pick another.
 - Before calling create_booking or reschedule_booking, read the exact date and time back to the caller in plain speech ("Tuesday the 14th at 11:30 AM") and get an explicit yes. This is mandatory — misheard dates are the most common error.
 - For reschedule/cancel requests, call find_upcoming_bookings with the caller's phone number first to get the booking id.
 - If the caller asks a question covered by the common-questions list above, answer from it.
@@ -159,7 +164,9 @@ export async function startGeminiSession({ business, callSid, isTest = false, on
       // Per-business AI voice, set via onboarding (src/routes/onboarding.js POST
       // /onboarding/voice); falls back to the same default a business gets before ever
       // touching that step.
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: business.voice_name || DEFAULT_VOICE } } },
+      // languageCode pins the spoken output to English at the API level (hard rule: no other
+      // language), on top of the prompt rule at the top of buildSystemInstruction.
+      speechConfig: { languageCode: 'en-US', voiceConfig: { prebuiltVoiceConfig: { voiceName: business.voice_name || DEFAULT_VOICE } } },
       // Native audio in/out on one session absorbs turn-taking/interruption (barge-in)
       // handling — no custom VAD needed (plan.md §3, §6 "Dead air / silence handling").
     },
