@@ -13,6 +13,7 @@ import { distanceKm } from '../services/geocoding.js';
 import { BookingError, getAvailability, isSlotOffered, createBooking } from '../services/bookingService.js';
 import { normalizePhone, recordWebConsent } from '../services/customerService.js';
 import { joinWaitlist } from '../services/waitlistService.js';
+import { requireHuman } from '../turnstile.js';
 
 export const publicBookingRouter = Router();
 
@@ -111,6 +112,7 @@ publicBookingRouter.post('/public/leads', async (req, res, next) => {
     // Honeypot, same pattern/field name as the booking form above.
     if (body.website) return res.status(201).json({ ok: true });
     if (await tooMany(`lead:${req.ip}`, 5, 10 * 60_000)) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (!(await requireHuman(req, res))) return;
 
     const name = String(body.name ?? '').trim();
     const contact = String(body.contact ?? '').trim();
@@ -260,6 +262,7 @@ publicBookingRouter.post('/public/:slug/waitlist', loadBusiness, async (req, res
     const b = req.business;
     if (body.website) return res.status(201).json({ ok: true }); // honeypot, same as booking
     if (await tooMany(`waitlist:${req.ip}`, 6, 60 * 60_000)) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (!(await requireHuman(req, res))) return;
     const name = String(body.name ?? '').trim();
     const phone = normalizePhone(String(body.phone ?? ''));
     const date = String(body.date ?? '');
@@ -295,6 +298,7 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
     if (body.website) return res.status(201).json({ booking: { id: 'ok' } });
 
     if (await tooMany(`book:${req.ip}`, 10, 10 * 60_000)) return res.status(429).json({ error: 'too many booking attempts, try again later' });
+    if (!(await requireHuman(req, res))) return;
 
     const name = String(body.name ?? '').trim();
     const phone = normalizePhone(String(body.phone ?? ''));

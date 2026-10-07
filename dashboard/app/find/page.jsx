@@ -6,6 +6,7 @@ import { publicApi } from '../../lib/api';
 import { gradientFor, initials } from '../../lib/brand';
 import Loading from '../../components/Skeleton';
 import PublicNav from '../../components/PublicNav';
+import Turnstile, { turnstileOn } from '../../components/Turnstile';
 
 // Public directory (docs/customer/DISCOVERY_AND_LISTING.md): a customer who doesn't have a business link
 // searches here. Each card shows the street address and city so two "ABC Salon"s can't be mixed up; only
@@ -170,15 +171,19 @@ function LeadForm({ defaultCity }) {
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState(null);
+  const [human, setHuman] = useState('');
+  const [fresh, setFresh] = useState(0);
 
   async function submit(e) {
     e.preventDefault();
+    if (turnstileOn && !human) return setError('Please tick the "I am human" box first.');
     setSaving(true); setError(null);
     try {
-      await publicApi.submitLead(form);
+      await publicApi.submitLead({ ...form, turnstileToken: human });
       setDone(true);
     } catch (err) {
       setError(err.message);
+      setFresh((n) => n + 1); // a token works once
     } finally {
       setSaving(false);
     }
@@ -193,6 +198,7 @@ function LeadForm({ defaultCity }) {
       <div className="field"><label htmlFor="lead-contact">Phone or email</label><input id="lead-contact" required maxLength={150} value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} /></div>
       <div className="field"><label htmlFor="lead-need">What are you looking for?</label><textarea id="lead-need" required maxLength={1000} rows={3} value={form.need} onChange={(e) => setForm({ ...form, need: e.target.value })} /></div>
       <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
+      <Turnstile onToken={setHuman} resetKey={fresh} />
       {error && <p className="error-text">{error}</p>}
       <button type="submit" className="primary" disabled={saving}>{saving ? 'Sending...' : 'Send'}</button>
     </form>

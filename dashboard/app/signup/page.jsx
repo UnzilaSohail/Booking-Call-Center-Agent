@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import AuthShell from '../../components/AuthShell';
+import Turnstile, { turnstileOn } from '../../components/Turnstile';
 import { useRouter } from 'next/navigation';
 import { api, storeTokenForRole } from '../../lib/api';
 import { useTimezones } from '../../lib/timezones';
@@ -18,6 +19,8 @@ export default function SignupPage() {
   const [step, setStep] = useState(0);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [human, setHuman] = useState('');
+  const [fresh, setFresh] = useState(0);
 
   const [businessName, setBusinessName] = useState('');
   const [industry, setIndustry] = useState(INDUSTRIES[0]);
@@ -55,18 +58,20 @@ export default function SignupPage() {
       setError('you must accept the terms and privacy policy');
       return;
     }
+    if (turnstileOn && !human) { setError('Please tick the "I am human" box first.'); return; }
     setError(null);
     setSubmitting(true);
     try {
       const { token } = await api.signup({
         businessName, industry, timezone,
         locationName: locationName || undefined, address: address || undefined, contactPhone: contactPhone || undefined,
-        ownerName: ownerName || undefined, ownerEmail, ownerPhone, ownerPassword, termsAccepted,
+        ownerName: ownerName || undefined, ownerEmail, ownerPhone, ownerPassword, termsAccepted, turnstileToken: human,
       });
       storeTokenForRole('business', token);
       router.push('/onboarding');
     } catch (err) {
       setError(err.message);
+      setFresh((n) => n + 1);
     } finally {
       setSubmitting(false);
     }
@@ -162,6 +167,7 @@ export default function SignupPage() {
             </>
           )}
 
+          {step === 3 && <Turnstile onToken={setHuman} resetKey={fresh} />}
           {error && <p className="error-text">{error}</p>}
 
           <div className="row" style={{ marginTop: 8 }}>

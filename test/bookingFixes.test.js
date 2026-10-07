@@ -128,17 +128,17 @@ describe('booking and reminder fixes', { skip }, () => {
     for (let i = 0; i < 4; i++) ids.push(await dueBooking(24 * 60 - 3 - i, `+1555071000${i}`));
     const sent = [];
     const send = async (business, booking) => { sent.push(booking._id); await new Promise((r) => setTimeout(r, 30)); };
-    await Promise.all([runReminderSweepOnce({ send }), runReminderSweepOnce({ send }), runReminderSweepOnce({ send })]);
+    await Promise.all([runReminderSweepOnce({ send, businessIds: [t.businessId] }), runReminderSweepOnce({ send, businessIds: [t.businessId] }), runReminderSweepOnce({ send, businessIds: [t.businessId] })]);
     for (const id of ids) assert.equal(sent.filter((s) => s === id).length, 1, `booking ${id} reminded once`);
     for (const id of ids) assert.ok((await db.collection('bookings').findOne({ _id: id })).reminder_24h_sent_at, 'marked as sent');
   });
 
   it('BF-07 a failed send gives the claim back so the next sweep retries', async () => {
     const id = await dueBooking(24 * 60 - 4, '+15550710010');
-    await runReminderSweepOnce({ send: async (b, booking) => { if (booking._id === id) throw new Error('provider down'); } });
+    await runReminderSweepOnce({ businessIds: [t.businessId], send: async (b, booking) => { if (booking._id === id) throw new Error('provider down'); } });
     assert.equal((await db.collection('bookings').findOne({ _id: id })).reminder_24h_sent_at, null, 'claim released');
     const sent = [];
-    await runReminderSweepOnce({ send: async (b, booking) => { sent.push(booking._id); } });
+    await runReminderSweepOnce({ businessIds: [t.businessId], send: async (b, booking) => { sent.push(booking._id); } });
     assert.ok(sent.includes(id));
   });
 });

@@ -8,6 +8,7 @@ import Loading from '../../../components/Skeleton';
 import TextField from '../../../components/TextField';
 import PublicNav from '../../../components/PublicNav';
 import Confetti from '../../../components/Confetti';
+import Turnstile, { turnstileOn } from '../../../components/Turnstile';
 import { gradientFor, initials } from '../../../lib/brand';
 import { validateName, validatePhone, validateEmail } from '../../../lib/validate';
 
@@ -61,6 +62,8 @@ function WaitlistForm({ slug, service, staffChoice, location, date }) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState(null);
   const [submitted, setSubmitted] = useState(false);
+  const [human, setHuman] = useState('');
+  const [fresh, setFresh] = useState(0);
   useEffect(() => { setDone(false); setError(null); }, [date, service?.id]);
 
   async function join(e) {
@@ -68,12 +71,14 @@ function WaitlistForm({ slug, service, staffChoice, location, date }) {
     setSubmitted(true);
     if (validateName(form.name) || validatePhone(form.phone)) return;
     if (!form.consent) return setError('Please tick the box so we may text you when a time opens up.');
+    if (turnstileOn && !human) return setError('Please tick the "I am human" box first.');
     setBusy(true); setError(null);
     try {
-      await publicApi.joinWaitlist(slug, { serviceId: service.id, staffId: staffChoice, locationId: location?.id, date, name: form.name, phone: form.phone, consent: { sms: true }, website: form.website });
+      await publicApi.joinWaitlist(slug, { serviceId: service.id, staffId: staffChoice, locationId: location?.id, date, name: form.name, phone: form.phone, consent: { sms: true }, website: form.website, turnstileToken: human });
       setDone(true);
     } catch (err) {
       setError(err.message);
+      setFresh((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -92,6 +97,7 @@ function WaitlistForm({ slug, service, staffChoice, location, date }) {
         <input type="checkbox" style={{ marginTop: 3, width: 'auto', minHeight: 0 }} checked={form.consent} onChange={(e) => setForm({ ...form, consent: e.target.checked })} />
         <span>I agree to be texted if a time opens up. You can reply STOP at any time.</span>
       </label>
+      <Turnstile onToken={setHuman} resetKey={fresh} />
       {error && <p className="error-text" role="alert">{error}</p>}
       <button type="submit" className="primary" disabled={busy}>{busy ? 'Adding...' : 'Join the waiting list'}</button>
     </form>
@@ -141,6 +147,8 @@ export default function BookPageClient() {
   useEffect(() => { if (step === 2 && service && date) loadSlots(); }, [step, date]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [submitted, setSubmitted] = useState(false);
+  const [human, setHuman] = useState('');
+  const [fresh, setFresh] = useState(0);
 
   async function submit(e) {
     e.preventDefault();
@@ -149,16 +157,18 @@ export default function BookPageClient() {
       setError('Please fix the highlighted fields.');
       return;
     }
+    if (turnstileOn && !human) { setError('Please tick the "I am human" box first.'); return; }
     setSaving(true); setError(null);
     key.current ??= crypto.randomUUID();
     try {
       setResult(await publicApi.book(slug, {
         serviceId: service.id, staffId: staffChoice, locationId: location?.id, startTime: slot, name: form.name, phone: form.phone, email: form.email,
-        consent: { sms: form.smsConsent, email: form.emailConsent }, idempotencyKey: key.current, website: form.website,
+        consent: { sms: form.smsConsent, email: form.emailConsent }, idempotencyKey: key.current, website: form.website, turnstileToken: human,
       }));
     } catch (err) {
       key.current = null;
       setError(err.message);
+      setFresh((n) => n + 1); // a token works once
       if (err instanceof ApiError && err.status === 409) { setStep(2); loadSlots(); }
     } finally {
       setSaving(false);
@@ -326,6 +336,7 @@ export default function BookPageClient() {
                       <input type="checkbox" style={{ marginTop: 3, width: 'auto', minHeight: 0 }} checked={form.smsConsent && form.emailConsent} onChange={(e) => setForm({ ...form, smsConsent: e.target.checked, emailConsent: e.target.checked })} />
                       <span>I agree to receive booking confirmations and reminders by SMS and email. You can reply STOP at any time.</span>
                     </label>
+                    <Turnstile onToken={setHuman} resetKey={fresh} />
                     {error && <p className="error-text" role="alert">{error}</p>}
                     <div className="row">
                       <button type="button" onClick={() => setStep(2)} disabled={saving}>Back</button>

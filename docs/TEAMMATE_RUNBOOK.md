@@ -177,6 +177,17 @@ npm run smoke -- https://bookingagent.sparkmind.online
 - All of these texts respect "STOP", never go out between 9pm and 8am (business time), and are tracked with the other delivery data.
 - After deploying run `npm run migrate`, then `pm2 reload ecosystem.config.cjs --update-env`.
 
+## 7f. Bot check on the public forms: Cloudflare Turnstile (Jira AIN-433)
+
+Stops bots from filling the booking, waiting-list, signup, sign-in-code and "tell us what you need" forms. The widget is already created in
+Cloudflare (hostnames `bookingagent.sparkmind.online` and `localhost`). It needs two keys, and **both** must be set (one alone breaks the forms):
+1. **Backend** `.env`: `TURNSTILE_SECRET_KEY=<the secret key>` (private: never put it in chat, a commit or a screenshot; Aiza has it in the Cloudflare dashboard, Turnstile > the widget).
+2. **Dashboard** `dashboard/.env.local`: `NEXT_PUBLIC_TURNSTILE_SITE_KEY=<the site key>` (public). This one is read when the dashboard is **built**, so run `cd dashboard && npm run build` after adding it.
+3. `pm2 reload ecosystem.config.cjs --update-env`.
+4. Check: open the booking page in a private window: a small "Verify you are human" box appears before "Confirm booking". Make a booking: it must work. If the box never appears or bookings fail, set the backend to forget the key (delete `TURNSTILE_SECRET_KEY`, reload): the forms work again without the check, then tell the developer.
+- Local development and tests need no keys: with none set, the check is off. To test it locally use Cloudflare's own test keys: site `1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA` (always pass).
+- If Cloudflare is unreachable the visitor is let through (and it is logged), so a Cloudflare outage cannot stop customers booking.
+
 ## 8. Housekeeping
 
 - `pm2 logs booking-backend --lines 0` then watch briefly for unexpected errors after

@@ -8,6 +8,7 @@ import { useConfirm } from '../../../lib/confirm';
 import TextField from '../../../components/TextField';
 import { validateName, validateEmail } from '../../../lib/validate';
 import PublicNav from '../../../components/PublicNav';
+import Turnstile, { turnstileOn } from '../../../components/Turnstile';
 import { gradientFor, initials } from '../../../lib/brand';
 
 // Customer portal "My appointments" (docs/customer/PORTAL_SPEC.md). This is the customer's
@@ -28,12 +29,15 @@ function SignIn({ slug, biz, onToken }) {
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [human, setHuman] = useState('');
+  const [fresh, setFresh] = useState(0);
   const who = mode === 'phone' ? { phone: value } : { email: value };
 
   async function send(e) {
     e.preventDefault();
+    if (turnstileOn && !human) return setError('Please tick the "I am human" box first.');
     setBusy(true); setError(null);
-    try { await customerApi.requestCode(slug, who); setSent(true); } catch (err) { setError(err.message); } finally { setBusy(false); }
+    try { await customerApi.requestCode(slug, { ...who, turnstileToken: human }); setSent(true); } catch (err) { setError(err.message); setFresh((n) => n + 1); } finally { setBusy(false); }
   }
   async function verify(e) {
     e.preventDefault();
@@ -51,6 +55,7 @@ function SignIn({ slug, biz, onToken }) {
             <label htmlFor="who">{mode === 'phone' ? 'Mobile number' : 'Email'}</label>
             <input id="who" required type={mode === 'phone' ? 'tel' : 'email'} autoComplete={mode === 'phone' ? 'tel' : 'email'} value={value} onChange={(e) => setValue(e.target.value)} placeholder={mode === 'phone' ? '(555) 123-4567' : 'you@example.com'} />
           </div>
+          <Turnstile onToken={setHuman} resetKey={fresh} />
           {error && <p className="error-text">{error}</p>}
           <div className="row" style={{ alignItems: 'center' }}>
             <button type="submit" className="primary" disabled={busy}>{busy ? 'Sending...' : 'Send me a code'}</button>

@@ -13,10 +13,11 @@ const REPEAT_AFTER_MS = 30 * 86_400_000;
 export const isGoodReviewLink = (v) => { try { const u = new URL(String(v)); return u.protocol === 'https:'; } catch { return false; } };
 
 // `send` is injectable so tests can count texts without a provider.
-export async function runReviewSweepOnce({ send = sendSms, now = Date.now() } = {}) {
+// businessIds: tests pass their own business so other data in a shared database is left alone. Normal runs: all.
+export async function runReviewSweepOnce({ send = sendSms, now = Date.now(), businessIds } = {}) {
   const db = await getDb();
   // Only businesses that set a review link: bookings of the others must not crowd the batch.
-  const withLink = await db.collection('businesses').find({ review_link: { $type: 'string' }, status: { $ne: 'suspended' } }, { projection: { _id: 1 } }).toArray();
+  const withLink = await db.collection('businesses').find({ review_link: { $type: 'string' }, status: { $ne: 'suspended' }, ...(businessIds ? { _id: { $in: businessIds } } : {}) }, { projection: { _id: 1 } }).toArray();
   if (!withLink.length) return 0;
   const due = await withSystemAccess((c) => c('bookings').find({
     business_id: { $in: withLink.map((b) => b._id) }, status: 'confirmed', is_test: { $ne: true }, review_request_sent_at: null,

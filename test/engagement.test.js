@@ -60,8 +60,8 @@ describe('reminders, waiting list, reviews and reports', { skip }, () => {
     const day = await book(23.95, '+15550109002', { staffId: t.staffIds.Sam });
     const calls = [];
     const send = async (biz, booking, service, label) => { calls.push(`${booking._id}:${label}`); };
-    await runReminderSweepOnce({ send });
-    await runReminderSweepOnce({ send });
+    await runReminderSweepOnce({ send, businessIds: [t.businessId] });
+    await runReminderSweepOnce({ send, businessIds: [t.businessId] });
     assert.ok(calls.includes(`${two.booking.id}:2h`), 'the 2-hour reminder went out');
     assert.ok(calls.includes(`${day.booking.id}:24h`), 'the 24-hour reminder went out');
     assert.equal(calls.filter((c) => c === `${two.booking.id}:2h`).length, 1, 'only once, even with two sweeps');
@@ -152,12 +152,12 @@ describe('reminders, waiting list, reviews and reports', { skip }, () => {
     const texts = [];
     const send = async (id, to, body) => { texts.push({ to, body }); };
     const now = noon.toMillis();
-    assert.equal(await runReviewSweepOnce({ send, now }), 0, 'no review link set yet: nothing is sent');
+    assert.equal(await runReviewSweepOnce({ send, now, businessIds: [t.businessId] }), 0, 'no review link set yet: nothing is sent');
     await db.collection('businesses').updateOne({ _id: t.businessId }, { $set: { review_link: 'https://g.page/r/example/review' } });
-    assert.equal(await runReviewSweepOnce({ send, now }), 1);
+    assert.equal(await runReviewSweepOnce({ send, now, businessIds: [t.businessId] }), 1);
     assert.match(texts[0].body, /g\.page\/r\/example\/review/);
     assert.match(texts[0].body, /Rev/);
-    assert.equal(await runReviewSweepOnce({ send, now }), 0, 'asked once');
+    assert.equal(await runReviewSweepOnce({ send, now, businessIds: [t.businessId] }), 0, 'asked once');
     assert.ok((await db.collection('bookings').findOne({ _id: past.insertedId })).review_request_sent_at);
   });
 
@@ -166,11 +166,11 @@ describe('reminders, waiting list, reviews and reports', { skip }, () => {
     const mk = (phone, status = 'confirmed') => db.collection('bookings').insertOne({ _id: newId(), business_id: t.businessId, customer_name: 'N N', phone, service_id: svc, staff_id: staff, start_time: new Date(day.plus({ hours: 8 }).toMillis()), end_time: new Date(day.plus({ hours: 8.5 }).toMillis()), status, created_at: new Date() });
     await mk('+15550109060'); await mk('+15550109061', 'cancelled');
     const send = async () => {};
-    assert.equal(await runReviewSweepOnce({ send, now: day.plus({ hours: 22 }).toMillis() }), 0, '10pm: wait for the morning');
-    assert.equal(await runReviewSweepOnce({ send, now: day.plus({ hours: 11 }).toMillis() }), 1, 'morning: sent, and the cancelled visit was skipped');
+    assert.equal(await runReviewSweepOnce({ send, now: day.plus({ hours: 22 }).toMillis(), businessIds: [t.businessId] }), 0, '10pm: wait for the morning');
+    assert.equal(await runReviewSweepOnce({ send, now: day.plus({ hours: 11 }).toMillis(), businessIds: [t.businessId] }), 1, 'morning: sent, and the cancelled visit was skipped');
     await db.collection('customers').insertOne({ _id: newId(), business_id: t.businessId, phone: '+15550109062', name: 'Recent', last_review_request_at: new Date(), consent: {}, created_at: new Date() });
     await mk('+15550109062');
-    assert.equal(await runReviewSweepOnce({ send, now: day.plus({ hours: 11 }).toMillis() }), 0, 'asked this customer recently');
+    assert.equal(await runReviewSweepOnce({ send, now: day.plus({ hours: 11 }).toMillis(), businessIds: [t.businessId] }), 0, 'asked this customer recently');
   });
 
   // ---------------- numbers ----------------

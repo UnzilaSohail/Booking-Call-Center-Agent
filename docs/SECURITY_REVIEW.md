@@ -40,8 +40,11 @@ Deploy: these need the new backend **and** a dashboard rebuild + restart to reac
 | 2 | No Content-Security-Policy | Set for every page by `dashboard/proxy.js`: scripts only with a one-time code per page view, plus fixed lists for where the page may connect, load fonts, images and frames from (36g). `CSP_MODE=report` logs problems without blocking; `off` removes it. Style attributes are still allowed inline. |
 | 1 (part) | Magic-link secret stayed in the address bar | Removed from the address at once and kept in memory; wrong link guesses no longer use up the code's 5 attempts, and the reverse |
 
+## Fixed in round 3 (8 October)
+- **Fake bookings and form spam:** a Cloudflare Turnstile bot check now guards the booking, waiting-list, signup, sign-in-code and "tell us what you need" forms (AIN-433). The server verifies the one-time token with Cloudflare; no keys set means the check is off. Switch-on steps: `docs/TEAMMATE_RUNBOOK.md` section 7f. A bot check does not prove the phone number belongs to the person booking; if that abuse still happens, add a text code before confirming.
+
 ## Still open
-1. **Fake bookings (spam).** Anyone can book a free slot with any phone number; the limits reduce abuse but do not stop it. Real fix: a bot check (Cloudflare Turnstile, free) on the booking form, or a text code before confirming. Needs a free Turnstile key. (AIN-433)
+1. **Phone ownership.** Anyone who passes the bot check can still book with someone else's number (limited to 8 bookings per number per day). A text code before confirming would close this (it costs a text per booking).
 2. **Confirmation links must point at the live site.** `PUBLIC_DASHBOARD_URL` has to be set on the server; check with one real test booking. (AIN-439, teammate)
 3. **Stripe:** when card payments are switched on, set `CSP_MODE=report` for the first day and check the browser console on the Billing page, then switch back to enforce.
 4. Scripts inside the page are strictly controlled, but inline *styles* are allowed (the app uses them everywhere); the risk from that is small.

@@ -13,6 +13,7 @@ import { sendSms, smsConfigured } from '../notifications/sms.js';
 import { sendEmail, emailConfigured } from '../notifications/email.js';
 import { signCustomerToken, requireCustomer } from '../customerAuth.js';
 import { loadBusiness } from './publicBooking.js';
+import { requireHuman } from '../turnstile.js';
 import { normalizePhone, LANGUAGES } from '../services/customerService.js';
 import {
   BookingError, getBusiness, getAvailability, isSlotOffered, rescheduleBooking, cancelBooking, assertWithinChangeCutoff,
@@ -53,6 +54,7 @@ customerPortalRouter.post('/public/:slug/portal/code', loadBusiness, async (req,
     if (await tooMany(`portal-ip:${req.ip}`, 10, 15 * 60_000) || await tooMany(`portal-id:${b._id}:${who.value.toLowerCase()}`, 5, 60 * 60_000)) {
       return res.status(429).json({ error: 'too many attempts, try again later' });
     }
+    if (!(await requireHuman(req, res))) return; // this door sends a text or email, so bots must not reach it
 
     res.json({ ok: true, message: `If that ${who.kind === 'sms' ? 'number' : 'email'} is on file, we have sent a code.` });
 

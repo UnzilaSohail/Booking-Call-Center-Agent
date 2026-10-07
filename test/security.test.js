@@ -10,6 +10,7 @@ import { fakeVerify } from '../src/verification.js';
 import { checkPassword } from '../src/passwordPolicy.js';
 import { createCache } from '../src/services/directoryCache.js';
 import jwt from 'jsonwebtoken';
+import { verifyTurnstile } from '../src/turnstile.js';
 
 describe('login and input protections', { skip }, () => {
   let db; let server; let base; let t; const email = `sec-${newId().slice(0, 8)}@example.test`;
@@ -133,5 +134,52 @@ describe('login and input protections', { skip }, () => {
     const off = createCache(0);
     assert.equal(await off.cached('a', load), 4);
     assert.equal(await off.cached('a', load), 5, 'ttl 0 never caches');
+  });
+
+  it('bot check: off without a key; with a key it asks Cloudflare, refuses failures and missing tokens, never blocks on an outage (SEC-15)', async () => {
+    const ask = (success) => { const calls = []; return { calls, fetchImpl: async (url, opts) => { calls.push(String(opts.body)); return { json: async () => ({ success }) }; } }; };
+    const saved = process.env.TURNSTILE_SECRET_KEY;
+    try {
+      delete process.env.TURNSTILE_SECRET_KEY;
+      assert.equal(await verifyTurnstile(undefined, '1.1.1.1'), true, 'no key set: check is off');
+      process.env.TURNSTILE_SECRET_KEY = 'test-secret';
+      const ok = ask(true);
+      assert.equal(await verifyTurnstile('good-token', '1.1.1.1', { fetchImpl: ok.fetchImpl }), true);
+      assert.match(ok.calls[0], /secret=test-secret/);
+      assert.match(ok.calls[0], /response=good-token/);
+      assert.equal(await verifyTurnstile('bad-token', '1.1.1.1', { fetchImpl: ask(false).fetchImpl }), false, 'Cloudflare says no');
+      const none = ask(true);
+      assert.equal(await verifyTurnstile('', '1.1.1.1', { fetchImpl: none.fetchImpl }), false, 'no token');
+      assert.equal(await verifyTurnstile({ $ne: 1 }, '1.1.1.1', { fetchImpl: none.fetchImpl }), false, 'not text');
+      assert.equal(none.calls.length, 0, 'Cloudflare is not even asked without a token');
+      assert.equal(await verifyTurnstile('t', '1.1.1.1', { fetchImpl: async () => { throw new Error('offline'); } }), true, 'an outage does not stop real customers');
+    } finally {
+      if (saved === undefined) delete process.env.TURNSTILE_SECRET_KEY; else process.env.TURNSTILE_SECRET_KEY = saved;
+    }
+  });
+
+  it('with the key set, the public doors refuse a request that has no token (SEC-16)', async () => {
+    const saved = process.env.TURNSTILE_SECRET_KEY;
+    process.env.TURNSTILE_SECRET_KEY = 'test-secret';
+    try {
+      const slug = `bot-${newId().slice(0, 8)}`;
+      await db.collection('businesses').updateOne({ _id: t.businessId }, { $set: { slug, booking_page_enabled: true } });
+      const post = (path, body) => fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const in3 = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+      for (const [path, body] of [
+        [`/api/public/${slug}/bookings`, { serviceId: 'x', startTime: new Date(Date.now() + 86_400_000).toISOString(), name: 'A', phone: '+15550107711' }],
+        [`/api/public/${slug}/waitlist`, { serviceId: 'x', date: in3, name: 'A', phone: '+15550107712', consent: { sms: true } }],
+        ['/api/public/leads', { name: 'A', contact: 'a@b.co', need: 'a haircut' }],
+        ['/api/signup', { businessName: 'Bot Salon', ownerEmail: 'bot@example.test', ownerPhone: '+15550107713', ownerPassword: 'purple-bicycle-orbit-7', termsAccepted: true }],
+        [`/api/public/${slug}/portal/code`, { phone: '+15550107714' }],
+      ]) {
+        const r = await post(path, body);
+        const j = await r.json();
+        assert.ok(r.status === 400 && j.captcha === true || r.status === 503, `${path} answered ${r.status} ${JSON.stringify(j)}`);
+      }
+      assert.equal(await db.collection('businesses').countDocuments({ name: 'Bot Salon' }), 0, 'no business was created');
+    } finally {
+      if (saved === undefined) delete process.env.TURNSTILE_SECRET_KEY; else process.env.TURNSTILE_SECRET_KEY = saved;
+    }
   });
 });

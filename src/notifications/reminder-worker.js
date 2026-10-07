@@ -9,7 +9,8 @@ const WINDOW_MINUTES = 10; // catch bookings whose 24h/2h mark falls within this
 
 // Cross-tenant by nature — sweeps every business's upcoming bookings in one pass (see
 // withSystemAccess in src/db.js). sendReminder below re-scopes per booking.
-async function dueBookings(hoursAhead, sentField) {
+// businessIds: tests pass their own business so parallel test files cannot claim each other's bookings. Normal runs: all.
+async function dueBookings(hoursAhead, sentField, businessIds) {
   const now = Date.now();
   const from = new Date(now + (hoursAhead * 60 - WINDOW_MINUTES) * 60_000);
   const to = new Date(now + hoursAhead * 60 * 60_000);
@@ -17,14 +18,14 @@ async function dueBookings(hoursAhead, sentField) {
   // SMS/email to whatever number/address was used while testing.
   return withSystemAccess((c) =>
     c('bookings')
-      .find({ status: 'confirmed', is_test: { $ne: true }, [sentField]: null, start_time: { $gte: from, $lte: to } })
+      .find({ status: 'confirmed', is_test: { $ne: true }, [sentField]: null, start_time: { $gte: from, $lte: to }, ...(businessIds ? { business_id: { $in: businessIds } } : {}) })
       .limit(100)
       .toArray()
   );
 }
 
-async function runLabel(hoursAhead, sentField, label, send) {
-  const bookings = await dueBookings(hoursAhead, sentField);
+async function runLabel(hoursAhead, sentField, label, send, businessIds) {
+  const bookings = await dueBookings(hoursAhead, sentField, businessIds);
   const db = await getDb();
   for (const booking of bookings) {
     // KG-13/27j: claim the booking atomically BEFORE sending. The sweep used to find-then-send, so
@@ -45,9 +46,9 @@ async function runLabel(hoursAhead, sentField, label, send) {
 }
 
 // `send` is injectable so tests can count sends without a real SMS/email provider.
-export async function runReminderSweepOnce({ send = sendReminder } = {}) {
-  await runLabel(24, 'reminder_24h_sent_at', '24h', send);
-  await runLabel(2, 'reminder_2h_sent_at', '2h', send);
+export async function runReminderSweepOnce({ send = sendReminder, businessIds } = {}) {
+  await runLabel(24, 'reminder_24h_sent_at', '24h', send, businessIds);
+  await runLabel(2, 'reminder_2h_sent_at', '2h', send, businessIds);
 }
 
 export function startReminderWorker(intervalMs = 5 * 60_000) {

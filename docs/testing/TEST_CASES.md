@@ -268,6 +268,8 @@ Also: the colour-contrast test (`test/contrast.test.js`) now checks the light an
 | SEC-11 | Locked account | Platform team sees "locked", can unlock; owners cannot | Pass |
 | SEC-12 | Weak passwords | Refused with plain reasons (short, common, repeated, contains email name) | Pass |
 | SEC-13 | Signup with a weak password | 400, nothing created | Pass |
+| SEC-15 | Bot check logic | Off without a key; asks Cloudflare; refuses failures and missing tokens; an outage lets people through | Pass |
+| SEC-16 | Public doors with the key set and no token | Booking, waiting list, leads, signup, sign-in code all refuse (captcha) and create nothing | Pass |
 | SEC-14 | Directory cache | Answers repeats from memory, expires, can be cleared, off at 0 | Pass |
 
 ## EM — Email and invites (`test/emailInvite.test.js`)

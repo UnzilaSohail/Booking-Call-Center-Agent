@@ -12,6 +12,7 @@ import { sendSms } from '../notifications/sms.js';
 import { initialBillingFields } from '../billing/plans.js';
 import { tooMany } from '../rateLimit.js';
 import { checkPassword } from '../passwordPolicy.js';
+import { requireHuman } from '../turnstile.js';
 import { uniqueSlug } from '../services/slug.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -53,6 +54,7 @@ signupRouter.post('/signup', async (req, res, next) => {
   if (await tooMany(`signup:${req.ip}`, 5, 60 * 60_000) || await tooMany(`signup-phone:${ownerPhone}`, 3, 24 * 60 * 60_000)) {
     return res.status(429).json({ error: 'too many sign-ups from here, try again later' });
   }
+  if (!(await requireHuman(req, res))) return;
 
   try {
     const db = await getDb();
