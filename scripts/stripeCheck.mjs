@@ -2,6 +2,7 @@
 // Refuses live keys, so it can never move real money. Docs: docs/guides/STRIPE_SETUP.md
 import 'dotenv/config';
 import Stripe from 'stripe';
+import { readFileSync } from 'node:fs';
 
 const key = process.env.STRIPE_SECRET_KEY;
 if (!key) { console.error('STRIPE_SECRET_KEY is not set in .env (use a TEST key: sk_test_...).'); process.exit(1); }
@@ -27,7 +28,8 @@ try {
   console.log(process.env.STRIPE_WEBHOOK_SECRET?.startsWith('whsec_')
     ? 'OK    STRIPE_WEBHOOK_SECRET is set'
     : 'TODO  STRIPE_WEBHOOK_SECRET is not set: add the webhook in Stripe (see the guide) so settled and failed payments reach us');
-  console.log(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.startsWith('pk_test_')
+  const dashboardEnv = (() => { try { return readFileSync('dashboard/.env.local', 'utf8'); } catch { return ''; } })();
+  console.log(/^NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_/m.test(dashboardEnv)
     ? 'OK    publishable key is set for the dashboard'
     : 'TODO  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (pk_test_...) is not set in dashboard/.env.local');
 } catch (err) {
