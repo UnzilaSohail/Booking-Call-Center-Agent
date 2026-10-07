@@ -13,7 +13,6 @@ import { sendEmail } from '../notifications/email.js';
 
 export const stripeWebhookRouter = Router();
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 let stripeClient = null;
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -24,6 +23,7 @@ function getStripe() {
 
 stripeWebhookRouter.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
   const stripe = getStripe();
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET; // read per request so it can be set without a code change
   if (!stripe || !webhookSecret) {
     console.warn('Stripe webhook received but STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET not set — ignoring');
     return res.status(503).send('Stripe not configured');
@@ -37,17 +37,38 @@ stripeWebhookRouter.post('/webhooks/stripe', express.raw({ type: 'application/js
   }
 
   try {
+    // Stripe may deliver the same event more than once (and does after any slow answer). Handle each event id once.
+    const seen = await (await getDb()).collection('stripe_events').updateOne({ _id: event.id }, { $setOnInsert: { type: event.type, received_at: new Date() } }, { upsert: true });
+    if (seen.matchedCount > 0) return res.json({ received: true, duplicate: true });
+
+    if (event.type === 'payment_intent.processing') {
+      const pi = event.data.object;
+      const business = await (await getDb()).collection('businesses').findOne({ stripe_customer_id: pi.customer });
+      if (business) await withTenant(business._id, (c) => c('invoices').updateOne({ stripe_payment_intent_id: pi.id, status: { $ne: 'paid' } }, { $set: { status: 'processing' } }));
+    }
+    if (event.type === 'charge.dispute.created') {
+      // A customer's bank is taking money back. A person must look at it: same queue as failed payments.
+      const dispute = event.data.object;
+      // a dispute names the payment, not the customer: find our invoice by that payment, then its business
+      const invoice = dispute.payment_intent ? await (await getDb()).collection('invoices').findOne({ stripe_payment_intent_id: dispute.payment_intent }) : null;
+      const business = invoice && await (await getDb()).collection('businesses').findOne({ _id: invoice.business_id });
+      if (business) {
+        await withTenant(business._id, (c) => c('payment_failures').insertOne({ _id: newId(), business_id: business._id, payment_intent_id: dispute.payment_intent ?? null, amount: dispute.amount ?? null, currency: dispute.currency ?? null, error_message: `A payment was disputed with the bank (${dispute.reason ?? 'no reason given'}). Reply to the dispute in the Stripe dashboard before the deadline.`, created_at: new Date(), resolved_at: null, assigned_to: null, resolved_by: null, resolution_notes: null }));
+      }
+    }
     if (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed') {
       const pi = event.data.object;
       const db = await getDb();
       const business = await db.collection('businesses').findOne({ stripe_customer_id: pi.customer });
       if (business) {
         const paid = event.type === 'payment_intent.succeeded';
-        await withTenant(business._id, (c) => c('invoices').updateOne(
+        const matched = await withTenant(business._id, (c) => c('invoices').updateOne(
           { stripe_payment_intent_id: pi.id },
           { $set: { status: paid ? 'paid' : 'failed', paid_at: paid ? new Date() : null, failed_reason: paid ? null : (pi.last_payment_error?.message ?? 'payment failed') } }
         ));
 
+        // A payment that is not one of our invoices (a manual charge, a test) must not flip the account's billing state.
+        if (matched.matchedCount === 0) return res.json({ received: true, ignored: true });
         if (paid) {
           await db.collection('businesses').updateOne({ _id: business._id }, { $set: { billing_status: 'active', status: 'active' } });
         } else {
@@ -82,6 +103,7 @@ stripeWebhookRouter.post('/webhooks/stripe', express.raw({ type: 'application/js
     res.json({ received: true });
   } catch (err) {
     console.error('stripe webhook handling failed:', err.message);
+    await (await getDb()).collection('stripe_events').deleteOne({ _id: event.id }).catch(() => {}); // let Stripe's retry run again
     res.status(500).send('internal error');
   }
 });

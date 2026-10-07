@@ -254,6 +254,13 @@ Also: the colour-contrast test (`test/contrast.test.js`) now checks the light an
 | EN-18 | No-show rate and reviews | Rate = marked no-shows over past confirmed visits; the review text skips no-shows | Pass |
 | EN-19 | Follow-up text | Also invites the customer to book again | Pass |
 | EN-20 | Platform totals | The platform sums the value delivered across companies | Pass |
+| ST-01 | Charge request | Right amount, invoice in metadata, same try = same idempotency key, new try = new key | Pass |
+| ST-02 | Slow and confirm-needed payments | Processing is not a failure; bank confirmation reason is plain | Pass |
+| ST-03 | No card / $0 invoice | Pending without calling Stripe / paid without calling Stripe | Pass |
+| ST-04 | Webhook signature | Unsigned and wrongly signed calls are refused | Pass |
+| ST-05 | Payment settles | Invoice paid, account active; the same event twice is handled once | Pass |
+| ST-06 | Foreign payment | A payment that is not our invoice changes nothing | Pass |
+| ST-07 | Failure, settling, dispute | Failure in Exceptions queue; settling status; dispute raised for a person | Pass |
 | EN-16 | Monthly sweep | Once, days 1 to 3 from 9am, respects the off switch | Pass |
 
 ## SEC — Login and input protections (`test/security.test.js`)

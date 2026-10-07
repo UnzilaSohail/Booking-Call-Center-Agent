@@ -25,6 +25,7 @@
     "demo:walkthrough": "node scripts/demo/walkthrough.mjs",
     "smoke": "node scripts/smokeTest.mjs",
     "sms:check": "node scripts/smsCheck.mjs",
+    "stripe:check": "node scripts/stripeCheck.mjs",
     "call:check": "node scripts/lastCallCheck.mjs"
   },
   "repository": {

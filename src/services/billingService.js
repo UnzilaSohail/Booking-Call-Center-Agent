@@ -48,8 +48,16 @@ export function computeInvoiceAmounts(plan, usage) {
 // Off-session charge against the saved payment method. Mirrors the Twilio/SendGrid
 // degrade pattern: no Stripe key or no card on file just leaves the invoice `pending`
 // instead of throwing.
-async function chargeInvoice(business, invoice) {
-  const stripe = getStripe();
+// `attempt` makes the idempotency key (Stripe's "never do this twice" label) unique per try: the same invoice charged twice by a
+// restart or a double click is ONE charge, while a deliberate retry after a decline is a new attempt. `stripe` is injectable for tests.
+// What a person reads on the Billing page when a payment did not go through, in plain words.
+function failureReason(code, fallback = '') {
+  if (code === 'requires_action' || code === 'authentication_required') return 'Your bank needs you to confirm this payment. Please add your card again from the Billing page.';
+  if (code === 'requires_payment_method') return 'The card was declined. Please add a different card.';
+  return fallback || `The payment did not go through (${code}).`;
+}
+
+export async function chargeInvoice(business, invoice, { attempt = 0, stripe = getStripe() } = {}) {
   if (!stripe || !business.stripe_customer_id || !business.stripe_payment_method_id) {
     return { status: 'pending', reason: 'Stripe not configured or no payment method on file', stripePaymentIntentId: null };
   }
@@ -60,11 +68,14 @@ async function chargeInvoice(business, invoice) {
       amount: amountCents, currency: 'usd',
       customer: business.stripe_customer_id, payment_method: business.stripe_payment_method_id,
       off_session: true, confirm: true,
-    });
+      metadata: { invoice_id: String(invoice._id), business_id: String(business.id ?? business._id) },
+    }, { idempotencyKey: `invoice_${invoice._id}_try_${attempt}` });
     if (pi.status === 'succeeded') return { status: 'paid', stripePaymentIntentId: pi.id };
-    return { status: 'failed', stripePaymentIntentId: pi.id, reason: `payment intent status: ${pi.status}` };
+    // Slow payments (bank debits) are accepted first and settle later: not a failure. The webhook finishes the job.
+    if (pi.status === 'processing') return { status: 'processing', stripePaymentIntentId: pi.id };
+    return { status: 'failed', stripePaymentIntentId: pi.id, reason: failureReason(pi.status) };
   } catch (err) {
-    return { status: 'failed', stripePaymentIntentId: err.payment_intent?.id ?? null, reason: err.message };
+    return { status: 'failed', stripePaymentIntentId: err.payment_intent?.id ?? null, reason: failureReason(err.payment_intent?.status ?? err.code, err.message) };
   }
 }
 

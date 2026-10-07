@@ -199,6 +199,13 @@ Cloudflare (hostnames `bookingagent.sparkmind.online` and `localhost`). It needs
 - **No-shows:** on the Bookings page each past visit has a "Mark no-show" button. The Overview shows the no-show rate only when staff have marked at least one; the monthly report too.
 - The Overview "No-show protection" card and the platform console's "Value delivered to clients" card read the same numbers (last 30 days).
 
+## 7h. Stripe hardening (Jira: Stripe hardening task)
+
+- Charges now carry an idempotency key per invoice and try, the retry button uses the same code, bank-debit payments show as "settling", and bank "please confirm" failures are worded plainly.
+- The webhook handles each Stripe event once (new `stripe_events` collection, removed after 60 days; run `npm run migrate`), ignores payments that are not our invoices, and also listens to `payment_intent.processing` and `charge.dispute.created` (add both events to the endpoint in Stripe).
+- CSP now allows `*.stripe.network` for Stripe's card form: rebuild + restart the dashboard.
+- Full steps: `docs/guides/STRIPE_SETUP.md`. Test-mode proof: `npm run stripe:check`. Live keys only after the boss answers AIN-374/375.
+
 ## 8. Housekeeping
 
 - `pm2 logs booking-backend --lines 0` then watch briefly for unexpected errors after

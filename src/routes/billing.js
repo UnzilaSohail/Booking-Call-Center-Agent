@@ -7,7 +7,7 @@ import Stripe from 'stripe';
 import { getDb, withTenant, serializeAll } from '../db.js';
 import { requireArea } from '../auth.js';
 import { PLANS, PURCHASABLE_PLAN_IDS, getPlan } from '../billing/plans.js';
-import { computeUsage, computeInvoiceAmounts } from '../services/billingService.js';
+import { computeUsage, computeInvoiceAmounts, chargeInvoice } from '../services/billingService.js';
 
 export const billingRouter = Router();
 const gate = requireArea('billing');
@@ -94,21 +94,18 @@ billingRouter.post('/billing/invoices/:id/retry', gate, async (req, res, next) =
     if (!stripe || !business.stripe_customer_id || !business.stripe_payment_method_id) {
       return res.status(409).json({ error: 'no payment method on file — add one before retrying' });
     }
-    const pi = await stripe.paymentIntents.create({
-      amount: Math.round(invoice.total_amount * 100), currency: 'usd',
-      customer: business.stripe_customer_id, payment_method: business.stripe_payment_method_id,
-      off_session: true, confirm: true,
-    });
-    const paid = pi.status === 'succeeded';
+    // each retry is a new attempt (a double click is still one charge: same attempt number, same idempotency key)
+    const attempt = (invoice.retry_count ?? 0) + 1;
+    const result = await chargeInvoice({ ...business, id: req.businessId }, invoice, { attempt, stripe });
     await withTenant(req.businessId, (c) => c('invoices').updateOne({ _id: invoice._id }, { $set: {
-      status: paid ? 'paid' : 'failed', stripe_payment_intent_id: pi.id,
-      paid_at: paid ? new Date() : null, failed_reason: paid ? null : `payment intent status: ${pi.status}`,
+      status: result.status, stripe_payment_intent_id: result.stripePaymentIntentId ?? invoice.stripe_payment_intent_id, retry_count: attempt,
+      paid_at: result.status === 'paid' ? new Date() : null, failed_reason: result.status === 'failed' ? (result.reason ?? 'payment failed') : null,
     } }));
-    if (paid) {
+    if (result.status === 'paid') {
       const db = await getDb();
       await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { billing_status: 'active', status: 'active' } });
     }
-    res.json({ ok: true, status: paid ? 'paid' : 'failed' });
+    res.json({ ok: true, status: result.status, ...(result.reason ? { reason: result.reason } : {}) });
   } catch (err) {
     if (err.type === 'StripeCardError') return res.status(402).json({ error: err.message });
     next(err);

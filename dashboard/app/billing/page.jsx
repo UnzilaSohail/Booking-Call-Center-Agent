@@ -26,8 +26,9 @@ function UsageBar({ used, included }) {
 }
 
 function InvoiceStatusBadge({ status }) {
-  const cls = status === 'paid' ? 'success' : status === 'failed' ? 'danger' : 'neutral';
-  return <span className={`badge ${cls}`}>{status}</span>;
+  const cls = status === 'paid' ? 'success' : status === 'failed' ? 'danger' : status === 'processing' ? 'info' : 'neutral';
+  const label = { processing: 'settling', pending: 'waiting for a card' }[status] ?? status;
+  return <span className={`badge ${cls}`}>{label}</span>;
 }
 
 function PlanAndUsageCard({ plan, usage, onChanged }) {
