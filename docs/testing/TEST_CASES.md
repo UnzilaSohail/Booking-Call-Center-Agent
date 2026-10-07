@@ -221,6 +221,37 @@ A real WebSocket client talks to the real bridge; Gemini and the summary are fak
 
 Also: the colour-contrast test (`test/contrast.test.js`) now checks the light and the dark theme; `npm run screenshots` compares 16 pages (light and dark, desktop and phone).
 
+## VH — Voice: half-hour slots, free times, email, English (`test/voiceHalfHour.test.js`)
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| VH-01 | 30-minute service | Starts every half hour, 9:00 to 17:30 | Pass |
+| VH-02 | 60-minute service | Still starts every half hour; last start 17:00 | Pass |
+| VH-03 | A booked 60-minute job | Hides every start it would overlap and only those | Pass |
+| VH-04 | check_availability | Gives times in the business time zone, in order | Pass |
+| VH-05 | The requested time was just taken | Answer carries the day's free times without the taken one; the lost booking is still logged | Pass |
+| VH-06 | Time outside opening hours | Refused with the day's free times; nothing booked | Pass |
+| VH-07 | Caller spells an email | Saved on the booking and on the customer | Pass |
+| VH-08 | Instructions | English-only rule first; offers a person; check availability and ask for email | Pass |
+
+## EN — Reminders, waiting list, reviews, numbers, monthly report (`test/engagement.test.js`)
+| ID | Scenario | Expected | Status |
+|---|---|---|---|
+| EN-01 | Reminder wording | Text says "Reply C to cancel"; email only links | Pass |
+| EN-02 | Reminder sweep | 2-hour and 24-hour reminders sent once each | Pass |
+| EN-03 | Customer replies C | Next appointment cancelled, time freed, recorded as cancelled by text | Pass |
+| EN-04 | C too close to the visit | Refused, phone number given, nothing cancelled | Pass |
+| EN-05 | C with no appointment | Polite answer | Pass |
+| EN-07 | Join waiting list (public) | Joined; a repeat is not a second place | Pass |
+| EN-08 | Waiting list validation | Needs OK to text, a real day and service, a phone number | Pass |
+| EN-09 | A booking is cancelled | First 3 in line texted once; next cancellation texts the next; no texts at night | Pass |
+| EN-10 | Waiting person books | Counted as a refilled slot | Pass |
+| EN-11 | Review text | About 2 hours after the visit, once, only with a link set and consent | Pass |
+| EN-12 | Review text limits | Not at night, not for cancelled visits, not within 30 days of the last | Pass |
+| EN-13 | Money saved | Only after-hours calls that became confirmed bookings count | Pass |
+| EN-14 | No-show protection | Customer cancel after a reminder and before the visit counts; staff cancels and cancels with no reminder do not | Pass |
+| EN-15 | Report wording | Plain words; empty sections left out | Pass |
+| EN-16 | Monthly sweep | Once, days 1 to 3 from 9am, respects the off switch | Pass |
+
 ## SEC — Login and input protections (`test/security.test.js`)
 | ID | Scenario | Expected | Status |
 |---|---|---|---|

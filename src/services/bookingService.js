@@ -7,6 +7,7 @@ import { client, getDb, withTenant, newId, serialize, serializeAll } from '../db
 import { busyIntervals } from '../calendar/google.js';
 import { sendBookingConfirmation } from '../notifications/notify.js';
 import { upsertCustomer } from './customerService.js';
+import { markWaitlistBooked, notifyWaitlistForCancellation } from './waitlistService.js';
 
 // Short code a customer can read out or quote ("my booking is K7P2QX"). No 0/O/1/I/L so it
 // survives being read over the phone. Not unique-enforced: 31^6 is ~887M per business.
@@ -163,7 +164,7 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// q: free-text search over customer name/phone — the "customer calls asking about their
+// q: free-text search over customer name/phone/email — the "customer calls asking about their
 // appointment" lookup, separate from the calendar's date-range view.
 export async function listBookings(businessId, { from, to, q, status } = {}) {
   // Onboarding test-call bookings carry is_test:true and must never show up on the real
@@ -176,7 +177,7 @@ export async function listBookings(businessId, { from, to, q, status } = {}) {
   if (status) filter.status = status;
   if (q) {
     const pattern = escapeRegex(q);
-    filter.$or = [{ customer_name: { $regex: pattern, $options: 'i' } }, { phone: { $regex: pattern, $options: 'i' } }, { reference: { $regex: `^${pattern}$`, $options: 'i' } }];
+    filter.$or = [{ customer_name: { $regex: pattern, $options: 'i' } }, { phone: { $regex: pattern, $options: 'i' } }, { customer_email: { $regex: pattern, $options: 'i' } }, { reference: { $regex: `^${pattern}$`, $options: 'i' } }];
   }
 
   const bookings = await withTenant(businessId, (col) =>
@@ -304,7 +305,7 @@ export async function createBooking(businessId, { customerName, phone, customerE
     sync_error: null,
     confirmation_sent_at: null,
     reminder_24h_sent_at: null,
-    reminder_1h_sent_at: null,
+    reminder_2h_sent_at: null,
     ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}), // omitted entirely when absent, matching the partial unique index (db/schema.js)
   };
 
@@ -345,6 +346,9 @@ export async function createBooking(businessId, { customerName, phone, customerE
     .catch((err) => console.error(`confirmation notification failed for booking ${bookingId}:`, err.message));
   upsertCustomer(businessId, { phone, name: customerName, email: customerEmail })
     .catch((err) => console.error(`customer upsert failed for booking ${bookingId}:`, err.message));
+  // Someone on the waiting list for this service and day who has now booked is counted as a refilled slot.
+  markWaitlistBooked(businessId, { phone, serviceId, date: start.setZone(business.timezone).toISODate() })
+    .catch((err) => console.error(`waiting list update failed for booking ${bookingId}:`, err.message));
 
   return { booking: serialize(bookingDoc), service, replayed: false };
 }
@@ -398,7 +402,7 @@ export async function rescheduleBooking(businessId, bookingId, startTime) {
             // New time invalidates any reminder already scheduled/sent against the old
             // one, and the Calendar mirror needs re-pushing (plan.md §5).
             reminder_24h_sent_at: null,
-            reminder_1h_sent_at: null,
+            reminder_2h_sent_at: null,
             sync_status: 'pending',
             sync_attempts: 0,
             sync_error: null,
@@ -416,7 +420,9 @@ export async function rescheduleBooking(businessId, bookingId, startTime) {
   return serialize(updated);
 }
 
-export async function cancelBooking(businessId, bookingId) {
+// via: who cancelled ('dashboard' staff, 'call', 'portal', 'link', 'sms_reply'). Recorded so reports can show how many
+// customers cancelled in time after a reminder. Freed time is offered to the waiting list.
+export async function cancelBooking(businessId, bookingId, { via = 'dashboard' } = {}) {
   const db = await getDb();
   const session = client.startSession();
   let updated;
@@ -426,7 +432,7 @@ export async function cancelBooking(businessId, bookingId) {
       await db.collection('booking_slot_locks').deleteMany({ booking_id: bookingId }, { session });
       updated = await db.collection('bookings').findOneAndUpdate(
         { _id: bookingId, business_id: businessId },
-        { $set: { status: 'cancelled', sync_status: 'pending', sync_attempts: 0, sync_error: null } },
+        { $set: { status: 'cancelled', cancelled_at: new Date(), cancelled_via: via, sync_status: 'pending', sync_attempts: 0, sync_error: null } },
         { session, returnDocument: 'after' }
       );
     });
@@ -434,6 +440,7 @@ export async function cancelBooking(businessId, bookingId) {
     await session.endSession();
   }
   if (!updated) throw new BookingError(404, 'booking not found');
+  notifyWaitlistForCancellation(businessId, updated).catch((err) => console.error(`waiting list texts failed for booking ${bookingId}:`, err.message));
   return serialize(updated);
 }
 

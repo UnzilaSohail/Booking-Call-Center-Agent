@@ -4,8 +4,9 @@
 // call off to a bidirectional Media Stream that src/voice/twilioBridge.js serves.
 import express, { Router } from 'express';
 import twilio from 'twilio';
-import { findBusinessByPhoneNumber } from '../services/bookingService.js';
-import { upsertCustomer, markRecordingAcknowledged, setSmsOptIn } from '../services/customerService.js';
+import { DateTime } from 'luxon';
+import { findBusinessByPhoneNumber, cancelBooking, assertWithinChangeCutoff } from '../services/bookingService.js';
+import { upsertCustomer, markRecordingAcknowledged, setSmsOptIn, normalizePhone } from '../services/customerService.js';
 import { isOpenNow } from '../voice/geminiSession.js';
 import { withTenant, withSystemAccess, newId, serialize } from '../db.js';
 
@@ -241,6 +242,23 @@ twilioWebhookRouter.post('/webhooks/twilio/recording-status', async (req, res) =
   res.sendStatus(204);
 });
 
+// "C" from a reminder text. Returns the sentence to text back. Honours the business's change cut-off.
+export async function cancelNextByReply(business, from) {
+  const phone = normalizePhone(from);
+  const next = await withTenant(business.id, (c) => c('bookings').find({ phone, status: 'confirmed', is_test: { $ne: true }, start_time: { $gt: new Date() } }).sort({ start_time: 1 }).limit(1).next());
+  if (!next) return `${business.name}: we could not find an upcoming appointment for this number.`;
+  try {
+    assertWithinChangeCutoff(business, next);
+  } catch {
+    return `${business.name}: it is too close to your appointment to cancel by text. Please call ${business.contact_phone || business.phone_number || 'us'}.`;
+  }
+  await cancelBooking(business.id, next._id, { via: 'sms_reply' });
+  const service = await withTenant(business.id, (c) => c('services').findOne({ _id: next.service_id }));
+  const when = DateTime.fromJSDate(next.start_time).setZone(business.timezone).toFormat('ccc d LLL, h:mm a');
+  const again = business.slug ? ` Book again any time: ${process.env.PUBLIC_DASHBOARD_URL || 'http://localhost:3002'}/book/${business.slug}` : '';
+  return `${business.name}: your ${service?.name ?? 'appointment'} on ${when} is cancelled.${again}`;
+}
+
 const SMS_OPT_OUT_KEYWORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
 const SMS_OPT_IN_KEYWORDS = ['START', 'UNSTOP', 'YES'];
 
@@ -268,12 +286,18 @@ twilioWebhookRouter.post('/webhooks/twilio/sms-inbound', async (req, res) => {
   }
   const body = (req.body.Body || '').trim().toUpperCase();
   const business = await findBusinessByPhoneNumber(req.body.To);
+  const { MessagingResponse } = twilio.twiml;
+  const reply = new MessagingResponse();
   if (business) {
     if (SMS_OPT_OUT_KEYWORDS.includes(body)) await setSmsOptIn(business.id, req.body.From, false);
     else if (SMS_OPT_IN_KEYWORDS.includes(body)) await setSmsOptIn(business.id, req.body.From, true);
+    else if (body === 'C') {
+      // The reminder said "Reply C to cancel": cancel this person's next appointment (or say why we could not).
+      const answer = await cancelNextByReply(business, req.body.From).catch((err) => { console.error('cancel-by-reply failed:', err.message); return null; });
+      if (answer) reply.message(answer);
+    }
   }
-  // Empty reply: Twilio's own carrier-level STOP/START handling already sends the
-  // compliance auto-reply for opted-in numbers — no need to duplicate it here.
-  const { MessagingResponse } = twilio.twiml;
-  res.type('text/xml').send(new MessagingResponse().toString());
+  // No reply for STOP/START: Twilio's own carrier-level handling already sends the compliance auto-reply
+  // for opted-in numbers, so there is nothing to duplicate here.
+  res.type('text/xml').send(reply.toString());
 });

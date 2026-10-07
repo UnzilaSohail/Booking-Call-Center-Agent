@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  AlertTriangle, Bot, Box, CalendarDays, Crown, DollarSign, Minus, Moon, TrendingDown, TrendingUp, Users,
+  AlertTriangle, BellRing, Bot, Box, CalendarDays, Crown, DollarSign, Minus, Moon, TrendingDown, TrendingUp, Users,
 } from 'lucide-react';
 import RequireAuth from '../components/RequireAuth';
 import Avatar from '../components/Avatar';
@@ -212,6 +212,35 @@ function HomeInner() {
           </Link>
         )}
       </div>
+
+      {analytics?.impact && (
+        <div className="row" style={{ gap: 18, alignItems: 'stretch' }}>
+          <div className="card lift" style={{ flex: 1, minWidth: 280 }}>
+            <div className="row" style={{ alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <div className="icon-badge" style={{ background: SUCCESS_SOFT }}><Moon size={17} color={SUCCESS} /></div>
+              <h2 style={{ margin: 0 }}>While you were closed</h2>
+            </div>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 34, fontWeight: 700, letterSpacing: '-0.02em' }}><CountUp value={`$${analytics.impact.afterHours.value.toLocaleString()}`} /></div>
+            <p className="muted" style={{ margin: '2px 0 0', fontSize: 13.5 }}>
+              {analytics.impact.afterHours.calls === 0
+                ? 'No calls came in after hours in the last 30 days.'
+                : `booked by the AI: ${analytics.impact.afterHours.bookings} booking${analytics.impact.afterHours.bookings === 1 ? '' : 's'} from ${analytics.impact.afterHours.calls} call${analytics.impact.afterHours.calls === 1 ? '' : 's'} answered outside opening hours (last 30 days). Without the AI these callers reach voicemail.`}
+            </p>
+          </div>
+          <div className="card lift" style={{ flex: 1, minWidth: 280 }}>
+            <div className="row" style={{ alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <div className="icon-badge" style={{ background: ACCENT_SOFT }}><BellRing size={17} color={ACCENT} /></div>
+              <h2 style={{ margin: 0 }}>No-show protection</h2>
+            </div>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 34, fontWeight: 700, letterSpacing: '-0.02em' }}><CountUp value={analytics.impact.reminders.cancelledInTime} /></div>
+            <p className="muted" style={{ margin: '2px 0 0', fontSize: 13.5 }}>
+              {analytics.impact.reminders.sent === 0
+                ? 'Reminders are texted 24 hours and 2 hours before each visit. Customers who cancel after one free the time in advance instead of not showing up.'
+                : `customers cancelled in time after a reminder (last 30 days), freeing $${analytics.impact.reminders.valueFreed.toLocaleString()} of time to re-book. ${analytics.impact.reminders.sent} reminders sent${analytics.impact.reminders.waitlistRefilled ? `, ${analytics.impact.reminders.waitlistRefilled} slot${analytics.impact.reminders.waitlistRefilled === 1 ? '' : 's'} refilled from the waiting list` : ''}.`}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="row" style={{ gap: 18, alignItems: 'stretch' }}>
         <div style={{ flex: 2, minWidth: 320 }}>

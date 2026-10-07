@@ -4,6 +4,7 @@ import { requireArea, requireOwner } from '../auth.js';
 import { isListingEligible, LISTING_CATEGORIES } from '../services/listingService.js';
 import { geocode } from '../services/geocoding.js';
 import { validateSlug } from '../services/slug.js';
+import { isGoodReviewLink } from '../services/reviewService.js';
 
 export const settingsRouter = Router();
 
@@ -44,7 +45,7 @@ settingsRouter.get('/business', gate, async (req, res, next) => {
     const db = await getDb();
     const business = await db.collection('businesses').findOne(
       { _id: req.businessId },
-      { projection: { name: 1, industry: 1, timezone: 1, phone_number: 1, reschedule_cutoff_minutes: 1, contact_email: 1, contact_phone: 1, address: 1, faqs: 1, voice_name: 1, min_booking_notice_minutes: 1, max_booking_window_days: 1, transfer_phone_number: 1, status: 1, deleted_at: 1, recording_enabled: 1, recording_retention_days: 1 } }
+      { projection: { name: 1, industry: 1, timezone: 1, phone_number: 1, reschedule_cutoff_minutes: 1, contact_email: 1, contact_phone: 1, address: 1, faqs: 1, voice_name: 1, min_booking_notice_minutes: 1, max_booking_window_days: 1, transfer_phone_number: 1, status: 1, deleted_at: 1, recording_enabled: 1, recording_retention_days: 1, review_link: 1, monthly_report_enabled: 1 } }
     );
     res.json({
       name: business.name,
@@ -68,6 +69,8 @@ settingsRouter.get('/business', gate, async (req, res, next) => {
       // skips a business with no value set).
       recordingEnabled: business.recording_enabled !== false,
       recordingRetentionDays: business.recording_retention_days ?? null,
+      reviewLink: business.review_link ?? '',
+      monthlyReportEnabled: business.monthly_report_enabled !== false,
     });
   } catch (err) {
     next(err);
@@ -76,7 +79,7 @@ settingsRouter.get('/business', gate, async (req, res, next) => {
 
 settingsRouter.patch('/business', gate, async (req, res, next) => {
   try {
-    const { name, industry, timezone, rescheduleCutoffMinutes, contactEmail, contactPhone, address, minBookingNoticeMinutes, maxBookingWindowDays, transferPhoneNumber, recordingEnabled, recordingRetentionDays } = req.body ?? {};
+    const { name, industry, timezone, rescheduleCutoffMinutes, contactEmail, contactPhone, address, minBookingNoticeMinutes, maxBookingWindowDays, transferPhoneNumber, recordingEnabled, recordingRetentionDays, reviewLink, monthlyReportEnabled } = req.body ?? {};
     const updates = {};
     if (name !== undefined) {
       if (!name) return res.status(400).json({ error: 'name cannot be empty' });
@@ -110,6 +113,11 @@ settingsRouter.patch('/business', gate, async (req, res, next) => {
     }
     if (transferPhoneNumber !== undefined) updates.transfer_phone_number = transferPhoneNumber || null;
     if (recordingEnabled !== undefined) updates.recording_enabled = !!recordingEnabled;
+    if (reviewLink !== undefined) {
+      if (reviewLink && !isGoodReviewLink(reviewLink)) return res.status(400).json({ error: 'the review link must be a full web address starting with https://' });
+      updates.review_link = reviewLink ? String(reviewLink).trim() : null;
+    }
+    if (monthlyReportEnabled !== undefined) updates.monthly_report_enabled = !!monthlyReportEnabled;
     if (recordingRetentionDays !== undefined) {
       if (recordingRetentionDays !== null && (!Number.isFinite(recordingRetentionDays) || recordingRetentionDays <= 0)) {
         return res.status(400).json({ error: 'recordingRetentionDays must be null (keep forever) or a positive number' });
@@ -130,7 +138,7 @@ settingsRouter.patch('/business', gate, async (req, res, next) => {
 // collection this business owns, as one JSON file, so a business can get its own data
 // out without asking the platform. Owner-only: this is a full export of customer PII
 // (names, phones, transcripts), not something any team member should be able to pull.
-const EXPORT_COLLECTIONS = ['services', 'staff', 'bookings', 'customers', 'call_logs', 'failed_bookings', 'voicemails', 'callback_requests', 'staff_time_off'];
+const EXPORT_COLLECTIONS = ['services', 'staff', 'bookings', 'customers', 'call_logs', 'failed_bookings', 'voicemails', 'callback_requests', 'staff_time_off', 'waitlist'];
 
 settingsRouter.get('/business/export', gate, requireOwner, async (req, res, next) => {
   try {

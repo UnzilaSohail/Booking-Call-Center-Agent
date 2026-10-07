@@ -153,7 +153,7 @@ platformRouter.patch('/businesses/:id/status', async (req, res, next) => {
 // and a partial failure here just leaves orphaned rows for a re-run rather than
 // corrupting anything live.
 const OWNED_COLLECTIONS = [
-  'admins', 'services', 'staff', 'staff_time_off', 'bookings', 'call_logs', 'locations',
+  'admins', 'services', 'staff', 'staff_time_off', 'bookings', 'call_logs', 'locations', 'waitlist',
   'voicemails', 'callback_requests', 'knowledge_versions', 'customers', 'failed_bookings',
   'payment_failures', 'audit_logs',
 ];

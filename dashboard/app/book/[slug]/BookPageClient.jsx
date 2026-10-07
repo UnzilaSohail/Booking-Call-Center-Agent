@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { CalendarPlus, Check, Clock, MapPin, User } from 'lucide-react';
+import { BellRing, CalendarPlus, Check, Clock, MapPin, User } from 'lucide-react';
 import { publicApi, ApiError } from '../../../lib/api';
 import Loading from '../../../components/Skeleton';
 import TextField from '../../../components/TextField';
@@ -51,6 +51,51 @@ function downloadIcs(result, where) {
   a.download = 'appointment.ics';
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// A day with nothing free: leave a name and number to be texted if a time opens up (Jira 38).
+function WaitlistForm({ slug, service, staffChoice, location, date }) {
+  const [form, setForm] = useState({ name: '', phone: '', consent: false, website: '' });
+  const [shown, setShown] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState(null);
+  const [submitted, setSubmitted] = useState(false);
+  useEffect(() => { setDone(false); setError(null); }, [date, service?.id]);
+
+  async function join(e) {
+    e.preventDefault();
+    setSubmitted(true);
+    if (validateName(form.name) || validatePhone(form.phone)) return;
+    if (!form.consent) return setError('Please tick the box so we may text you when a time opens up.');
+    setBusy(true); setError(null);
+    try {
+      await publicApi.joinWaitlist(slug, { serviceId: service.id, staffId: staffChoice, locationId: location?.id, date, name: form.name, phone: form.phone, consent: { sms: true }, website: form.website });
+      setDone(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) return <p role="status" className="success-text"><Check size={15} style={{ verticalAlign: '-2px' }} /> You are on the waiting list. We will text you if a time opens up on this day.</p>;
+  if (!shown) return <button type="button" className="ghost" onClick={() => setShown(true)}><BellRing size={15} /> Tell me if a time opens up</button>;
+  return (
+    <form onSubmit={join} noValidate className="card" style={{ background: 'var(--surface-alt)', boxShadow: 'none', padding: 14 }}>
+      <strong style={{ fontSize: 14 }}>Join the waiting list for this day</strong>
+      <p className="muted" style={{ fontSize: 13, margin: '2px 0 10px' }}>If someone cancels, we text the people on the list first.</p>
+      <TextField label="Your name" required maxLength={100} autoComplete="name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} validate={validateName} showErrors={submitted} />
+      <TextField label="Mobile number" required type="tel" autoComplete="tel" placeholder="(555) 123-4567" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} validate={validatePhone} showErrors={submitted} />
+      <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
+      <label style={{ display: 'flex', gap: 8, fontSize: 13, margin: '4px 0 12px', alignItems: 'flex-start', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>
+        <input type="checkbox" style={{ marginTop: 3, width: 'auto', minHeight: 0 }} checked={form.consent} onChange={(e) => setForm({ ...form, consent: e.target.checked })} />
+        <span>I agree to be texted if a time opens up. You can reply STOP at any time.</span>
+      </label>
+      {error && <p className="error-text" role="alert">{error}</p>}
+      <button type="submit" className="primary" disabled={busy}>{busy ? 'Adding...' : 'Join the waiting list'}</button>
+    </form>
+  );
 }
 
 export default function BookPageClient() {
@@ -240,7 +285,12 @@ export default function BookPageClient() {
                     <div className="field">
                       <label id="times-label">Available times <span className="faint" style={{ textTransform: 'none', fontWeight: 400 }}>({tz})</span></label>
                       {slots === null && <Loading lines={2} />}
-                      {slots?.length === 0 && <p className="muted">Nothing open this day. Try another date.</p>}
+                      {slots?.length === 0 && (
+                        <div className="stack" style={{ gap: 10 }}>
+                          <p className="muted" style={{ margin: 0 }}>Nothing open this day. Try another date, or:</p>
+                          <WaitlistForm slug={slug} service={service} staffChoice={staffChoice} location={location} date={date} />
+                        </div>
+                      )}
                       <div role="group" aria-labelledby="times-label">
                         {slots && PARTS.map(([name, test]) => {
                           const list = slots.filter((x) => test(hourOf(x, tz)));

@@ -23,6 +23,8 @@ import { callLogsRouter, callRecordingRouter } from './routes/callLogs.js';
 import { exceptionsRouter } from './routes/exceptions.js';
 import { auditLogsRouter } from './routes/auditLogs.js';
 import { billingRouter } from './routes/billing.js';
+import { waitlistRouter } from './routes/waitlist.js';
+import { reportsRouter } from './routes/reports.js';
 import { twilioWebhookRouter } from './webhooks/twilio.js';
 import { stripeWebhookRouter } from './webhooks/stripe.js';
 import { auditLogger } from './auditLog.js';
@@ -107,6 +109,8 @@ app.use('/api', requireAuth, callLogsRouter);
 app.use('/api', requireAuth, exceptionsRouter);
 app.use('/api', requireAuth, auditLogsRouter);
 app.use('/api', requireAuth, billingRouter);
+app.use('/api', requireAuth, waitlistRouter);
+app.use('/api', requireAuth, reportsRouter);
 
 // Centralized error handler — every route above forwards unexpected errors via next(err).
 app.use((err, req, res, next) => {

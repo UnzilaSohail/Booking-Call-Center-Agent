@@ -180,7 +180,7 @@ try {
     await go(page, '/bookings', { wait: 2200 });
     await cap('Bookings: where each one came from, and whether its confirmation message really went out');
     await pause(page, 4500);
-    await type(page, page.getByPlaceholder('Search name or phone...'), 'Sara', { delay: 120 });
+    await type(page, page.getByPlaceholder(/Search name, phone or email/), 'Sara', { delay: 120 });
     await cap('Someone phones asking about their appointment? Find it by name or number');
     await pause(page, 4500);
   });

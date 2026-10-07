@@ -16,7 +16,7 @@ if (!process.env.TEST_VERBOSE) {
 export const skip = !process.env.MONGODB_URI && 'MONGODB_URI not set';
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6].map((d) => ({ day_of_week: d, open_time: '09:00', close_time: '18:00' }));
-const TENANT_COLLECTIONS = ['services', 'staff', 'bookings', 'booking_slot_locks', 'customers', 'failed_bookings', 'call_logs', 'sms_sends', 'staff_time_off'];
+const TENANT_COLLECTIONS = ['services', 'staff', 'bookings', 'booking_slot_locks', 'customers', 'failed_bookings', 'call_logs', 'sms_sends', 'staff_time_off', 'waitlist'];
 
 export async function createTenant({
   name = '__test__',

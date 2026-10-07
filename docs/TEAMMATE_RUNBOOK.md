@@ -162,6 +162,21 @@ npm run smoke -- https://bookingagent.sparkmind.online
 - Locked accounts: after 8 wrong passwords a login is locked for 15 minutes and the owner is emailed. The platform console, company page, shows **Locked** with an **Unlock login** button.
 - Passwords set from now on need at least 10 characters and must not be a common password.
 
+## 7e. Reminders you can answer, waiting list, review texts, monthly report (Jira 38 to 41)
+
+- **Reminders** now go out **24 hours and 2 hours** before a visit (the 1-hour one is gone). The text says "Reply C to cancel".
+  For "C" to work, the business's Twilio number needs its **messaging webhook** pointed at `https://<domain>/webhooks/twilio/sms-inbound`
+  (HTTP POST). Numbers bought from now on get this automatically. **Numbers bought earlier need it set once by hand:**
+  Twilio Console > Phone Numbers > the number > Messaging > "A message comes in" > Webhook. (If you use a Messaging Service for
+  A2P registration, set the same URL on the service's "Integration" settings.) Test: text "C" from a customer phone that has an
+  appointment; it must answer "...is cancelled." STOP and START already use this URL.
+- **Waiting list:** no setup. `npm run migrate` adds two indexes (`waitlist`). Customers join from a full day on the booking page; staff see it under Bookings.
+- **Google review text:** the owner pastes the review link in Settings > Business. Nothing is sent until they do.
+- **Monthly report email:** sent on the 1st to 3rd of each month from 9am (business time) to the business's contact email, using the same email provider
+  as invites. Owners can turn it off in Settings and press "Email me a sample report now" to see it. It needs the email provider working (AIN-367, AIN-370).
+- All of these texts respect "STOP", never go out between 9pm and 8am (business time), and are tracked with the other delivery data.
+- After deploying run `npm run migrate`, then `pm2 reload ecosystem.config.cjs --update-env`.
+
 ## 8. Housekeeping
 
 - `pm2 logs booking-backend --lines 0` then watch briefly for unexpected errors after

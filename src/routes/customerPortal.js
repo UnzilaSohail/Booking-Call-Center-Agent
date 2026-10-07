@@ -272,7 +272,7 @@ me.post('/appointments/:id/cancel', async (req, res, next) => {
     const booking = await ownBooking(req, res);
     if (!booking) return;
     assertWithinChangeCutoff(await getBusiness(req.businessId), booking);
-    await cancelBooking(req.businessId, booking._id);
+    await cancelBooking(req.businessId, booking._id, { via: 'portal' });
     res.json({ ok: true });
   } catch (err) {
     handleError(err, res, next);

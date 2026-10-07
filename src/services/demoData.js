@@ -27,7 +27,7 @@ const AHEAD_DAYS = 14;
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6].map((d) => ({ day_of_week: d, open_time: '09:00', close_time: '18:00' }));
 const TENANT_COLLECTIONS = [
   'services', 'staff', 'locations', 'bookings', 'booking_slot_locks', 'customers', 'call_logs', 'failed_bookings', 'sms_sends',
-  'staff_time_off', 'callback_requests', 'voicemails', 'customer_login_codes', 'invoices', 'payment_failures', 'audit_logs',
+  'staff_time_off', 'waitlist', 'callback_requests', 'voicemails', 'customer_login_codes', 'invoices', 'payment_failures', 'audit_logs',
 ];
 
 const NAMES = [
@@ -75,7 +75,7 @@ const TEMPLATES = (biz, svc, who, when, day) => [
 ];
 
 // ---- one booking row (plus slot locks for future confirmed ones) ----
-function bookingRow(biz, { svc, staff, locationId, customer, start, status, via, now, flawed }) {
+function bookingRow(biz, { svc, staff, locationId, customer, start, status, via, now, flawed, cancelledVia }) {
   const id = newId();
   const end = new Date(start.getTime() + svc.duration_minutes * 60_000);
   const past = start < now;
@@ -87,9 +87,13 @@ function bookingRow(biz, { svc, staff, locationId, customer, start, status, via,
     sync_status: 'synced', sync_attempts: 0, sync_error: null,
     confirmation_sent_at: new Date(Math.min(now.getTime(), start.getTime() - 86_400_000)), confirmation_sms_status: 'sent', confirmation_sms_error: null,
     confirmation_email_status: customer.email ? 'sent' : 'no_contact',
-    reminder_24h_sent_at: past ? new Date(start.getTime() - 86_400_000) : null, reminder_1h_sent_at: past ? new Date(start.getTime() - 3_600_000) : null,
+    reminder_24h_sent_at: past ? new Date(start.getTime() - 86_400_000) : null, reminder_2h_sent_at: past ? new Date(start.getTime() - 7_200_000) : null,
   };
-  if (status === 'cancelled') row.cancelled_at = new Date(Math.min(now.getTime(), start.getTime() - 3_600_000 * 20));
+  if (status === 'cancelled') {
+    row.cancelled_at = new Date(Math.min(now.getTime(), start.getTime() - 3_600_000 * 20));
+    row.cancelled_via = cancelledVia ?? 'portal';
+    row.reminder_24h_sent_at = new Date(start.getTime() - 86_400_000); // the reminder is what prompted the cancel
+  }
   if (flawed === 'sms') { row.confirmation_sms_status = 'failed'; row.confirmation_sms_error = 'Carrier rejected the message (number cannot receive texts)'; }
   if (flawed === 'sync') { row.sync_status = 'failed'; row.sync_attempts = 3; row.sync_error = 'Google Calendar is not connected for this business'; }
   const locks = status === 'confirmed' && !past ? lockDocs(biz, id, staff?._id ?? null, start, end) : [];
@@ -125,6 +129,7 @@ export async function addDemoData({ listed = false, password = generatePassword(
     faqs: [{ question: 'Do you take walk-ins?', answer: 'Yes, when we have a free chair.' }, { question: 'Is there parking?', answer: 'Free parking behind the building.' }],
     google_refresh_token: null, listing: listing(['hair-salon'], 'Tampa', 'Cuts, colour and facials in the heart of Tampa.', 27.9, -82.46),
     plan: 'growth', trial_ends_at: new Date(now.getTime() - 40 * 86_400_000), card_brand: 'visa', card_last4: '4242',
+    review_link: 'https://g.page/r/demo-glow-studio/review',
     current_period_start: periodStart, current_period_end: new Date(periodStart.getTime() + 30 * 86_400_000),
   }));
   await db.collection('admins').insertOne(owner(glow, 'Aiza Owner', DEMO_ACCOUNTS.owner, 1));
@@ -215,7 +220,7 @@ export async function addDemoData({ listed = false, password = generatePassword(
         const start = day.set({ hour: 9 }).plus({ minutes: 30 * Math.floor(rng() * (Math.floor(room / 30) + 1)) }).toUTC().toJSDate();
         if (!claim(staff, start, svc.duration_minutes + svc.buffer_minutes)) continue;
         const customer = people[Math.floor(rng() * rng() * people.length)];
-        add({ svc, staff, locationId: locationOf(staff), customer, start, status: rng() < (d < 0 ? 0.09 : 0.05) ? 'cancelled' : 'confirmed', via: pickVia() });
+        add({ svc, staff, locationId: locationOf(staff), customer, start, status: rng() < (d < 0 ? 0.09 : 0.05) ? 'cancelled' : 'confirmed', via: pickVia(), cancelledVia: pick(['sms_reply', 'sms_reply', 'portal', 'link']) });
         break;
       }
     }
@@ -240,12 +245,16 @@ export async function addDemoData({ listed = false, password = generatePassword(
   const fmtDay = (dt) => DateTime.fromJSDate(dt).setZone(TZ).toFormat('cccc');
   const fmtTime = (dt) => DateTime.fromJSDate(dt).setZone(TZ).toFormat('h:mm a');
   const phoneBooked = rows.filter((r) => r.created_via === 'call' && r.status !== 'cancelled' && r.created_at > new Date(now.getTime() - 62 * 86_400_000));
+  let nth = 0;
   for (const r of phoneBooked) {
     const dur = 70 + Math.floor(rng() * 170);
-    const started = new Date(Math.min(now.getTime() - 600_000, r.created_at.getTime()));
+    // every fourth phone booking was made in the evening, after closing: the money the AI saved
+    const afterHours = nth++ % 4 === 1;
+    let started = new Date(Math.min(now.getTime() - 600_000, r.created_at.getTime()));
+    if (afterHours) started = new Date(Math.min(now.getTime() - 600_000, DateTime.fromJSDate(started).setZone(TZ).set({ hour: 19 + Math.floor(rng() * 3), minute: Math.floor(rng() * 60) }).toMillis()));
     calls.push({
       _id: newId(), business_id: glow, call_sid: `CAdemo${calls.length}`, phone: r.phone, created_at: started, ended_at: new Date(started.getTime() + dur * 1000), duration_seconds: dur,
-      outcome: 'completed', intent: 'booking', is_after_hours: false, booking_id: r._id,
+      outcome: 'completed', intent: 'booking', is_after_hours: afterHours, booking_id: r._id,
       summary: `${r.customer_name} booked a ${svcName(r.service_id)}${staffName(r.staff_id) ? ` with ${staffName(r.staff_id)}` : ''} for ${fmtDay(r.start_time)} at ${fmtTime(r.start_time)}.`,
       transcript: pick(TEMPLATES('Glow Studio', svcName(r.service_id).toLowerCase(), staffName(r.staff_id), fmtTime(r.start_time), fmtDay(r.start_time))),
     });
@@ -279,6 +288,19 @@ export async function addDemoData({ listed = false, password = generatePassword(
     _id: newId(), business_id: glow, call_sid: 'CAdemoCB', phone: '+15550100077', preferred_time: null, reason: 'Wants a quote for bridal party colouring',
     created_at: new Date(now.getTime() - 3 * 86_400_000), ...open, status: 'pending',
   });
+
+  // ---- waiting list: people who found a full day, one already texted, one who then booked ----
+  const wl = (daysAhead, svc, name, phone, status, extra = {}) => ({
+    _id: newId(), business_id: glow, service_id: svc._id, staff_id: null, location_id: null, date: today.plus({ days: daysAhead }).toISODate(), name, phone,
+    email: null, status, created_at: new Date(now.getTime() - (daysAhead + 1) * 3_600_000), notified_at: null, booked_at: null,
+    expire_at: new Date(now.getTime() + (daysAhead + 3) * 86_400_000), ...extra,
+  });
+  await db.collection('waitlist').insertMany([
+    wl(3, S.colour, 'Hana Sato', '+15550102033', 'waiting'),
+    wl(3, S.colour, 'Owen Price', '+15550102034', 'waiting'),
+    wl(2, S.facial, 'Ryan Foster', '+15550102030', 'notified', { notified_at: new Date(now.getTime() - 1_800_000) }),
+    wl(1, S.haircut, 'Lily Bailey', '+15550102029', 'booked', { notified_at: new Date(now.getTime() - 3_600_000), booked_at: new Date(now.getTime() - 3_000_000) }),
+  ]);
 
   // ---- activity history: what the owner and a manager did over the last weeks ----
   const ownerAdmin = await db.collection('admins').findOne({ business_id: glow, email: DEMO_ACCOUNTS.owner });

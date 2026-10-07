@@ -91,7 +91,7 @@ myBookingRouter.post('/my-booking/:token/cancel', async (req, res, next) => {
 
     const business = await getBusiness(businessId);
     assertWithinChangeCutoff(business, booking);
-    const updated = await cancelBooking(businessId, booking._id);
+    const updated = await cancelBooking(businessId, booking._id, { via: 'link' });
     res.json(serialize(updated));
   } catch (err) {
     handleError(err, res, next);

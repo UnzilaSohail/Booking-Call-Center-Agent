@@ -111,13 +111,19 @@ export async function sendBookingConfirmation(business, booking, service) {
   await withTenant(business.id, (c) => c('bookings').updateOne({ _id: bookingId(booking) }, { $set: { confirmation_sent_at: new Date(), ...sendUpdates } }));
 }
 
-export async function sendReminder(business, booking, service, label) {
+// The words of a reminder, kept apart from sending so they can be tested. The text can be answered: "C" cancels
+// (src/webhooks/twilio.js), which frees the time for someone else. The email just links.
+export function reminderTexts(business, booking, service, label) {
   const { when, serviceName } = describe(business, booking, service);
   const link = manageLink(business, booking);
-  const text = `Reminder: your ${serviceName} at ${business.name} is ${label === '24h' ? 'tomorrow' : 'in about an hour'}, ${when} (${business.timezone}). Reschedule or cancel: ${link}`;
+  const lead = `Reminder: your ${serviceName} at ${business.name} is ${label === '24h' ? 'tomorrow' : 'in about 2 hours'}, ${when} (${business.timezone}).`;
+  return { smsText: `${lead} Reply C to cancel, or change it here: ${link}`, emailText: `${lead} Reschedule or cancel: ${link}` };
+}
 
-  await sendGated(business, booking, text, `Reminder — ${business.name}`, text);
+export async function sendReminder(business, booking, service, label) {
+  const { smsText, emailText } = reminderTexts(business, booking, service, label);
+  await sendGated(business, booking, smsText, `Reminder — ${business.name}`, emailText);
 
-  const field = label === '24h' ? 'reminder_24h_sent_at' : 'reminder_1h_sent_at';
+  const field = label === '24h' ? 'reminder_24h_sent_at' : 'reminder_2h_sent_at';
   await withTenant(business.id, (c) => c('bookings').updateOne({ _id: bookingId(booking) }, { $set: { [field]: new Date() } }));
 }

@@ -3,8 +3,9 @@
 // needs more than "check every few minutes," per plan.md §8's "simple job queue" note.
 import { getDb, withTenant, withSystemAccess, serialize } from '../db.js';
 import { sendReminder } from './notify.js';
+import { runReviewSweepOnce } from '../services/reviewService.js';
 
-const WINDOW_MINUTES = 10; // catch bookings whose 24h/1h mark falls within this tick's window
+const WINDOW_MINUTES = 10; // catch bookings whose 24h/2h mark falls within this tick's window
 
 // Cross-tenant by nature — sweeps every business's upcoming bookings in one pass (see
 // withSystemAccess in src/db.js). sendReminder below re-scopes per booking.
@@ -46,7 +47,7 @@ async function runLabel(hoursAhead, sentField, label, send) {
 // `send` is injectable so tests can count sends without a real SMS/email provider.
 export async function runReminderSweepOnce({ send = sendReminder } = {}) {
   await runLabel(24, 'reminder_24h_sent_at', '24h', send);
-  await runLabel(1, 'reminder_1h_sent_at', '1h', send);
+  await runLabel(2, 'reminder_2h_sent_at', '2h', send);
 }
 
 export function startReminderWorker(intervalMs = 5 * 60_000) {
@@ -56,6 +57,7 @@ export function startReminderWorker(intervalMs = 5 * 60_000) {
     running = true;
     try {
       await runReminderSweepOnce();
+      await runReviewSweepOnce(); // "how was your visit" texts (src/services/reviewService.js)
     } catch (err) {
       console.error('reminder worker tick failed:', err);
     } finally {

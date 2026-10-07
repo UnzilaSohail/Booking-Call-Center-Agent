@@ -13,6 +13,17 @@ import { GLOSSARY } from '../../lib/glossary';
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const INDUSTRIES = ['Salon / Spa', 'Medical / Dental', 'Fitness', 'Home Services', 'Restaurant', 'Professional Services', 'Other'];
 
+// Lets the owner see what the monthly email looks like right now (this month so far, sent to their own address only).
+function SampleReportButton() {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  async function send() {
+    setBusy(true);
+    try { const r = await api.sendSampleReport(); toast.success(`Sample report sent to ${r.sentTo}`); } catch (err) { toast.error(err.message); } finally { setBusy(false); }
+  }
+  return <button type="button" className="ghost" onClick={send} disabled={busy}>{busy ? 'Sending...' : 'Email me a sample report now'}</button>;
+}
+
 function BusinessProfileSection() {
   const toast = useToast();
   const TIMEZONES = useTimezones();
@@ -35,6 +46,8 @@ function BusinessProfileSection() {
         transferPhoneNumber: form.transferPhoneNumber,
         recordingEnabled: form.recordingEnabled,
         recordingRetentionDays: form.recordingRetentionDays === '' ? null : Number(form.recordingRetentionDays),
+        reviewLink: form.reviewLink ?? '',
+        monthlyReportEnabled: form.monthlyReportEnabled !== false,
       });
       toast.success('Business profile saved');
     } catch (err) {
@@ -126,6 +139,16 @@ function BusinessProfileSection() {
         <p className="muted" style={{ fontSize: 12, marginTop: -6, marginBottom: 14 }}>
           Callers are always told a call may be recorded. After the number of days above, the recording and transcript are erased automatically. The record of the call itself (when, how long, how it ended) is kept.
         </p>
+        <div className="field">
+          <label htmlFor="review-link">Google review link <InfoTip term="reviewLink" /></label>
+          <input id="review-link" type="url" value={form.reviewLink ?? ''} onChange={(e) => setForm({ ...form, reviewLink: e.target.value })} placeholder="https://g.page/r/..." />
+          <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>After each visit we text the customer once, about 2 hours later, asking for a review. Leave blank to switch this off. Find your link on Google: search your business, then Share, then Ask for reviews.</p>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <input type="checkbox" style={{ width: 'auto' }} checked={form.monthlyReportEnabled !== false} onChange={(e) => setForm({ ...form, monthlyReportEnabled: e.target.checked })} />
+          Email me a report at the start of each month (calls, bookings, money, no-shows)
+        </label>
+        <p style={{ margin: '0 0 14px' }}><SampleReportButton /></p>
         {error && <p className="error-text">{error}</p>}
         <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving...' : 'Save profile'}</button>
       </form>

@@ -129,7 +129,9 @@ export async function getAnalytics(businessId) {
       });
     }
 
+    const impact = await getImpact(businessId, daysAgo(29), new Date(Date.now() + 60_000));
     return {
+      impact,
       revenueThisMonth: revenue.revenue,
       revenueTrendPct: trendPct(revenue.revenue, prevRevenue.revenue),
       bookingsThisMonth: revenue.count,
@@ -155,6 +157,49 @@ export async function getAnalytics(businessId) {
           ? Math.round((calls.booked / calls.total) * 100) - prevConversionRate
           : null,
       },
+    };
+  });
+}
+
+
+// What the AI and the reminders did for the business between two dates (Jira 38/40): money from bookings the AI made while
+// the business was closed, and how many customers cancelled in time after a reminder instead of not showing up.
+// Used by the Overview cards and by the monthly report email.
+export async function getImpact(businessId, from, to) {
+  return withTenant(businessId, async (col) => {
+    const [afterHoursRows, sent24, sent2, cancelledRows, viaReply, refilled] = await Promise.all([
+      col('call_logs').aggregate([
+        { $match: { created_at: { $gte: from, $lt: to }, is_after_hours: true, is_test: { $ne: true } } },
+        { $lookup: { from: 'bookings', localField: 'booking_id', foreignField: '_id', as: 'b' } },
+        { $unwind: { path: '$b', preserveNullAndEmptyArrays: true } },
+        { $lookup: { from: 'services', localField: 'b.service_id', foreignField: '_id', as: 's' } },
+        { $unwind: { path: '$s', preserveNullAndEmptyArrays: true } },
+        { $group: {
+          _id: null, calls: { $sum: 1 },
+          bookings: { $sum: { $cond: [{ $eq: ['$b.status', 'confirmed'] }, 1, 0] } },
+          value: { $sum: { $cond: [{ $eq: ['$b.status', 'confirmed'] }, { $ifNull: ['$s.price', 0] }, 0] } },
+        } },
+      ]).toArray(),
+      col('bookings').countDocuments({ reminder_24h_sent_at: { $gte: from, $lt: to }, is_test: { $ne: true } }),
+      col('bookings').countDocuments({ reminder_2h_sent_at: { $gte: from, $lt: to }, is_test: { $ne: true } }),
+      // cancelled by the customer (not staff) AFTER a reminder went out and BEFORE the appointment: the time can be given to someone else
+      col('bookings').aggregate([
+        { $match: {
+          status: 'cancelled', is_test: { $ne: true }, cancelled_via: { $in: ['sms_reply', 'portal', 'link', 'call'] }, cancelled_at: { $gte: from, $lt: to },
+          $expr: { $and: [{ $lt: ['$cancelled_at', '$start_time'] }, { $or: [{ $and: [{ $gt: ['$reminder_24h_sent_at', null] }, { $lt: ['$reminder_24h_sent_at', '$cancelled_at'] }] }, { $and: [{ $gt: ['$reminder_2h_sent_at', null] }, { $lt: ['$reminder_2h_sent_at', '$cancelled_at'] }] }] }] },
+        } },
+        { $lookup: { from: 'services', localField: 'service_id', foreignField: '_id', as: 's' } },
+        { $unwind: { path: '$s', preserveNullAndEmptyArrays: true } },
+        { $group: { _id: null, count: { $sum: 1 }, value: { $sum: { $ifNull: ['$s.price', 0] } } } },
+      ]).toArray(),
+      col('bookings').countDocuments({ status: 'cancelled', cancelled_via: 'sms_reply', cancelled_at: { $gte: from, $lt: to }, is_test: { $ne: true } }),
+      col('waitlist').countDocuments({ status: 'booked', booked_at: { $gte: from, $lt: to } }),
+    ]);
+    const ah = afterHoursRows[0] ?? { calls: 0, bookings: 0, value: 0 };
+    const cx = cancelledRows[0] ?? { count: 0, value: 0 };
+    return {
+      afterHours: { calls: ah.calls, bookings: ah.bookings, value: ah.value },
+      reminders: { sent: sent24 + sent2, cancelledInTime: cx.count, valueFreed: cx.value, viaReply, waitlistRefilled: refilled },
     };
   });
 }

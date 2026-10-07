@@ -141,6 +141,9 @@ export const api = {
 
   getStats: () => request('/api/stats', { tokenStore: companyTokenStore }),
   getAnalytics: () => request('/api/analytics', { tokenStore: companyTokenStore }),
+  listWaitlist: () => request('/api/waitlist', { tokenStore: companyTokenStore }),
+  removeWaitlistEntry: (id) => request(`/api/waitlist/${id}`, { method: 'DELETE', tokenStore: companyTokenStore }),
+  sendSampleReport: () => request('/api/reports/send-now', { method: 'POST', tokenStore: companyTokenStore }),
 
   calendarStatus: () => request('/api/calendar/status', { tokenStore: companyTokenStore }),
   calendarConnectUrl: () => request('/api/calendar/connect', { tokenStore: companyTokenStore }),
@@ -200,6 +203,7 @@ export const publicApi = {
   business: (slug) => request(`/api/public/${slug}`),
   services: (slug) => request(`/api/public/${slug}/services`),
   staff: (slug, serviceId, locationId) => request(`/api/public/${slug}/staff?${new URLSearchParams({ serviceId, ...(locationId ? { locationId } : {}) })}`),
+  joinWaitlist: (slug, body) => request(`/api/public/${slug}/waitlist`, { method: 'POST', body }),
   availability: (slug, params) => request(`/api/public/${slug}/availability?${new URLSearchParams(params)}`),
   book: (slug, body) => request(`/api/public/${slug}/bookings`, { method: 'POST', body }),
 };

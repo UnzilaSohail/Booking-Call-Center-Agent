@@ -6,6 +6,7 @@ import { startSyncWorker } from './calendar/sync-worker.js';
 import { startReminderWorker } from './notifications/reminder-worker.js';
 import { startRetentionWorker } from './services/retentionWorker.js';
 import { startBillingWorker } from './billing/worker.js';
+import { startMonthlyReportWorker } from './services/reportService.js';
 
 const port = process.env.PORT || 3000;
 
@@ -20,6 +21,7 @@ const stopSyncWorker = startSyncWorker();
 const stopReminderWorker = startReminderWorker();
 const stopRetentionWorker = startRetentionWorker();
 const stopBillingWorker = startBillingWorker();
+const stopReportWorker = startMonthlyReportWorker();
 
 // 27l: on a restart signal stop the workers, refuse NEW calls politely, and let calls already in
 // progress finish (up to DRAIN_TIMEOUT_MS) before exiting. A second signal exits immediately.
@@ -32,6 +34,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     stopReminderWorker();
     stopRetentionWorker();
     stopBillingWorker();
+    stopReportWorker();
     const active = getActiveCalls();
     if (active) console.log(`${signal}: waiting for ${active} active call(s) to finish before exiting`);
     const clean = await beginDrain();

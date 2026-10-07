@@ -12,6 +12,7 @@ import { isListingEligible } from '../services/listingService.js';
 import { distanceKm } from '../services/geocoding.js';
 import { BookingError, getAvailability, isSlotOffered, createBooking } from '../services/bookingService.js';
 import { normalizePhone, recordWebConsent } from '../services/customerService.js';
+import { joinWaitlist } from '../services/waitlistService.js';
 
 export const publicBookingRouter = Router();
 
@@ -250,6 +251,36 @@ function handleError(err, res, next) {
   if (err instanceof BookingError) return res.status(err.status).json({ error: err.message });
   next(err);
 }
+
+// ---- waiting list ------------------------------------------------------------------------
+// A day with no free time: the customer asks to be texted if one opens up (Jira 38).
+publicBookingRouter.post('/public/:slug/waitlist', loadBusiness, async (req, res, next) => {
+  try {
+    const body = req.body ?? {};
+    const b = req.business;
+    if (body.website) return res.status(201).json({ ok: true }); // honeypot, same as booking
+    if (await tooMany(`waitlist:${req.ip}`, 6, 60 * 60_000)) return res.status(429).json({ error: 'too many requests, try again later' });
+    const name = String(body.name ?? '').trim();
+    const phone = normalizePhone(String(body.phone ?? ''));
+    const date = String(body.date ?? '');
+    if (!name || name.length > 100) return res.status(400).json({ error: 'name is required' });
+    if (!/^\+\d{10,15}$/.test(phone)) return res.status(400).json({ error: 'a valid phone number is required' });
+    if (typeof body.serviceId !== 'string' || !body.serviceId) return res.status(400).json({ error: 'serviceId is required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < DateTime.now().setZone(b.timezone).toISODate()) return res.status(400).json({ error: 'pick a day that has not passed' });
+    if (body.consent?.sms !== true) return res.status(400).json({ error: 'we text you when a time opens up, so we need your OK to send texts' });
+    if (await tooMany(`waitlist-phone:${phone}`, 6, 24 * 60 * 60_000)) return res.status(429).json({ error: 'too many waiting-list requests for this number today' });
+
+    const service = await withTenant(b._id, (c) => c('services').findOne({ _id: body.serviceId }));
+    if (!service) return res.status(404).json({ error: 'service not found' });
+    const staffId = body.staffId && body.staffId !== 'any' ? String(body.staffId) : null;
+    if (staffId && !(await withTenant(b._id, (c) => c('staff').findOne({ _id: staffId })))) return res.status(400).json({ error: 'unknown staff member' });
+    await recordWebConsent(b._id, { phone, name, email: null, sms: true, emailOk: false, text: 'I agree to be texted if a time opens up on the waiting list.' });
+    const { alreadyOnList } = await joinWaitlist({ id: b._id, timezone: b.timezone }, { serviceId: service._id, staffId, locationId: body.locationId ? String(body.locationId) : null, date, name, phone });
+    res.status(201).json({ ok: true, alreadyOnList });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ---- booking ---------------------------------------------------------------------------
 

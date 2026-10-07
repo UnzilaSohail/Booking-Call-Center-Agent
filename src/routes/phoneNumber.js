@@ -48,6 +48,9 @@ phoneNumberRouter.post('/phone-number/provision', gate, async (req, res, next) =
       phoneNumber: available[0].phoneNumber,
       voiceUrl,
       voiceMethod: 'POST',
+      // replies to our texts ("C" to cancel, STOP/START) come here
+      smsUrl: `${process.env.PUBLIC_HTTPS_URL}/webhooks/twilio/sms-inbound`,
+      smsMethod: 'POST',
     });
 
     await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { phone_number: purchased.phoneNumber } });

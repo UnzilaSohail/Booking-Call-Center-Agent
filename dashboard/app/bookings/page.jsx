@@ -33,6 +33,37 @@ function DeliveryBadge({ booking }) {
   );
 }
 
+// People who asked to be texted if a time opens up on a full day (Jira 38). Hidden when nobody is waiting.
+function WaitlistCard() {
+  const toast = useToast();
+  const [rows, setRows] = useState([]);
+  const load = useCallback(() => api.listWaitlist().then(setRows).catch(() => {}), []);
+  useEffect(() => { load(); }, [load]);
+  if (rows.length === 0) return null;
+  async function remove(id) {
+    try { await api.removeWaitlistEntry(id); load(); } catch (err) { toast.error(err.message); }
+  }
+  return (
+    <div className="card">
+      <h2>Waiting list</h2>
+      <p className="muted" style={{ fontSize: 13, margin: '2px 0 10px' }}>Customers who found a day full. When someone cancels, the first in line are texted automatically.</p>
+      <table>
+        <thead><tr><th>Day</th><th>Customer</th><th>Phone</th><th>Service</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id}>
+              <td style={{ whiteSpace: 'nowrap' }}>{new Date(`${r.date}T12:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}</td>
+              <td>{r.name}</td><td>{r.phone}</td><td>{r.service_name ?? '—'}</td>
+              <td><span className={`badge ${r.status === 'notified' ? 'info' : 'warning'}`}>{r.status === 'notified' ? 'Texted' : 'Waiting'}</span></td>
+              <td><button type="button" className="ghost" onClick={() => remove(r.id)}>Remove</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function BookingsInner() {
   const toast = useToast();
   const [q, setQ] = useState('');
@@ -81,14 +112,14 @@ function BookingsInner() {
     <div className="stack">
       <div>
         <h1>Bookings</h1>
-        <p className="muted" style={{ marginTop: 4 }}>Search by customer name or phone — for when someone calls asking about their appointment.</p>
+        <p className="muted" style={{ marginTop: 4 }}>Search by customer name, phone or email — for when someone calls asking about their appointment.</p>
       </div>
 
       <div className="card">
         <div className="row" style={{ marginBottom: 16 }}>
           <div style={{ flex: 1, position: 'relative', minWidth: 220 }}>
             <Search size={15} style={{ position: 'absolute', left: 10, top: 10, color: 'var(--text-faint)' }} />
-            <input placeholder="Search name or phone..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
+            <input placeholder="Search name, phone or email..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
           </div>
           <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 160 }}>
             <option value="confirmed">Confirmed</option>
@@ -111,7 +142,7 @@ function BookingsInner() {
               {results.slice(0, shown).map((b) => (
                 <tr key={b.id} style={{ cursor: b.status === 'confirmed' ? 'pointer' : 'default' }} onClick={() => b.status === 'confirmed' && setModal({ mode: 'edit', booking: b })}>
                   <td>{DateTime.formatDateTime(b.start_time)}</td>
-                  <td>{b.customer_name}</td>
+                  <td>{b.customer_name}{b.customer_email && <div className="muted" style={{ fontSize: 12 }}>{b.customer_email}</div>}</td>
                   <td>{b.phone}</td>
                   <td>{b.service_name}</td>
                   <td><span className="badge neutral">{{ call: 'Phone', web: 'Web', dashboard: 'Dashboard' }[b.created_via] ?? 'Dashboard'}</span></td>
@@ -129,6 +160,8 @@ function BookingsInner() {
           </div>
         )}
       </div>
+
+      <WaitlistCard />
 
       {modal && (
         <BookingModal

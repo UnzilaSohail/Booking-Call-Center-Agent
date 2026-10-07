@@ -5,6 +5,7 @@ export const GLOSSARY = {
   cutoff: ['Change cutoff', 'How long before an appointment a customer can still change or cancel it by phone, link or the My appointments page. After that they have to call the business.'],
   minNotice: ['Minimum notice', 'How soon from now a customer may book. 60 means nobody can book an appointment starting in less than an hour.'],
   bookingWindow: ['Booking window', 'How far ahead customers may book, in days. Leave empty for no limit.'],
+  reviewLink: ['Google review link', 'The web address where customers can leave you a Google review. We text it once, about 2 hours after a visit, never at night, and never twice within 30 days to the same person.'],
   retention: ['Retention', 'How many days call recordings and transcripts are kept before they are erased. The call itself (when, how long, how it ended) is always kept.'],
   transferNumber: ['Fallback transfer number', 'Where the AI sends a call when it cannot help and no department or staff number applies. Usually the front desk.'],
   departments: ['Call transfer', 'Which phone number the AI hands a call to for each kind of request, for example billing questions to the office and emergencies to the on-call mobile.'],

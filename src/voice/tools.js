@@ -283,7 +283,7 @@ export function createToolHandlers(business, callSid, { isTest = false } = {}) {
         const current = await withTenant(business.id, (c) => c('bookings').findOne({ _id: bookingId }));
         if (!current) return { error: 'booking not found' };
         assertWithinChangeCutoff(business, current);
-        await cancelBooking(business.id, bookingId);
+        await cancelBooking(business.id, bookingId, { via: 'call' });
         return { bookingId, status: 'cancelled' };
       } catch (err) {
         if (err instanceof BookingError) return { error: err.message };
