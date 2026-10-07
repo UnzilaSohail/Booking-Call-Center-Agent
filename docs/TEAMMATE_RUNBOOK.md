@@ -188,6 +188,17 @@ Cloudflare (hostnames `bookingagent.sparkmind.online` and `localhost`). It needs
 - Local development and tests need no keys: with none set, the check is off. To test it locally use Cloudflare's own test keys: site `1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA` (always pass).
 - If Cloudflare is unreachable the visitor is let through (and it is logged), so a Cloudflare outage cannot stop customers booking.
 
+## 7g. Text code before an online booking, and no-show marking (Jira 46, 47)
+
+- **Text code (OFF by default):** an owner can switch on, in Settings > Business ("Text customers a code to confirm their phone number..."), a check where every online
+  booking needs a 6-digit code texted to the customer's number before it is confirmed. This stops anyone booking with somebody else's number. It costs one text per booking.
+  **Switch it on only after Twilio texting really reaches phones (AIN-392, A2P registration)**: a code nobody receives would block all online booking for that business.
+  Test first with `npm run sms:check`, then turn it on for one business and book on the live page with a real phone: the code must arrive within a minute.
+  If texts cannot be sent at all (no Twilio) booking is never blocked.
+- `npm run migrate` adds one more index (`booking_codes`, removed automatically after 10 minutes).
+- **No-shows:** on the Bookings page each past visit has a "Mark no-show" button. The Overview shows the no-show rate only when staff have marked at least one; the monthly report too.
+- The Overview "No-show protection" card and the platform console's "Value delivered to clients" card read the same numbers (last 30 days).
+
 ## 8. Housekeeping
 
 - `pm2 logs booking-backend --lines 0` then watch briefly for unexpected errors after

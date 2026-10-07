@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   BookingError, getAvailability, listBookings,
-  createBooking, rescheduleBooking, cancelBooking, getDashboardStats,
+  createBooking, rescheduleBooking, cancelBooking, getDashboardStats, setNoShow,
 } from '../services/bookingService.js';
 import { getAnalytics } from '../services/analyticsService.js';
 import { requireArea } from '../auth.js';
@@ -74,10 +74,11 @@ bookingsRouter.post('/bookings', gate, async (req, res, next) => {
 // PATCH /bookings/:id — reschedule (startTime) and/or status change.
 bookingsRouter.patch('/bookings/:id', gate, async (req, res, next) => {
   try {
-    const { startTime, status } = req.body ?? {};
-    if (!startTime && !status) return res.status(400).json({ error: 'nothing to update' });
+    const { startTime, status, noShow } = req.body ?? {};
+    if (!startTime && !status && typeof noShow !== 'boolean') return res.status(400).json({ error: 'nothing to update' });
 
     let updated;
+    if (typeof noShow === 'boolean') updated = await setNoShow(req.businessId, req.params.id, noShow);
     if (startTime) updated = await rescheduleBooking(req.businessId, req.params.id, startTime);
     if (status === 'cancelled') updated = await cancelBooking(req.businessId, req.params.id);
     res.json(updated);

@@ -11,6 +11,8 @@ import { createBooking, cancelBooking } from '../src/services/bookingService.js'
 import { reminderTexts } from '../src/notifications/notify.js';
 import { runReminderSweepOnce } from '../src/notifications/reminder-worker.js';
 import { cancelNextByReply } from '../src/webhooks/twilio.js';
+import { setNoShow } from '../src/services/bookingService.js';
+import jwt from 'jsonwebtoken';
 import { joinWaitlist, notifyWaitlistForCancellation, listWaitlist } from '../src/services/waitlistService.js';
 import { runReviewSweepOnce } from '../src/services/reviewService.js';
 import { getImpact } from '../src/services/analyticsService.js';
@@ -214,7 +216,7 @@ describe('reminders, waiting list, reviews and reports', { skip }, () => {
     assert.match(subject, /Glow: your September 2026/);
     assert.match(text, /Calls answered by the AI receptionist: \d+/);
     assert.match(text, /While you were closed: the AI answered 3 calls and made 1 booking worth \$40/);
-    const quiet = formatReport({ name: 'Glow' }, { calls: 0, booked: 0, bookings: 0, revenue: 0, newCustomers: 0, cancelled: 0, topService: null, impact: { afterHours: { calls: 0, bookings: 0, value: 0 }, reminders: { sent: 0, cancelledInTime: 0, valueFreed: 0, viaReply: 0, waitlistRefilled: 0 } } }, 'x');
+    const quiet = formatReport({ name: 'Glow' }, { calls: 0, booked: 0, bookings: 0, revenue: 0, newCustomers: 0, cancelled: 0, topService: null, impact: { noShows: { count: 0, visits: 0, ratePct: null }, afterHours: { calls: 0, bookings: 0, value: 0 }, reminders: { sent: 0, cancelledInTime: 0, valueFreed: 0, viaReply: 0, waitlistRefilled: 0 } } }, 'x');
     assert.doesNotMatch(quiet.text, /While you were closed|Reminders:|Waiting list/);
   });
 
@@ -237,5 +239,56 @@ describe('reminders, waiting list, reviews and reports', { skip }, () => {
     await runMonthlyReportSweepOnce({ send, now });
     assert.equal(mine().length, 1, 'owner turned it off: nothing more');
     await db.collection('businesses').updateOne({ _id: t.businessId }, { $set: { monthly_report_enabled: true } });
+  });
+
+  // ---------------- no-shows marked by staff (Jira 46) ----------------
+  it('EN-17 staff can mark a past visit as a no-show and undo it; a future or cancelled booking cannot be marked', async () => {
+    const past = new Date(Date.now() - 5 * 3_600_000);
+    const mk = (status, start) => db.collection('bookings').insertOne({ _id: newId(), business_id: t.businessId, customer_name: 'Nora Show', phone: '+15550109100', service_id: svc, staff_id: staff, start_time: start, end_time: new Date(start.getTime() + 1_800_000), status, created_at: new Date() }).then((r) => r.insertedId);
+    const happened = await mk('confirmed', past);
+    const future = await mk('confirmed', new Date(Date.now() + 5 * 3_600_000));
+    const cancelled = await mk('cancelled', new Date(Date.now() - 6 * 3_600_000));
+    assert.equal((await setNoShow(t.businessId, happened, true)).no_show, true);
+    assert.equal((await setNoShow(t.businessId, happened, false)).no_show, false, 'undo');
+    for (const id of [future, cancelled]) await assert.rejects(() => setNoShow(t.businessId, id, true), /already happened/);
+  });
+
+  it('EN-18 the no-show rate is marked no-shows over past confirmed visits, and review texts skip no-shows', async () => {
+    const from = new Date(Date.now() - 3 * 86_400_000); const to = new Date(Date.now() + 60_000);
+    const before = (await getImpact(t.businessId, from, to)).noShows;
+    const start = (h) => new Date(Date.now() - h * 3_600_000);
+    for (const [i, flag] of [[3, true], [4, false], [5, false], [6, false]]) {
+      await db.collection('bookings').insertOne({ _id: newId(), business_id: t.businessId, customer_name: `V${i}`, phone: `+1555010911${i}`, service_id: svc, staff_id: staff, start_time: start(i + 30), end_time: start(i + 29.5), status: 'confirmed', no_show: flag, created_at: new Date() });
+    }
+    const after = (await getImpact(t.businessId, from, to)).noShows;
+    assert.equal(after.count - before.count, 1);
+    assert.equal(after.visits - before.visits, 4);
+    const noon = DateTime.now().setZone(NY).startOf('day').plus({ hours: 12 });
+    const baseRow = { business_id: t.businessId, service_id: svc, staff_id: staff, status: 'confirmed', created_at: new Date(), start_time: new Date(noon.toMillis() - 3 * 3_600_000), end_time: new Date(noon.toMillis() - 2.5 * 3_600_000) };
+    await db.collection('bookings').insertMany([{ ...baseRow, _id: newId(), customer_name: 'Never Came', phone: '+15550109120', no_show: true }, { ...baseRow, _id: newId(), customer_name: 'Came Along', phone: '+15550109121' }]);
+    await db.collection('businesses').updateOne({ _id: t.businessId }, { $set: { review_link: 'https://g.page/r/example/review' } });
+    const texts = [];
+    await runReviewSweepOnce({ send: async (id, to) => { texts.push(to); }, now: noon.toMillis(), businessIds: [t.businessId] });
+    assert.ok(texts.includes('+15550109121'), 'the customer who came is asked');
+    assert.ok(!texts.includes('+15550109120'), 'the one who did not come is not');
+  });
+
+  it('EN-19 the follow-up text also invites the customer to book again', async () => {
+    const noon = DateTime.now().setZone(NY).startOf('day').plus({ hours: 12 });
+    await db.collection('bookings').insertOne({ _id: newId(), business_id: t.businessId, customer_name: 'Rita Return', phone: '+15550109130', service_id: svc, staff_id: staff, status: 'confirmed', created_at: new Date(), start_time: new Date(noon.toMillis() - 3 * 3_600_000), end_time: new Date(noon.toMillis() - 2.5 * 3_600_000) });
+    await db.collection('businesses').updateOne({ _id: t.businessId }, { $set: { review_link: 'https://g.page/r/example/review' } });
+    const texts = [];
+    await runReviewSweepOnce({ send: async (id, to, body) => { if (to === '+15550109130') texts.push(body); }, now: noon.toMillis(), businessIds: [t.businessId] });
+    assert.equal(texts.length, 1);
+    assert.match(texts[0], new RegExp(`Book here: .*/book/${slug}`));
+  });
+
+  it('EN-20 the platform sums what the product delivered across companies', async () => {
+    const token = jwt.sign({ role: 'platform', platformAdminId: 'p1' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const res = await fetch(`${base}/api/platform/analytics`, { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 200);
+    const { impact } = await res.json();
+    for (const k of ['afterHoursValue', 'afterHoursBookings', 'cancelledInTime', 'valueFreed', 'remindersSent', 'noShows', 'visits']) assert.equal(typeof impact[k], 'number', k);
+    assert.ok(impact.afterHoursValue >= 40, 'includes this test business');
   });
 });

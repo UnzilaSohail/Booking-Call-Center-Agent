@@ -48,6 +48,7 @@ export function formatReport(business, stats, label) {
     `New customers: ${stats.newCustomers}`,
     `Cancellations: ${stats.cancelled}`, '',
   ];
+  if (impact.noShows.count > 0) lines.push(`No-shows: ${impact.noShows.count} of ${impact.noShows.visits} visits (${impact.noShows.ratePct}%), as marked by your team.`);
   if (impact.afterHours.calls) lines.push(`While you were closed: the AI answered ${plural(impact.afterHours.calls, 'call')} and made ${plural(impact.afterHours.bookings, 'booking')} worth ${money(impact.afterHours.value)}. Without it those callers would have reached voicemail.`);
   if (impact.reminders.sent) lines.push(`Reminders: ${impact.reminders.sent} sent. ${plural(impact.reminders.cancelledInTime, 'customer')} cancelled in time after a reminder (${money(impact.reminders.valueFreed)} of time you could re-book instead of an empty chair).`);
   if (impact.reminders.waitlistRefilled) lines.push(`Waiting list: ${plural(impact.reminders.waitlistRefilled, 'freed-up slot')} filled by someone who was waiting.`);

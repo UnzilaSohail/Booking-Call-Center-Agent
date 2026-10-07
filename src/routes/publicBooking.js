@@ -14,6 +14,7 @@ import { BookingError, getAvailability, isSlotOffered, createBooking } from '../
 import { normalizePhone, recordWebConsent } from '../services/customerService.js';
 import { joinWaitlist } from '../services/waitlistService.js';
 import { requireHuman } from '../turnstile.js';
+import { phoneCodeRequired, sendPhoneCode, checkPhoneCode, consumePhoneCode } from '../services/phoneCode.js';
 
 export const publicBookingRouter = Router();
 
@@ -186,6 +187,7 @@ publicBookingRouter.get('/public/:slug', loadBusiness, async (req, res, next) =>
       description: b.listing?.description ?? null,
       categories: b.listing?.categories ?? [],
       timezone: b.timezone,
+      phoneVerification: phoneCodeRequired(b),
       hours: b.hours ?? [],
       locations: locations.map((l) => ({ id: l._id, name: l.name, address: l.address ?? null })),
     });
@@ -254,6 +256,23 @@ function handleError(err, res, next) {
   next(err);
 }
 
+// ---- text code before booking -------------------------------------------------------------
+publicBookingRouter.post('/public/:slug/booking-code', loadBusiness, async (req, res, next) => {
+  try {
+    const b = req.business;
+    const phone = normalizePhone(String(req.body?.phone ?? ''));
+    if (!/^\+\d{10,15}$/.test(phone)) return res.status(400).json({ error: 'a valid phone number is required' });
+    if (!phoneCodeRequired(b)) return res.status(400).json({ error: 'a code is not needed for this business' });
+    if (await tooMany(`bookcode:${req.ip}`, 10, 15 * 60_000) || await tooMany(`bookcode-phone:${phone}`, 5, 60 * 60_000)) return res.status(429).json({ error: 'too many codes requested, try again later' });
+    if (!(await requireHuman(req, res))) return;
+    const result = await sendPhoneCode(b, phone);
+    if (result === 'failed') return res.status(503).json({ error: `We could not text that number. Check it, or call ${b.contact_phone || b.name} to book.` });
+    res.json({ ok: true, wait: result === 'wait' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---- waiting list ------------------------------------------------------------------------
 // A day with no free time: the customer asks to be texted if one opens up (Jira 38).
 publicBookingRouter.post('/public/:slug/waitlist', loadBusiness, async (req, res, next) => {
@@ -298,7 +317,8 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
     if (body.website) return res.status(201).json({ booking: { id: 'ok' } });
 
     if (await tooMany(`book:${req.ip}`, 10, 10 * 60_000)) return res.status(429).json({ error: 'too many booking attempts, try again later' });
-    if (!(await requireHuman(req, res))) return;
+    // With a text code the visitor has already passed the bot check (it guards the code request) and proved the number is theirs.
+    if (!phoneCodeRequired(b) && !(await requireHuman(req, res))) return;
 
     const name = String(body.name ?? '').trim();
     const phone = normalizePhone(String(body.phone ?? ''));
@@ -315,6 +335,10 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
     if (await tooMany(`phone:${b._id}:${phone}`, 5, 60 * 60_000)) return res.status(429).json({ error: 'too many bookings for this phone number, try again later' });
     if (await tooMany(`cap:${b._id}`, DAILY_CAP, 24 * 60 * 60_000)) return res.status(429).json({ error: 'online booking is full for today, please call instead' });
 
+    if (phoneCodeRequired(b)) {
+      const check = await checkPhoneCode(b, phone, body.phoneCode);
+      if (check !== 'ok') return res.status(400).json({ error: check === 'missing' ? 'Enter the 6-digit code we texted you.' : 'That code is not right or has expired.', needsCode: true });
+    }
     const locationId = body.locationId ? String(body.locationId) : undefined;
     const candidates = await candidatesFor(b._id, body.serviceId, body.staffId, locationId);
     const location = locationId ? await withTenant(b._id, (c) => c('locations').findOne({ _id: locationId })) : null;
@@ -333,6 +357,7 @@ publicBookingRouter.post('/public/:slug/bookings', loadBusiness, async (req, res
           customerName: name, phone, customerEmail: email || null, serviceId: body.serviceId,
           staffId: staff?._id, locationId, startTime: body.startTime, idempotencyKey, createdVia: 'web',
         });
+        if (phoneCodeRequired(b)) await consumePhoneCode(b, phone);
         return res.status(201).json({
           booking: { id: booking.id, reference: booking.reference, startTime: booking.start_time, endTime: booking.end_time, serviceName: service.name, staffName: staff?.name ?? null },
           business: { name: b.name, address: location?.address ?? b.address ?? null, locationName: location?.name ?? null, city: b.listing?.city ?? null, timezone: b.timezone, phone: b.contact_phone ?? null },

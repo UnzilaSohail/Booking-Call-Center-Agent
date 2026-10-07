@@ -149,6 +149,8 @@ export default function BookPageClient() {
   const [submitted, setSubmitted] = useState(false);
   const [human, setHuman] = useState('');
   const [fresh, setFresh] = useState(0);
+  const [codeSent, setCodeSent] = useState(false); // the text code that proves the number is theirs (Jira 47)
+  const [code, setCode] = useState('');
 
   async function submit(e) {
     e.preventDefault();
@@ -157,13 +159,19 @@ export default function BookPageClient() {
       setError('Please fix the highlighted fields.');
       return;
     }
-    if (turnstileOn && !human) { setError('Please tick the "I am human" box first.'); return; }
+    if (turnstileOn && !human && !(biz.phoneVerification && codeSent)) { setError('Please tick the "I am human" box first.'); return; }
+    if (biz.phoneVerification && !codeSent) {
+      // first press: text the code, then show the box to type it in
+      setSaving(true); setError(null);
+      try { await publicApi.requestBookingCode(slug, { phone: form.phone, turnstileToken: human }); setCodeSent(true); } catch (err) { setError(err.message); setFresh((n) => n + 1); } finally { setSaving(false); }
+      return;
+    }
     setSaving(true); setError(null);
     key.current ??= crypto.randomUUID();
     try {
       setResult(await publicApi.book(slug, {
         serviceId: service.id, staffId: staffChoice, locationId: location?.id, startTime: slot, name: form.name, phone: form.phone, email: form.email,
-        consent: { sms: form.smsConsent, email: form.emailConsent }, idempotencyKey: key.current, website: form.website, turnstileToken: human,
+        consent: { sms: form.smsConsent, email: form.emailConsent }, idempotencyKey: key.current, website: form.website, turnstileToken: human, phoneCode: code,
       }));
     } catch (err) {
       key.current = null;
@@ -329,7 +337,10 @@ export default function BookPageClient() {
                   <form onSubmit={submit} noValidate>
                     <h2 style={{ fontSize: 19, margin: '0 0 12px' }}>Your details</h2>
                     <TextField label="Your name" required maxLength={100} autoComplete="name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} validate={validateName} showErrors={submitted} />
-                    <TextField label="Mobile number" required type="tel" autoComplete="tel" placeholder="(555) 123-4567" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} validate={validatePhone} showErrors={submitted} hint="We text your confirmation here." />
+                    <TextField label="Mobile number" required type="tel" autoComplete="tel" placeholder="(555) 123-4567" value={form.phone} onChange={(v) => { setForm({ ...form, phone: v }); setCodeSent(false); setCode(''); }} validate={validatePhone} showErrors={submitted} hint={biz.phoneVerification ? 'We text you a code to confirm this number, then your confirmation.' : 'We text your confirmation here.'} />
+                    {codeSent && (
+                      <TextField label="Code we texted you" required inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6 digits" value={code} onChange={(v) => setCode(v.replace(/\D/g, ''))} hint={`Sent to ${form.phone}. It can take a minute.`} />
+                    )}
                     <TextField label="Email" optional type="email" autoComplete="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} validate={validateEmail} showErrors={submitted} />
                     <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
                     <label style={{ display: 'flex', gap: 8, fontSize: 13, margin: '4px 0 14px', alignItems: 'flex-start' }}>
@@ -340,7 +351,7 @@ export default function BookPageClient() {
                     {error && <p className="error-text" role="alert">{error}</p>}
                     <div className="row">
                       <button type="button" onClick={() => setStep(2)} disabled={saving}>Back</button>
-                      <button type="submit" className="primary" disabled={saving}>{saving ? 'Booking...' : 'Confirm booking'}</button>
+                      <button type="submit" className="primary" disabled={saving}>{saving ? (codeSent || !biz.phoneVerification ? 'Booking...' : 'Sending code...') : (biz.phoneVerification && !codeSent ? 'Text me a code' : 'Confirm booking')}</button>
                     </div>
                   </form>
                 )}

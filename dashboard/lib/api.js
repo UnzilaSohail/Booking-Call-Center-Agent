@@ -137,6 +137,7 @@ export const api = {
   },
   createBooking: (payload) => request('/api/bookings', { method: 'POST', body: { ...payload, createdVia: 'dashboard' }, tokenStore: companyTokenStore }),
   rescheduleBooking: (id, startTime) => request(`/api/bookings/${id}`, { method: 'PATCH', body: { startTime }, tokenStore: companyTokenStore }),
+  markNoShow: (id, noShow) => request(`/api/bookings/${id}`, { method: 'PATCH', body: { noShow }, tokenStore: companyTokenStore }),
   cancelBooking: (id) => request(`/api/bookings/${id}`, { method: 'DELETE', tokenStore: companyTokenStore }),
 
   getStats: () => request('/api/stats', { tokenStore: companyTokenStore }),
@@ -203,6 +204,7 @@ export const publicApi = {
   business: (slug) => request(`/api/public/${slug}`),
   services: (slug) => request(`/api/public/${slug}/services`),
   staff: (slug, serviceId, locationId) => request(`/api/public/${slug}/staff?${new URLSearchParams({ serviceId, ...(locationId ? { locationId } : {}) })}`),
+  requestBookingCode: (slug, body) => request(`/api/public/${slug}/booking-code`, { method: 'POST', body }),
   joinWaitlist: (slug, body) => request(`/api/public/${slug}/waitlist`, { method: 'POST', body }),
   availability: (slug, params) => request(`/api/public/${slug}/availability?${new URLSearchParams(params)}`),
   book: (slug, body) => request(`/api/public/${slug}/bookings`, { method: 'POST', body }),

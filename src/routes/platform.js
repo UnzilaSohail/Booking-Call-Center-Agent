@@ -10,6 +10,7 @@ import { computeUsage, computeInvoiceAmounts } from '../services/billingService.
 import { addDemoData, removeDemoData, demoStatus } from '../services/demoData.js';
 import { isLocked, unlockLogin } from '../rateLimit.js';
 import { checkPassword } from '../passwordPolicy.js';
+import { getImpact } from '../services/analyticsService.js';
 
 export const platformRouter = Router();
 
@@ -460,7 +461,20 @@ platformRouter.get('/analytics', async (req, res, next) => {
     const curCost = curMinutes * (twilioRate + geminiRate);
     const prevCost = prevMinutes * (twilioRate + geminiRate);
 
+    // What the product delivered to all active clients in the last 30 days (the same numbers each owner sees on their Overview).
+    const impactBusinesses = await db.collection('businesses').find({ status: { $ne: 'suspended' } }, { projection: { _id: 1 } }).limit(300).toArray();
+    const impacts = await Promise.all(impactBusinesses.map((b) => getImpact(b._id, trendStart, new Date(now.getTime() + 60_000)).catch(() => null)));
+    const sum = (pick) => impacts.reduce((n, i) => n + (i ? pick(i) : 0), 0);
+    const visits = sum((i) => i.noShows.visits);
+    const impact = {
+      afterHoursValue: sum((i) => i.afterHours.value), afterHoursBookings: sum((i) => i.afterHours.bookings), afterHoursCalls: sum((i) => i.afterHours.calls),
+      remindersSent: sum((i) => i.reminders.sent), cancelledInTime: sum((i) => i.reminders.cancelledInTime), valueFreed: sum((i) => i.reminders.valueFreed),
+      waitlistRefilled: sum((i) => i.reminders.waitlistRefilled), noShows: sum((i) => i.noShows.count), visits,
+      noShowRatePct: visits ? Math.round((sum((i) => i.noShows.count) / visits) * 1000) / 10 : null,
+    };
+
     res.json({
+      impact,
       totalCompanies: (byStatus.active ?? 0) + (byStatus.suspended ?? 0),
       activeCompanies: byStatus.active ?? 0,
       suspendedCompanies: byStatus.suspended ?? 0,

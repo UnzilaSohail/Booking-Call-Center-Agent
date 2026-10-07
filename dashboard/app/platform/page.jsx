@@ -148,6 +148,20 @@ function OverviewInner() {
 
       {error && <p className="error-text">{error}</p>}
 
+      {analytics?.impact && (
+        <div className="hero-card" style={{ padding: '20px 24px' }}>
+          <div>
+            <h2 style={{ color: '#fff', margin: 0, fontSize: 18 }}>Value delivered to clients (last 30 days)</h2>
+            <p style={{ margin: '4px 0 0' }}>What the product did for every active company, added up.</p>
+          </div>
+          <div className="row" style={{ gap: 28, flexWrap: 'wrap' }}>
+            <div className="agent-card"><b><CountUp value={`$${analytics.impact.afterHoursValue.toLocaleString()}`} /></b><small>booked by the AI while businesses were closed ({analytics.impact.afterHoursBookings} bookings)</small></div>
+            <div className="agent-card"><b><CountUp value={analytics.impact.cancelledInTime} /></b><small>customers cancelled in time after a reminder (${analytics.impact.valueFreed.toLocaleString()} of time freed)</small></div>
+            <div className="agent-card"><b><CountUp value={analytics.impact.remindersSent} /></b><small>reminder texts sent{analytics.impact.waitlistRefilled ? `, ${analytics.impact.waitlistRefilled} slots refilled from waiting lists` : ''}</small></div>
+          </div>
+        </div>
+      )}
+
       <div className="stat-cards">
         <StatCard
           icon={CalendarDays} iconColor={ACCENT} iconBg={ACCENT_SOFT}

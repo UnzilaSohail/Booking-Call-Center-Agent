@@ -1,6 +1,6 @@
 # Walkthrough videos
 
-**Full product walkthrough (for the boss and for clients)**: `walkthrough-full.webm`, about 10 minutes, English captions, no sound.
+**Full product walkthrough (for the boss and for clients)**: `walkthrough-full.webm`, about 9 minutes, English captions, no sound.
 It shows the redesigned product on demo data: the customer's first click to a confirmed booking, the AI receptionist, the owner's
 dashboard (overview, calls with transcripts, calendar, bookings, customers, team, billing, settings, dark mode, phone), the platform console
 (including the demo-data button) and a new business signing up. Re-record with `npm run demo:walkthrough`

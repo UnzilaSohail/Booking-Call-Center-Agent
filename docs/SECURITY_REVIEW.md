@@ -43,8 +43,10 @@ Deploy: these need the new backend **and** a dashboard rebuild + restart to reac
 ## Fixed in round 3 (8 October)
 - **Fake bookings and form spam:** a Cloudflare Turnstile bot check now guards the booking, waiting-list, signup, sign-in-code and "tell us what you need" forms (AIN-433). The server verifies the one-time token with Cloudflare; no keys set means the check is off. Switch-on steps: `docs/TEAMMATE_RUNBOOK.md` section 7f. A bot check does not prove the phone number belongs to the person booking; if that abuse still happens, add a text code before confirming.
 
+- **Phone ownership:** an owner can switch on a 6-digit text code before an online booking is confirmed (AIN-454). It is OFF by default, because a code nobody receives would block booking; turn it on once Twilio texting really delivers. Wrong guesses are limited, each code works once.
+
 ## Still open
-1. **Phone ownership.** Anyone who passes the bot check can still book with someone else's number (limited to 8 bookings per number per day). A text code before confirming would close this (it costs a text per booking).
+1. **Texting must work first.** The code check only protects once Twilio texting really reaches customers (AIN-392, US registration).
 2. **Confirmation links must point at the live site.** `PUBLIC_DASHBOARD_URL` has to be set on the server; check with one real test booking. (AIN-439, teammate)
 3. **Stripe:** when card payments are switched on, set `CSP_MODE=report` for the first day and check the browser console on the Billing page, then switch back to enforce.
 4. Scripts inside the page are strictly controlled, but inline *styles* are allowed (the app uses them everywhere); the risk from that is small.

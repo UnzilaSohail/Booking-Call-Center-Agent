@@ -53,7 +53,8 @@ try {
     await slide(page, {
       kicker: 'What you will see',
       title: 'From a customer’s first click to the platform console',
-      lines: ['1. The customer: find a business, book in under a minute, manage the appointment', '2. The AI receptionist: a phone call becomes a booking, with a written summary', '3. The business owner: calendar, customers, calls, billing, settings', '4. The platform team: every company in one console, with moderation', '5. A new business signing up, and why this is safe to rely on'],
+      lines: ['1. The customer: find a business, book in under a minute, manage the appointment', '2. The AI receptionist: a phone call becomes a booking, with a written summary', '3. The business owner: calendar, customers, calls, billing, settings',
+        '   plus reminders customers can answer, a waiting list, review requests and no-show tracking', '4. The platform team: every company in one console, with moderation', '5. A new business signing up, and why this is safe to rely on'],
     }, 8000);
   }
 
@@ -158,6 +159,8 @@ try {
     await pause(page, 6500);
     await cap('Today, this week, revenue, and the value of bookings the AI made on its own');
     await scrollDown(380, 5500);
+    await cap('Two cards owners love: the money the AI earned while the business was closed, and customers who cancelled in time after a reminder');
+    await pause(page, 7500);
     await cap('Bookings and cancellations over time, and what happens to every call');
     await scrollDown(520, 6000);
     await cap('Top services, team performance, and what is coming up');
@@ -173,6 +176,22 @@ try {
     await scrollDown(260, 8000);
   });
 
+  await scene('reminders', async () => {
+    await go(page, '/find', { wait: 300 });
+    await slide(page, {
+      kicker: 'Fewer no-shows',
+      title: 'Reminders customers can answer',
+      lines: [
+        '24 hours before: "Reminder: your Haircut at Glow Studio is tomorrow, 2:30 PM. Reply C to cancel, or change it here: ..."',
+        '2 hours before: the same, "in about 2 hours"',
+        'The customer replies C: the visit is cancelled and the time is free for someone else',
+        'If someone is on the waiting list, they are texted the moment a time opens up',
+        'After the visit: one text asking for a Google review, and an invitation to book again',
+      ],
+      foot: 'Texts respect STOP and are never sent between 9pm and 8am',
+    }, 15000);
+  });
+
   await scene('calendar', async () => {
     await go(page, '/calendar', { wait: 2500 });
     await cap('The calendar, colour-coded by team member. Bookings from phone, web and staff all land here');
@@ -181,8 +200,25 @@ try {
     await cap('Bookings: where each one came from, and whether its confirmation message really went out');
     await pause(page, 4500);
     await type(page, page.getByPlaceholder(/Search name, phone or email/), 'Sara', { delay: 120 });
-    await cap('Someone phones asking about their appointment? Find it by name or number');
+    await cap('Someone phones asking about their appointment? Find it by name, number or email');
     await pause(page, 4500);
+    await page.getByPlaceholder(/Search name, phone or email/).fill('');
+    await pause(page, 1500);
+    await cap('Full day? Customers join a waiting list, and the first in line are texted when someone cancels');
+    await page.mouse.move(760, 420);
+    await page.mouse.wheel(0, 99999);
+    await pause(page, 6500);
+    // past visits come after the upcoming ones: reveal more rows until one has the button
+    for (let i = 0; i < 6 && !(await page.getByRole('button', { name: 'Mark no-show' }).count()); i++) {
+      await page.getByRole('button', { name: 'Show more' }).click().catch(() => {});
+      await pause(page, 500);
+    }
+    const noShow = page.getByRole('button', { name: 'Mark no-show' }).first();
+    if (await noShow.count()) {
+      await cap('After a visit, one click records a no-show. Overview and the monthly report then show the real no-show rate');
+      await click(page, noShow, { after: 2500 });
+      await pause(page, 3500);
+    }
   });
 
   await scene('customers', async () => {
@@ -231,6 +267,12 @@ try {
     await moveTo(page, tip);
     await tip.hover();
     await pause(page, 4000);
+    await page.mouse.move(760, 420);
+    await page.mouse.wheel(0, 99999);
+    await cap('Paste the Google review link: customers get one polite text after each visit. And a monthly report email arrives on the 1st');
+    await pause(page, 8000);
+    await page.mouse.wheel(0, -99999);
+    await pause(page, 800);
     await click(page, page.getByRole('tab', { name: 'Booking & hours' }), { after: 1800 });
     await cap('The booking link to share, the public directory listing, opening hours and holidays');
     await pause(page, 4000);
@@ -267,7 +309,9 @@ try {
     await cap('');
     await login(page, DEMO.platform, DEMO_PASSWORD);
     await cap('Part 4: the platform team. One console for every company that uses the product');
-    await pause(page, 5000);
+    await pause(page, 4000);
+    await cap('At the top: what the product delivered to all clients in 30 days, added up. The proof of value');
+    await pause(page, 6500);
     await scrollDown(520, 4500);
     await cap('Demo data: one button adds a realistic demo business, one button removes it all. Real clients are never touched');
     await scrollDown(700, 6500);
@@ -321,7 +365,7 @@ try {
       kicker: 'Built to be trusted',
       title: 'Reliability you do not see, but depend on',
       lines: ['Two people can never book the same slot: 20 tried at once, exactly 1 won', 'Reminders go out exactly once; cancelled slots free up by themselves', 'If a call is cut by the server, its transcript and summary are still saved', 'Restarts wait for live calls to finish; call recordings play through short-lived private links', 'Every text and email is tracked, and failures show up under "Needs attention"'],
-      foot: '237 automated tests · browser checks for phones and accessibility · every push is tested on GitHub',
+      foot: '287 automated tests · browser checks for phones and accessibility · every push is tested on GitHub',
     }, 11000);
     await slide(page, {
       kicker: 'Why it sells',

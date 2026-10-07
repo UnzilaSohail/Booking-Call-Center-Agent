@@ -11,6 +11,7 @@ import { checkPassword } from '../src/passwordPolicy.js';
 import { createCache } from '../src/services/directoryCache.js';
 import jwt from 'jsonwebtoken';
 import { verifyTurnstile } from '../src/turnstile.js';
+import { hashCode } from '../src/verification.js';
 
 describe('login and input protections', { skip }, () => {
   let db; let server; let base; let t; const email = `sec-${newId().slice(0, 8)}@example.test`;
@@ -180,6 +181,49 @@ describe('login and input protections', { skip }, () => {
       assert.equal(await db.collection('businesses').countDocuments({ name: 'Bot Salon' }), 0, 'no business was created');
     } finally {
       if (saved === undefined) delete process.env.TURNSTILE_SECRET_KEY; else process.env.TURNSTILE_SECRET_KEY = saved;
+    }
+  });
+
+  it('online booking needs the text code when texting works; wrong codes are limited; a code works once; the owner can switch it off (SEC-17)', async () => {
+    const creds = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'];
+    const saved = Object.fromEntries(creds.map((k) => [k, process.env[k]]));
+    for (const k of creds) process.env[k] = 'fake';
+    const slug = `code-${newId().slice(0, 8)}`;
+    const phone = '+15550107720';
+    await db.collection('businesses').updateOne({ _id: t.businessId }, { $set: { slug, booking_page_enabled: true, phone_verification: true } });
+    const staffId = Object.values(t.staffIds)[0];
+    const book = (over = {}) => {
+      const { hh = 0, ...rest } = over;
+      const start = new Date(Date.now() + 2 * 86_400_000); start.setUTCHours(10 + hh, 0, 0, 0); // inside opening hours (09:00-18:00)
+      return fetch(`${base}/api/public/${slug}/bookings`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ serviceId: t.serviceIds.haircut, staffId, startTime: start.toISOString(), name: 'Code Person', phone, consent: { sms: true }, ...rest }) });
+    };
+    const setCode = async (code) => db.collection('booking_codes').replaceOne({ _id: `${t.businessId}:${phone}` }, { _id: `${t.businessId}:${phone}`, business_id: t.businessId, phone, code_hash: await hashCode(code), attempts: 0, created_at: new Date(), expires_at: new Date(Date.now() + 600_000) }, { upsert: true });
+    try {
+      assert.equal((await (await fetch(`${base}/api/public/${slug}`)).json()).phoneVerification, true, 'the page is told to ask for a code');
+      let r = await book();
+      assert.equal(r.status, 400);
+      assert.equal((await r.json()).needsCode, true, 'no code: refused');
+      await setCode('424242');
+      assert.equal((await book({ phoneCode: '111111' })).status, 400, 'wrong code: refused');
+      for (let i = 0; i < 6; i++) { await clearRateLimits(); await book({ phoneCode: '999999' }); } // (the per-phone and per-address booking limits would stop us first)
+      await clearRateLimits();
+      assert.equal((await book({ phoneCode: '424242' })).status, 400, 'too many wrong guesses: even the right code is refused');
+      await setCode('424242');
+      await clearRateLimits();
+      r = await book({ phoneCode: '424242', hh: 1 });
+      assert.equal(r.status, 201, JSON.stringify(await r.clone().json()));
+      await clearRateLimits();
+      assert.equal((await book({ phoneCode: '424242', hh: 2 })).status, 400, 'a code works once');
+      await db.collection('businesses').updateOne({ _id: t.businessId }, { $set: { phone_verification: false } });
+      assert.equal((await (await fetch(`${base}/api/public/${slug}`)).json()).phoneVerification, false);
+      assert.equal((await book({ hh: 3 })).status, 201, 'switched off: no code needed');
+      await db.collection('businesses').updateOne({ _id: t.businessId }, { $set: { phone_verification: true } });
+      for (const k of creds) delete process.env[k];
+      assert.equal((await (await fetch(`${base}/api/public/${slug}`)).json()).phoneVerification, false, 'texts cannot be sent here, so nothing to verify with');
+      assert.equal((await book({ hh: 4 })).status, 201);
+    } finally {
+      for (const k of creds) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+      await db.collection('booking_codes').deleteMany({ business_id: t.businessId });
     }
   });
 });

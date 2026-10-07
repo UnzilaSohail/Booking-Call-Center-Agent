@@ -20,7 +20,7 @@ export async function runReviewSweepOnce({ send = sendSms, now = Date.now(), bus
   const withLink = await db.collection('businesses').find({ review_link: { $type: 'string' }, status: { $ne: 'suspended' }, ...(businessIds ? { _id: { $in: businessIds } } : {}) }, { projection: { _id: 1 } }).toArray();
   if (!withLink.length) return 0;
   const due = await withSystemAccess((c) => c('bookings').find({
-    business_id: { $in: withLink.map((b) => b._id) }, status: 'confirmed', is_test: { $ne: true }, review_request_sent_at: null,
+    business_id: { $in: withLink.map((b) => b._id) }, status: 'confirmed', no_show: { $ne: true }, is_test: { $ne: true }, review_request_sent_at: null,
     end_time: { $lte: new Date(now - ASK_AFTER_MS), $gte: new Date(now - GIVE_UP_AFTER_MS) },
   }).limit(100).toArray());
   const businesses = new Map();
@@ -39,7 +39,7 @@ export async function runReviewSweepOnce({ send = sendSms, now = Date.now(), bus
     const optedOut = (await getConsent(b.business_id, b.phone).catch(() => null))?.smsOptIn === false;
     if (recent || optedOut) continue; // marked as handled above, nothing sent
     try {
-      await send(b.business_id, b.phone, `Thanks for visiting ${biz.name}${b.customer_name ? `, ${b.customer_name.split(' ')[0]}` : ''}! If you enjoyed it, a quick Google review would mean a lot to us: ${biz.review_link}`);
+      await send(b.business_id, b.phone, `Thanks for visiting ${biz.name}${b.customer_name ? `, ${b.customer_name.split(' ')[0]}` : ''}! If you enjoyed it, a quick Google review would mean a lot to us: ${biz.review_link}${biz.slug ? ` Ready for your next visit? Book here: ${process.env.PUBLIC_DASHBOARD_URL || 'http://localhost:3002'}/book/${biz.slug}` : ''}`);
       await withTenant(b.business_id, (c) => c('customers').updateOne({ phone: b.phone }, { $set: { last_review_request_at: new Date(now) } }));
       sent++;
     } catch (err) {

@@ -102,6 +102,17 @@ function BookingsInner() {
     return () => clearTimeout(t);
   }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A visit that already happened: staff say whether the customer came. Feeds the no-show rate on Overview and in the monthly report.
+  async function markNoShow(b, flag) {
+    try {
+      await api.markNoShow(b.id, flag);
+      setResults((rows) => rows.map((r) => (r.id === b.id ? { ...r, no_show: flag } : r)));
+      toast.success(flag ? 'Marked as a no-show' : 'No-show removed');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
   function onSaved() {
     toast.success(modal?.mode === 'edit' ? 'Booking updated' : 'Booking created');
     setModal(null);
@@ -137,7 +148,7 @@ function BookingsInner() {
         )}
         {!loading && results.length > 0 && (
           <table className="bookings-table">
-            <thead><tr><th>When</th><th>Customer</th><th>Phone</th><th>Service</th><th>Booked via</th><th>Status</th><th>Confirmation</th></tr></thead>
+            <thead><tr><th>When</th><th>Customer</th><th>Phone</th><th>Service</th><th>Booked via</th><th>Status</th><th>Confirmation</th><th>Visit</th></tr></thead>
             <tbody>
               {results.slice(0, shown).map((b) => (
                 <tr key={b.id} style={{ cursor: b.status === 'confirmed' ? 'pointer' : 'default' }} onClick={() => b.status === 'confirmed' && setModal({ mode: 'edit', booking: b })}>
@@ -148,6 +159,11 @@ function BookingsInner() {
                   <td><span className="badge neutral">{{ call: 'Phone', web: 'Web', dashboard: 'Dashboard' }[b.created_via] ?? 'Dashboard'}</span></td>
                   <td><StatusBadge status={b.status} /></td>
                   <td><DeliveryBadge booking={b} /></td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    {b.status === 'confirmed' && new Date(b.start_time) < new Date() && (b.no_show
+                      ? <span className="row" style={{ gap: 6, flexWrap: 'nowrap', alignItems: 'center' }}><span className="badge danger">No-show</span><button type="button" className="ghost" onClick={() => markNoShow(b, false)}>Undo</button></span>
+                      : <button type="button" className="ghost" onClick={() => markNoShow(b, true)} title="The customer did not come">Mark no-show</button>)}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -420,6 +420,18 @@ export async function rescheduleBooking(businessId, bookingId, startTime) {
   return serialize(updated);
 }
 
+// Staff mark a visit that already happened as a no-show (the customer did not come), or undo it. Only a past, confirmed
+// booking qualifies. The no-show rate in reports is no-shows divided by past confirmed visits (Jira 46).
+export async function setNoShow(businessId, bookingId, flag) {
+  const updated = await withTenant(businessId, (col) => col('bookings').findOneAndUpdate(
+    { _id: bookingId, status: 'confirmed', start_time: { $lt: new Date() } },
+    { $set: { no_show: !!flag, no_show_marked_at: flag ? new Date() : null } },
+    { returnDocument: 'after' }
+  ));
+  if (!updated) throw new BookingError(400, 'only a visit that has already happened (and was not cancelled) can be marked as a no-show');
+  return serialize(updated);
+}
+
 // via: who cancelled ('dashboard' staff, 'call', 'portal', 'link', 'sms_reply'). Recorded so reports can show how many
 // customers cancelled in time after a reminder. Freed time is offered to the waiting list.
 export async function cancelBooking(businessId, bookingId, { via = 'dashboard' } = {}) {

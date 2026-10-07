@@ -75,7 +75,7 @@ const TEMPLATES = (biz, svc, who, when, day) => [
 ];
 
 // ---- one booking row (plus slot locks for future confirmed ones) ----
-function bookingRow(biz, { svc, staff, locationId, customer, start, status, via, now, flawed, cancelledVia }) {
+function bookingRow(biz, { svc, staff, locationId, customer, start, status, via, now, flawed, cancelledVia, noShow }) {
   const id = newId();
   const end = new Date(start.getTime() + svc.duration_minutes * 60_000);
   const past = start < now;
@@ -94,6 +94,7 @@ function bookingRow(biz, { svc, staff, locationId, customer, start, status, via,
     row.cancelled_via = cancelledVia ?? 'portal';
     row.reminder_24h_sent_at = new Date(start.getTime() - 86_400_000); // the reminder is what prompted the cancel
   }
+  if (noShow && status === 'confirmed' && past) { row.no_show = true; row.no_show_marked_at = new Date(start.getTime() + 3_600_000); }
   if (flawed === 'sms') { row.confirmation_sms_status = 'failed'; row.confirmation_sms_error = 'Carrier rejected the message (number cannot receive texts)'; }
   if (flawed === 'sync') { row.sync_status = 'failed'; row.sync_attempts = 3; row.sync_error = 'Google Calendar is not connected for this business'; }
   const locks = status === 'confirmed' && !past ? lockDocs(biz, id, staff?._id ?? null, start, end) : [];
@@ -220,7 +221,7 @@ export async function addDemoData({ listed = false, password = generatePassword(
         const start = day.set({ hour: 9 }).plus({ minutes: 30 * Math.floor(rng() * (Math.floor(room / 30) + 1)) }).toUTC().toJSDate();
         if (!claim(staff, start, svc.duration_minutes + svc.buffer_minutes)) continue;
         const customer = people[Math.floor(rng() * rng() * people.length)];
-        add({ svc, staff, locationId: locationOf(staff), customer, start, status: rng() < (d < 0 ? 0.09 : 0.05) ? 'cancelled' : 'confirmed', via: pickVia(), cancelledVia: pick(['sms_reply', 'sms_reply', 'portal', 'link']) });
+        add({ svc, staff, locationId: locationOf(staff), customer, start, status: rng() < (d < 0 ? 0.09 : 0.05) ? 'cancelled' : 'confirmed', via: pickVia(), cancelledVia: pick(['sms_reply', 'sms_reply', 'portal', 'link']), noShow: d < 0 && rng() < 0.05 });
         break;
       }
     }

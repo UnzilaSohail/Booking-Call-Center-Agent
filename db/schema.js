@@ -52,6 +52,8 @@ export async function ensureIndexes(db) {
 
   // Customer sign-in codes (src/routes/customerPortal.js): one row per customer, expires itself.
   await db.collection('customer_login_codes').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
+  // Booking codes (src/services/phoneCode.js): removed by the database when they expire.
+  await db.collection('booking_codes').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
   // Waiting list (src/services/waitlistService.js): looked up by service + day; rows disappear after the day has passed.
   await db.collection('waitlist').createIndex({ business_id: 1, status: 1, service_id: 1, date: 1 });
   await db.collection('waitlist').createIndex({ expire_at: 1 }, { expireAfterSeconds: 0 });

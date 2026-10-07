@@ -167,7 +167,8 @@ export async function getAnalytics(businessId) {
 // Used by the Overview cards and by the monthly report email.
 export async function getImpact(businessId, from, to) {
   return withTenant(businessId, async (col) => {
-    const [afterHoursRows, sent24, sent2, cancelledRows, viaReply, refilled] = await Promise.all([
+    const visitsTo = new Date(Math.min(to.getTime(), Date.now()));
+    const [afterHoursRows, sent24, sent2, cancelledRows, viaReply, refilled, noShows, visits] = await Promise.all([
       col('call_logs').aggregate([
         { $match: { created_at: { $gte: from, $lt: to }, is_after_hours: true, is_test: { $ne: true } } },
         { $lookup: { from: 'bookings', localField: 'booking_id', foreignField: '_id', as: 'b' } },
@@ -194,11 +195,15 @@ export async function getImpact(businessId, from, to) {
       ]).toArray(),
       col('bookings').countDocuments({ status: 'cancelled', cancelled_via: 'sms_reply', cancelled_at: { $gte: from, $lt: to }, is_test: { $ne: true } }),
       col('waitlist').countDocuments({ status: 'booked', booked_at: { $gte: from, $lt: to } }),
+      // staff-marked no-shows, and all visits that have already happened (confirmed, in the past) to divide by
+      col('bookings').countDocuments({ no_show: true, status: 'confirmed', is_test: { $ne: true }, start_time: { $gte: from, $lt: visitsTo } }),
+      col('bookings').countDocuments({ status: 'confirmed', is_test: { $ne: true }, start_time: { $gte: from, $lt: visitsTo } }),
     ]);
     const ah = afterHoursRows[0] ?? { calls: 0, bookings: 0, value: 0 };
     const cx = cancelledRows[0] ?? { count: 0, value: 0 };
     return {
       afterHours: { calls: ah.calls, bookings: ah.bookings, value: ah.value },
+      noShows: { count: noShows, visits, ratePct: visits ? Math.round((noShows / visits) * 1000) / 10 : null },
       reminders: { sent: sent24 + sent2, cancelledInTime: cx.count, valueFreed: cx.value, viaReply, waitlistRefilled: refilled },
     };
   });

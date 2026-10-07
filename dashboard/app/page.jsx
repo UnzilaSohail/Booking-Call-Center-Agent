@@ -236,7 +236,7 @@ function HomeInner() {
             <p className="muted" style={{ margin: '2px 0 0', fontSize: 13.5 }}>
               {analytics.impact.reminders.sent === 0
                 ? 'Reminders are texted 24 hours and 2 hours before each visit. Customers who cancel after one free the time in advance instead of not showing up.'
-                : `customers cancelled in time after a reminder (last 30 days), freeing $${analytics.impact.reminders.valueFreed.toLocaleString()} of time to re-book. ${analytics.impact.reminders.sent} reminders sent${analytics.impact.reminders.waitlistRefilled ? `, ${analytics.impact.reminders.waitlistRefilled} slot${analytics.impact.reminders.waitlistRefilled === 1 ? '' : 's'} refilled from the waiting list` : ''}.`}
+                : `customers cancelled in time after a reminder (last 30 days), freeing $${analytics.impact.reminders.valueFreed.toLocaleString()} of time to re-book. ${analytics.impact.noShows.count > 0 ? `No-show rate: ${analytics.impact.noShows.ratePct}% (${analytics.impact.noShows.count} of ${analytics.impact.noShows.visits} visits, as marked by your team). ` : ''}${analytics.impact.reminders.sent} reminders sent${analytics.impact.reminders.waitlistRefilled ? `, ${analytics.impact.reminders.waitlistRefilled} slot${analytics.impact.reminders.waitlistRefilled === 1 ? '' : 's'} refilled from the waiting list` : ''}.`}
             </p>
           </div>
         </div>

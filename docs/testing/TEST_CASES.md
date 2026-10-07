@@ -250,6 +250,10 @@ Also: the colour-contrast test (`test/contrast.test.js`) now checks the light an
 | EN-13 | Money saved | Only after-hours calls that became confirmed bookings count | Pass |
 | EN-14 | No-show protection | Customer cancel after a reminder and before the visit counts; staff cancels and cancels with no reminder do not | Pass |
 | EN-15 | Report wording | Plain words; empty sections left out | Pass |
+| EN-17 | Mark a no-show | Only a past, confirmed visit can be marked; undo works; future and cancelled refused | Pass |
+| EN-18 | No-show rate and reviews | Rate = marked no-shows over past confirmed visits; the review text skips no-shows | Pass |
+| EN-19 | Follow-up text | Also invites the customer to book again | Pass |
+| EN-20 | Platform totals | The platform sums the value delivered across companies | Pass |
 | EN-16 | Monthly sweep | Once, days 1 to 3 from 9am, respects the off switch | Pass |
 
 ## SEC — Login and input protections (`test/security.test.js`)
@@ -270,6 +274,7 @@ Also: the colour-contrast test (`test/contrast.test.js`) now checks the light an
 | SEC-13 | Signup with a weak password | 400, nothing created | Pass |
 | SEC-15 | Bot check logic | Off without a key; asks Cloudflare; refuses failures and missing tokens; an outage lets people through | Pass |
 | SEC-16 | Public doors with the key set and no token | Booking, waiting list, leads, signup, sign-in code all refuse (captcha) and create nothing | Pass |
+| SEC-17 | Text code before online booking | Required when texting works; wrong codes limited; works once; owner can switch off; not required when texts cannot be sent | Pass |
 | SEC-14 | Directory cache | Answers repeats from memory, expires, can be cleared, off at 0 | Pass |
 
 ## EM — Email and invites (`test/emailInvite.test.js`)

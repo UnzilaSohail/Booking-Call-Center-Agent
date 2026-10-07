@@ -48,6 +48,7 @@ function BusinessProfileSection() {
         recordingRetentionDays: form.recordingRetentionDays === '' ? null : Number(form.recordingRetentionDays),
         reviewLink: form.reviewLink ?? '',
         monthlyReportEnabled: form.monthlyReportEnabled !== false,
+        phoneVerification: form.phoneVerification === true,
       });
       toast.success('Business profile saved');
     } catch (err) {
@@ -144,6 +145,10 @@ function BusinessProfileSection() {
           <input id="review-link" type="url" value={form.reviewLink ?? ''} onChange={(e) => setForm({ ...form, reviewLink: e.target.value })} placeholder="https://g.page/r/..." />
           <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>After each visit we text the customer once, about 2 hours later, asking for a review. Leave blank to switch this off. Find your link on Google: search your business, then Share, then Ask for reviews.</p>
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <input type="checkbox" style={{ width: 'auto' }} checked={form.phoneVerification === true} onChange={(e) => setForm({ ...form, phoneVerification: e.target.checked })} />
+          Text customers a code to confirm their phone number before an online booking (stops fake bookings; costs one text per booking. Turn on only after a real text reaches your phone)
+        </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <input type="checkbox" style={{ width: 'auto' }} checked={form.monthlyReportEnabled !== false} onChange={(e) => setForm({ ...form, monthlyReportEnabled: e.target.checked })} />
           Email me a report at the start of each month (calls, bookings, money, no-shows)

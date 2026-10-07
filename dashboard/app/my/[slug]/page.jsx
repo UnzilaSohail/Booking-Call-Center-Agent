@@ -137,6 +137,10 @@ function Appointment({ a, token, biz, onChanged }) {
         {a.status !== 'confirmed' ? <span className="badge neutral">{a.status}</span> : a.reference && <span className="badge neutral" title="Your booking reference">Ref {a.reference}</span>}
       </div>
 
+      {!a.upcoming && a.status === 'confirmed' && biz.slug && (
+        <p style={{ margin: '10px 0 0' }}><Link href={`/book/${biz.slug}`}><button type="button">Book again</button></Link></p>
+      )}
+
       {a.upcoming && mode === 'view' && (
         a.canChange ? (
           <div className="row" style={{ marginTop: 12 }}>
