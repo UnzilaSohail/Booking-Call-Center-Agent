@@ -22,7 +22,8 @@ export default function Turnstile({ onToken, resetKey = 0 }) {
       if (gone || !box.current) return;
       widget = ts.render(box.current, { sitekey: SITE_KEY, callback: onToken, 'expired-callback': () => onToken(''), 'error-callback': () => onToken('') });
     }).catch(() => {});
-    return () => { gone = true; onToken(''); if (widget != null) window.turnstile?.remove(widget); };
+    // remove() can throw when the box is already gone from the page (e.g. the form is replaced by the "You're booked" card)
+    return () => { gone = true; onToken(''); try { if (widget != null) window.turnstile?.remove(widget); } catch { /* already removed */ } };
   }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
   return SITE_KEY ? <div ref={box} style={{ margin: '8px 0' }} /> : null;
 }
