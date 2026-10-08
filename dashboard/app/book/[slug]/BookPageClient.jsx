@@ -92,7 +92,7 @@ function WaitlistForm({ slug, service, staffChoice, location, date }) {
       <p className="muted" style={{ fontSize: 13, margin: '2px 0 10px' }}>If someone cancels, we text the people on the list first.</p>
       <TextField label="Your name" required maxLength={100} autoComplete="name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} validate={validateName} showErrors={submitted} />
       <TextField label="Mobile number" required type="tel" autoComplete="tel" placeholder="(555) 123-4567" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} validate={validatePhone} showErrors={submitted} />
-      <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
+      <input name="fax_ref" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
       <label style={{ display: 'flex', gap: 8, fontSize: 13, margin: '4px 0 12px', alignItems: 'flex-start', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>
         <input type="checkbox" style={{ marginTop: 3, width: 'auto', minHeight: 0 }} checked={form.consent} onChange={(e) => setForm({ ...form, consent: e.target.checked })} />
         <span>I agree to be texted if a time opens up. You can reply STOP at any time.</span>
@@ -342,7 +342,7 @@ export default function BookPageClient() {
                       <TextField label="Code we texted you" required inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6 digits" value={code} onChange={(v) => setCode(v.replace(/\D/g, ''))} hint={`Sent to ${form.phone}. It can take a minute.`} />
                     )}
                     <TextField label="Email" optional type="email" autoComplete="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} validate={validateEmail} showErrors={submitted} />
-                    <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
+                    <input name="fax_ref" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
                     <label style={{ display: 'flex', gap: 8, fontSize: 13, margin: '4px 0 14px', alignItems: 'flex-start' }}>
                       <input type="checkbox" style={{ marginTop: 3, width: 'auto', minHeight: 0 }} checked={form.smsConsent && form.emailConsent} onChange={(e) => setForm({ ...form, smsConsent: e.target.checked, emailConsent: e.target.checked })} />
                       <span>I agree to receive booking confirmations and reminders by SMS and email. You can reply STOP at any time.</span>
