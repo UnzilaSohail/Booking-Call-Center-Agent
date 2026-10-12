@@ -11,6 +11,12 @@ test('normalizePhone strips formatting and keeps a leading +', () => {
   assert.equal(normalizePhone(''), '');
 });
 
+test('toCsv neutralises spreadsheet formulas but leaves phone numbers alone', () => {
+  const csv = toCsv([{ name: '=HYPERLINK("http://evil")', phone: '+15550001111', email: 'a@b.co', tags: [] }]);
+  assert.match(csv, /^name,phone,email,tags\n'=HYPERLINK/);
+  assert.match(csv, /,\+15550001111,/);
+});
+
 // KG-08/18b: a bare ten-digit number defaults to NANP (+1) so it normalises the same as
 // the +1-prefixed form of the same number — a returning customer typing it on the web
 // must match the same customer record a phone call already created.

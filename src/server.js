@@ -8,6 +8,10 @@ import { startRetentionWorker } from './services/retentionWorker.js';
 import { startBillingWorker } from './billing/worker.js';
 import { startMonthlyReportWorker } from './services/reportService.js';
 
+// Node 20 exits on an unhandled rejection, which would drop every live call over one failed
+// background write. Log it and keep serving; the failing path owns its own error handling.
+process.on('unhandledRejection', (reason) => console.error('unhandledRejection:', reason));
+
 const port = process.env.PORT || 3000;
 
 const httpServer = createServer(app);

@@ -39,7 +39,7 @@ export const calendarOAuthRouter = Router();
 calendarOAuthRouter.get('/calendar/oauth/callback', async (req, res, next) => {
   try {
     const { code, state, error } = req.query;
-    if (error) return res.status(400).send(`Google denied access: ${error}`);
+    if (error) return res.status(400).type('text/plain').send(`Google denied access: ${error}`); // text/plain: the value is attacker-controlled
     if (!code || !state) return res.status(400).send('missing code or state');
 
     let payload;

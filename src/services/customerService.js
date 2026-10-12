@@ -208,10 +208,17 @@ export async function mergeCustomers(businessId, fromId, intoId) {
 
 const CSV_COLUMNS = ['name', 'phone', 'email', 'tags'];
 
+// A cell starting with = + - @ runs as a spreadsheet formula, and customer names come from the
+// public booking form. Phone numbers (+1 415 ...) are plain digits, so they are left alone.
+function csvCell(v) {
+  const s = String(v).replace(/,/g, ';');
+  return /^[=+\-@\t\r]/.test(s) && !/^\+?[\d\s().-]+$/.test(s) ? `'${s}` : s;
+}
+
 export function toCsv(customers) {
   const lines = [CSV_COLUMNS.join(',')];
   for (const c of customers) {
-    lines.push([c.name ?? '', c.phone ?? '', c.email ?? '', (c.tags ?? []).join('|')].map((v) => String(v).replace(/,/g, ';')).join(','));
+    lines.push([c.name ?? '', c.phone ?? '', c.email ?? '', (c.tags ?? []).join('|')].map(csvCell).join(','));
   }
   return lines.join('\n');
 }

@@ -197,8 +197,8 @@ export async function startGeminiSession({ business, callSid, isTest = false, on
                 console.error(`tool ${call.name} threw:`, err);
                 response = { error: 'internal error handling this request' };
               }
-              if (call.name === 'transfer_to_human' && !response.error) onTransferToHuman?.(response.reason, response.transferPhoneNumber, response.category);
-              if (call.name === 'create_booking' && !response.error) onBookingCreated?.(response.bookingId);
+              if (call.name === 'transfer_to_human' && !response.error) Promise.resolve(onTransferToHuman?.(response.reason, response.transferPhoneNumber, response.category)).catch((e) => console.error('onTransferToHuman failed:', e));
+              if (call.name === 'create_booking' && !response.error) Promise.resolve(onBookingCreated?.(response.bookingId)).catch((e) => console.error('onBookingCreated failed:', e));
               // Failed-action record — every tool call the model made that didn't go
               // through, whether from a thrown error above or a handler's own validation
               // (tools.js returning {error: ...} directly), so a business can see what the

@@ -85,35 +85,36 @@ app.use('/api/auth', authRouter);
 // legitimate company-admin ones) before they ever reach their own route/auth below.
 app.use('/api/platform', platformAuthRouter);
 app.use('/api/platform', requirePlatformAuth, platformRouter);
-// Runs exactly once per company-admin request, ahead of the repeated requireAuth calls
-// below — auditLogger attaches one 'finish' listener per request, so it can't sit inside
-// the repeated-per-router chain (it would double/triple-log a request that falls through
-// several unmatched routers before finding its match).
+// Authenticates every company-admin request exactly once; every router mounted below
+// relies on this (a failure answers 401 here and never reaches them). auditLogger sits in
+// the same one-shot step so it attaches a single 'finish' listener per request.
 app.use('/api', requireAuth, auditLogger);
 // Each router applies its own requireArea(...) gate per-route internally
 // (src/permissions.js) rather than here — these routers all share the '/api' prefix, so
 // a gate applied at this mount level would run for every /api/* request regardless of
 // which router actually owns the path (Express dispatches into a router the moment its
 // mount prefix matches, before that router's own routes get a chance to not-match).
-app.use('/api', requireAuth, servicesRouter);
-app.use('/api', requireAuth, teamRouter);
-app.use('/api', requireAuth, knowledgeRouter);
-app.use('/api', requireAuth, onboardingRouter);
-app.use('/api', requireAuth, locationsRouter);
-app.use('/api', requireAuth, customersRouter);
-app.use('/api', requireAuth, bookingsRouter);
-app.use('/api', requireAuth, settingsRouter);
-app.use('/api', requireAuth, calendarRouter);
-app.use('/api', requireAuth, phoneNumberRouter);
-app.use('/api', requireAuth, callLogsRouter);
-app.use('/api', requireAuth, exceptionsRouter);
-app.use('/api', requireAuth, auditLogsRouter);
-app.use('/api', requireAuth, billingRouter);
-app.use('/api', requireAuth, waitlistRouter);
-app.use('/api', requireAuth, reportsRouter);
+app.use('/api', servicesRouter);
+app.use('/api', teamRouter);
+app.use('/api', knowledgeRouter);
+app.use('/api', onboardingRouter);
+app.use('/api', locationsRouter);
+app.use('/api', customersRouter);
+app.use('/api', bookingsRouter);
+app.use('/api', settingsRouter);
+app.use('/api', calendarRouter);
+app.use('/api', phoneNumberRouter);
+app.use('/api', callLogsRouter);
+app.use('/api', exceptionsRouter);
+app.use('/api', auditLogsRouter);
+app.use('/api', billingRouter);
+app.use('/api', waitlistRouter);
+app.use('/api', reportsRouter);
 
 // Centralized error handler — every route above forwards unexpected errors via next(err).
 app.use((err, req, res, next) => {
+  const status = err.status ?? err.statusCode;
+  if (status >= 400 && status < 500) return res.status(status).json({ error: err.expose ? err.message : 'invalid request' });
   console.error(err);
   res.status(500).json({ error: 'internal error' });
 });
