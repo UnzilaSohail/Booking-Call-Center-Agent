@@ -22,7 +22,8 @@ function escapeRegex(s) {
 platformRouter.get('/businesses', async (req, res, next) => {
   try {
     const db = await getDb();
-    const filter = req.query.q ? { name: { $regex: escapeRegex(req.query.q), $options: 'i' } } : {};
+    const q = typeof req.query.q === 'string' ? req.query.q : ''; // ?q[]=x arrives as an array
+    const filter = q ? { name: { $regex: escapeRegex(q), $options: 'i' } } : {};
     const businesses = await db.collection('businesses')
       .find(filter, { projection: { name: 1, timezone: 1, phone_number: 1, created_at: 1, status: 1 } })
       .sort({ created_at: -1 })
@@ -156,7 +157,7 @@ platformRouter.patch('/businesses/:id/status', async (req, res, next) => {
 const OWNED_COLLECTIONS = [
   'admins', 'services', 'staff', 'staff_time_off', 'bookings', 'call_logs', 'locations', 'waitlist',
   'voicemails', 'callback_requests', 'knowledge_versions', 'customers', 'failed_bookings',
-  'payment_failures', 'audit_logs',
+  'payment_failures', 'audit_logs', 'invoices', 'sms_sends', 'booking_slot_locks',
 ];
 
 // Irreversible offboarding — the suspend toggle above is for holds, this is for actually
@@ -174,9 +175,6 @@ platformRouter.delete('/businesses/:id', async (req, res, next) => {
     }
 
     await Promise.all(OWNED_COLLECTIONS.map((name) => db.collection(name).deleteMany({ business_id: req.params.id })));
-    // booking_slot_locks has no business_id field — its _id is `${businessId}:${staffId}:...`
-    // (src/services/bookingService.js slotLockIds), so it's matched by prefix instead.
-    await db.collection('booking_slot_locks').deleteMany({ _id: { $regex: `^${req.params.id}:` } });
     await db.collection('businesses').deleteOne({ _id: req.params.id });
     res.json({ ok: true });
   } catch (err) {

@@ -56,6 +56,14 @@ app.disable('x-powered-by');
 // must not sit behind the app-wide express.json()/requireAuth chain below. Stripe's
 // signature check specifically needs the raw body, which is why stripeWebhookRouter
 // must be mounted before express.json() runs (it would otherwise consume the body).
+// Everything this server returns is JSON, TwiML or a one-line text page: none of it ever needs scripts, styles or
+// framing. If a route ever reflects attacker text as HTML, this CSP keeps it inert (the API shares an origin
+// with the dashboard's localStorage tokens).
+app.use((req, res, next) => {
+  res.set({ 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'", 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
+  next();
+});
+
 app.use(twilioWebhookRouter);
 app.use(stripeWebhookRouter);
 app.use('/api', calendarOAuthRouter);

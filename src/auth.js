@@ -1,4 +1,4 @@
-import { blocked, fail, forgive, loginBlocked, loginFailed, loginSucceeded } from './rateLimit.js';
+import { fail, forgive, loginAttempt, loginSucceeded } from './rateLimit.js';
 import { notifyLockout } from './lockoutNotice.js';
 import { checkPassword } from './passwordPolicy.js';
 import bcrypt from 'bcryptjs';
@@ -33,11 +33,12 @@ authRouter.post('/login', async (req, res, next) => {
     const { email, password } = req.body ?? {};
     if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) return res.status(400).json({ error: 'email and password are required' });
     const id = email.toLowerCase();
-    if (await loginBlocked(req.ip, id)) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
+    const attempt = await loginAttempt(req.ip, id);
+    if (attempt.blocked) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
 
     const result = await verifyCompanyAdmin(id, password, req.ip);
-    if (!result) { if (await loginFailed(req.ip, id)) notifyLockout(id); return res.status(401).json({ error: 'invalid credentials' }); }
-    await loginSucceeded(id);
+    if (!result) { if (attempt.lockedNow) notifyLockout(id); return res.status(401).json({ error: 'invalid credentials' }); }
+    await loginSucceeded(req.ip, id);
 
     if (result.mfaEnabled) return res.json({ mfaRequired: true, mfaToken: signMfaToken(result.adminId, result.businessId) });
     res.json({ token: signSessionToken(result.adminId, result.businessId) });
@@ -62,12 +63,13 @@ authRouter.post('/mfa/verify-login', async (req, res, next) => {
     }
     if (payload.role !== 'mfa_pending') return res.status(401).json({ error: 'invalid token for this endpoint' });
 
-    // 6-digit codes can be guessed, so wrong ones are counted per admin: 6 in 15 minutes locks the second step.
+    // 6-digit codes can be guessed: 6 tries per admin in 15 minutes. The try is counted before the code is checked
+    // (atomic), so parallel guesses cannot all slip past a check-then-count gap.
     const mfaKey = `mfa:${payload.adminId}`;
-    if (await blocked(mfaKey, 6)) return res.status(429).json({ error: 'too many wrong codes, log in again in 15 minutes' });
+    if (await fail(mfaKey, 15 * 60_000) > 6) return res.status(429).json({ error: 'too many wrong codes, log in again in 15 minutes' });
     const db = await getDb();
     const admin = await db.collection('admins').findOne({ _id: payload.adminId });
-    if (!admin?.mfa_enabled || !verifyTotp(admin.mfa_secret, String(code))) { await fail(mfaKey, 15 * 60_000); return res.status(401).json({ error: 'invalid code' }); }
+    if (!admin?.mfa_enabled || !verifyTotp(admin.mfa_secret, String(code))) return res.status(401).json({ error: 'invalid code' });
     await forgive(mfaKey);
 
     res.json({ token: signSessionToken(payload.adminId, payload.businessId) });

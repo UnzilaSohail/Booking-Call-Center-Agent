@@ -20,7 +20,13 @@ export const DEMO = {
 
 export const cleanupDemo = removeDemoData;
 
+// The walkthrough account has a published password and a platform admin: only ever on a database on this machine.
+const isLocalDb = () => /^mongodb(\+srv)?:\/\/([^/@]*@)?(127\.0\.0\.1|localhost|\[::1\])(:|\/|\?|$)/.test(process.env.MONGODB_URI ?? '');
+
 export async function seedDemo({ password = DEMO_PASSWORD, listed = true } = {}) {
+  if (password === DEMO_PASSWORD && !isLocalDb()) {
+    throw new Error('refusing to create the fixed-password demo accounts (incl. a platform admin) on a non-local database; use "npm run demo:seed" without --walkthrough for a random password');
+  }
   const r = await addDemoData({ listed, password });
   const db = await getDb();
   await db.collection('platform_admins').insertOne({ _id: newId(), email: DEMO.platform, password_hash: await bcrypt.hash(password, 10), created_at: new Date(), demo: true });

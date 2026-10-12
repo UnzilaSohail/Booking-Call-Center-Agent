@@ -373,6 +373,7 @@ export async function rescheduleBooking(businessId, bookingId, startTime) {
   }
 
   const service = await withTenant(businessId, (col) => col('services').findOne({ _id: current.service_id }));
+  if (!service) throw new BookingError(409, 'the service for this booking no longer exists');
   const start = DateTime.fromISO(startTime, { zone: 'utc' });
   if (!start.isValid) throw new BookingError(400, 'invalid startTime');
   const end = start.plus({ minutes: service.duration_minutes + service.buffer_minutes });
@@ -388,13 +389,13 @@ export async function rescheduleBooking(businessId, bookingId, startTime) {
       // Free the old slots and claim the new ones atomically — if the new range
       // collides with someone else's lock, this throws and the old locks (deleted in
       // this same transaction) are restored by the abort, not left dangling.
-      await db.collection('booking_slot_locks').deleteMany({ booking_id: bookingId }, { session });
+      await db.collection('booking_slot_locks').deleteMany({ booking_id: bookingId, business_id: businessId }, { session });
       await db.collection('booking_slot_locks').insertMany(
         lockDocs(businessId, bookingId, current.staff_id, startDate, endDate),
         { session, ordered: true }
       );
       updated = await db.collection('bookings').findOneAndUpdate(
-        { _id: bookingId, business_id: businessId },
+        { _id: bookingId, business_id: businessId, status: 'confirmed' },
         {
           $set: {
             start_time: startDate,
@@ -410,6 +411,8 @@ export async function rescheduleBooking(businessId, bookingId, startTime) {
         },
         { session, returnDocument: 'after' }
       );
+      // Cancelled by someone else while this ran: abort, so the locks taken above are rolled back too.
+      if (!updated) throw new BookingError(409, 'booking is no longer active');
     });
   } catch (err) {
     if (err.code === 11000) throw new BookingError(409, 'new slot no longer available');
@@ -440,18 +443,23 @@ export async function cancelBooking(businessId, bookingId, { via = 'dashboard' }
   let updated;
   try {
     await session.withTransaction(async () => {
-      // Free the slot locks so the time becomes bookable again.
-      await db.collection('booking_slot_locks').deleteMany({ booking_id: bookingId }, { session });
+      // Only a confirmed booking of THIS business can be cancelled; its slot locks are freed in the same step.
       updated = await db.collection('bookings').findOneAndUpdate(
-        { _id: bookingId, business_id: businessId },
+        { _id: bookingId, business_id: businessId, status: 'confirmed' },
         { $set: { status: 'cancelled', cancelled_at: new Date(), cancelled_via: via, sync_status: 'pending', sync_attempts: 0, sync_error: null } },
         { session, returnDocument: 'after' }
       );
+      if (updated) await db.collection('booking_slot_locks').deleteMany({ booking_id: bookingId, business_id: businessId }, { session });
     });
   } finally {
     await session.endSession();
   }
-  if (!updated) throw new BookingError(404, 'booking not found');
+  if (!updated) {
+    // Already cancelled: answer with it as-is, without repeating the calendar re-sync and waiting-list texts.
+    const existing = await withTenant(businessId, (col) => col('bookings').findOne({ _id: bookingId }));
+    if (existing?.status === 'cancelled') return serialize(existing);
+    throw new BookingError(404, 'booking not found');
+  }
   notifyWaitlistForCancellation(businessId, updated).catch((err) => console.error(`waiting list texts failed for booking ${bookingId}:`, err.message));
   return serialize(updated);
 }

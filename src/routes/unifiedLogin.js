@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { verifyCompanyAdmin, verifyPlatformAdmin, LoginError } from '../loginHelpers.js';
-import { loginBlocked, loginFailed, loginSucceeded } from '../rateLimit.js';
+import { loginAttempt, loginSucceeded } from '../rateLimit.js';
 import { notifyLockout } from '../lockoutNotice.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -18,11 +18,12 @@ unifiedLoginRouter.post('/login', async (req, res, next) => {
     const { email, password } = req.body ?? {};
     if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) return res.status(400).json({ error: 'email and password are required' });
     const normalizedEmail = email.toLowerCase();
-    if (await loginBlocked(req.ip, normalizedEmail)) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
+    const attempt = await loginAttempt(req.ip, normalizedEmail);
+    if (attempt.blocked) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
 
     const platformResult = await verifyPlatformAdmin(normalizedEmail, password);
     if (platformResult) {
-      await loginSucceeded(normalizedEmail);
+      await loginSucceeded(req.ip, normalizedEmail);
       const token = jwt.sign({ role: 'platform', ...platformResult }, JWT_SECRET, { expiresIn: '12h' });
       return res.json({ token, role: 'platform' });
     }
@@ -30,7 +31,7 @@ unifiedLoginRouter.post('/login', async (req, res, next) => {
     // MFA is company-admin only (plan.md §11 item 9) — platform admins aren't gated above.
     const companyResult = await verifyCompanyAdmin(normalizedEmail, password, req.ip);
     if (companyResult) {
-      await loginSucceeded(normalizedEmail);
+      await loginSucceeded(req.ip, normalizedEmail);
       if (companyResult.mfaEnabled) {
         const mfaToken = jwt.sign({ role: 'mfa_pending', adminId: companyResult.adminId, businessId: companyResult.businessId }, JWT_SECRET, { expiresIn: '5m' });
         return res.json({ mfaRequired: true, mfaToken, role: 'business' });
@@ -39,7 +40,7 @@ unifiedLoginRouter.post('/login', async (req, res, next) => {
       return res.json({ token, role: 'business' });
     }
 
-    if (await loginFailed(req.ip, normalizedEmail)) notifyLockout(normalizedEmail);
+    if (attempt.lockedNow) notifyLockout(normalizedEmail);
     res.status(401).json({ error: 'invalid credentials' });
   } catch (err) {
     if (err instanceof LoginError) return res.status(err.status).json({ error: err.message });

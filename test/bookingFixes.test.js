@@ -141,4 +141,22 @@ describe('booking and reminder fixes', { skip }, () => {
     await runReminderSweepOnce({ businessIds: [t.businessId], send: async (b, booking) => { sent.push(booking._id); } });
     assert.ok(sent.includes(id));
   });
+  it('BF-08 cancelling twice keeps the first cancellation and a different business cannot touch the booking', async () => {
+    const { booking } = await book({ startTime: at(20) });
+    await assert.rejects(cancelBooking(newId(), booking.id), (e) => e.status === 404);
+    assert.ok(await db.collection('booking_slot_locks').countDocuments({ booking_id: booking.id }) > 0, "another business must not free this booking's locks");
+    const first = await cancelBooking(t.businessId, booking.id);
+    await new Promise((r) => setTimeout(r, 20));
+    const second = await cancelBooking(t.businessId, booking.id);
+    assert.equal(second.status, 'cancelled');
+    assert.equal(String(second.cancelledAt), String(first.cancelledAt), 'a second cancel is a no-op');
+    assert.equal(await db.collection('booking_slot_locks').countDocuments({ booking_id: booking.id }), 0);
+    await assert.rejects(cancelBooking(t.businessId, newId()), (e) => e.status === 404);
+  });
+
+  it('BF-09 rescheduling a booking whose service was deleted answers 409, not a crash', async () => {
+    const { booking } = await book({ startTime: at(22), phone: '+15550700009' });
+    await db.collection('bookings').updateOne({ _id: booking.id }, { $set: { service_id: 'gone-service' } });
+    await assert.rejects(rescheduleBooking(t.businessId, booking.id, at(23)), (e) => e.status === 409);
+  });
 });

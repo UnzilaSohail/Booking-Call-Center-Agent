@@ -10,7 +10,7 @@ export async function listCallLogs(businessId, { from, to, phone, outcome, limit
   const filter = { is_test: { $ne: true } };
   if (Object.keys(dateFilter).length) filter.created_at = dateFilter;
   // Partial, case-insensitive match — a caller doesn't dial with punctuation in mind.
-  if (phone) filter.phone = { $regex: phone.replace(/[^\d+]/g, ''), $options: 'i' };
+  if (phone) filter.phone = { $regex: String(phone).replace(/[^\d+]/g, ''), $options: 'i' };
   if (outcome === 'booked') filter.booking_id = { $ne: null };
   else if (outcome) filter.outcome = { $regex: `^${String(outcome).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, $options: 'i' };
 

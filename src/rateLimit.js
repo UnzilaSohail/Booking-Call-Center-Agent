@@ -36,18 +36,23 @@ export async function forgive(key) {
 }
 
 // One policy for every password login: 8 wrong passwords per email and 30 per address in 15 minutes.
+// The attempt is counted BEFORE the password is checked (one atomic $inc). Checking first and counting after let a
+// burst of parallel guesses all pass the check. A correct login gives its attempt back, so only wrong ones count.
 const LOGIN_WINDOW = 15 * 60_000;
 const LOGIN_MAX_PER_EMAIL = 8;
-export const loginBlocked = async (ip, email) => (await blocked(`login-id:${email}`, LOGIN_MAX_PER_EMAIL)) || (await blocked(`login-ip:${ip}`, 30));
-// Returns true when THIS failure is the one that locked the email (so the owner can be told once).
-export async function loginFailed(ip, email) {
+const LOGIN_MAX_PER_IP = 30;
+export async function loginAttempt(ip, email) {
   const forEmail = await hit(`login-id:${email}`, LOGIN_WINDOW);
-  await hit(`login-ip:${ip}`, LOGIN_WINDOW);
-  return forEmail === LOGIN_MAX_PER_EMAIL;
+  const forIp = await hit(`login-ip:${ip}`, LOGIN_WINDOW);
+  // lockedNow: this was the 8th attempt, so if it turns out wrong it is the one that locks the email (owner is told once)
+  return { blocked: forEmail > LOGIN_MAX_PER_EMAIL || forIp > LOGIN_MAX_PER_IP, lockedNow: forEmail === LOGIN_MAX_PER_EMAIL };
 }
-export const loginSucceeded = (email) => forgive(`login-id:${email}`);
+export async function loginSucceeded(ip, email) {
+  await forgive(`login-id:${email}`);
+  await (await rows()).updateOne({ _id: NS + `login-ip:${ip}`, count: { $gt: 0 } }, { $inc: { count: -1 } });
+}
 export const isLocked = (email) => blocked(`login-id:${email}`, LOGIN_MAX_PER_EMAIL);
-export const unlockLogin = loginSucceeded; // platform team's "unlock" button
+export const unlockLogin = (email) => forgive(`login-id:${email}`); // platform team's "unlock" button
 
 // In-memory fixed window for the public page reads (120 a minute per visitor): cheap, and fine if it resets.
 const local = new Map();

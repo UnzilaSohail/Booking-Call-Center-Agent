@@ -2,7 +2,7 @@
 // register companies (src/routes/platform.js) — there's no public signup for either
 // role anymore, since companies are meant to be admin-registered, not self-service.
 // There's also no public way to create a platform admin — see scripts/createPlatformAdmin.js.
-import { loginBlocked, loginFailed, loginSucceeded } from './rateLimit.js';
+import { loginAttempt, loginSucceeded } from './rateLimit.js';
 import { notifyLockout } from './lockoutNotice.js';
 import { checkPassword } from './passwordPolicy.js';
 import bcrypt from 'bcryptjs';
@@ -24,11 +24,12 @@ platformAuthRouter.post('/auth/login', async (req, res, next) => {
     const { email, password } = req.body ?? {};
     if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) return res.status(400).json({ error: 'email and password are required' });
     const id = email.toLowerCase();
-    if (await loginBlocked(req.ip, id)) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
+    const attempt = await loginAttempt(req.ip, id);
+    if (attempt.blocked) return res.status(429).json({ error: 'too many failed attempts, try again in 15 minutes' });
 
     const result = await verifyPlatformAdmin(id, password);
-    if (!result) { if (await loginFailed(req.ip, id)) notifyLockout(id); return res.status(401).json({ error: 'invalid credentials' }); }
-    await loginSucceeded(id);
+    if (!result) { if (attempt.lockedNow) notifyLockout(id); return res.status(401).json({ error: 'invalid credentials' }); }
+    await loginSucceeded(req.ip, id);
 
     const token = jwt.sign({ role: 'platform', ...result }, JWT_SECRET, { expiresIn: '12h' });
     res.json({ token });
