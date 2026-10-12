@@ -4,6 +4,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { platformApi } from '../lib/api';
 import { useToast } from '../lib/Toast';
 import { useTimezones } from '../lib/timezones';
+import PasswordInput from './PasswordInput';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const INDUSTRIES = ['Salon / Spa', 'Medical / Dental', 'Fitness', 'Home Services', 'Restaurant', 'Professional Services', 'Other'];
@@ -128,7 +129,7 @@ export default function RegisterCompanyForm({ onRegistered }) {
           </div>
           <div className="field" style={{ flex: 1 }}>
             <label>Admin password</label>
-            <input type="password" required minLength={10} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
+            <PasswordInput required minLength={10} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
           </div>
         </div>
       </div>

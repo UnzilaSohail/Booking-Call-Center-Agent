@@ -8,6 +8,7 @@ import { useTimezones } from '../../lib/timezones';
 import { copyText } from '../../lib/clipboard';
 import Loading from '../../components/Skeleton';
 import InfoTip from '../../components/InfoTip';
+import PasswordInput from '../../components/PasswordInput';
 import { GLOSSARY } from '../../lib/glossary';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -364,11 +365,11 @@ function ChangePasswordSection() {
       <form onSubmit={submit} className="row" style={{ alignItems: 'flex-end' }}>
         <div className="field" style={{ flex: 1 }}>
           <label>Current password</label>
-          <input type="password" required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+          <PasswordInput required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
         </div>
         <div className="field" style={{ flex: 1 }}>
           <label>New password</label>
-          <input type="password" required minLength={10} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          <PasswordInput required minLength={10} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
         </div>
         <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving...' : 'Change'}</button>
       </form>
@@ -449,7 +450,7 @@ function MfaSection() {
           <form onSubmit={disable} className="row" style={{ alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 1 }}>
               <label>Current password</label>
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
             <button type="submit" className="danger" disabled={busy}>{busy ? 'Disabling...' : 'Disable'}</button>
           </form>

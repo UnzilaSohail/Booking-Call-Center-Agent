@@ -1,5 +1,6 @@
 'use client';
 import { useId, useState } from 'react';
+import PasswordInput from './PasswordInput';
 
 // Label + input + hint + inline error in one piece (Jira 24g, 25d). The label is tied to the input
 // with htmlFor, the hint/error are announced through aria-describedby, and the error appears after
@@ -9,6 +10,12 @@ export default function TextField({ label, value, onChange, validate, hint, requ
   const [touched, setTouched] = useState(false);
   const error = (touched || showErrors) && validate ? validate(value) : '';
   const note = error || hint;
+  const inputProps = {
+    id, value, required,
+    onChange: (e) => onChange(e.target.value), onBlur: () => setTouched(true),
+    'aria-invalid': error ? 'true' : undefined, 'aria-describedby': note ? `${id}-note` : undefined,
+    ...rest,
+  };
   return (
     <div className="field" style={style}>
       <label htmlFor={id}>
@@ -16,12 +23,9 @@ export default function TextField({ label, value, onChange, validate, hint, requ
         {required && <span aria-hidden="true"> *</span>}
         {optional && <span className="faint" style={{ textTransform: 'none', fontWeight: 400 }}> (optional)</span>}
       </label>
-      <input
-        id={id} type={type} value={value} required={required}
-        onChange={(e) => onChange(e.target.value)} onBlur={() => setTouched(true)}
-        aria-invalid={error ? 'true' : undefined} aria-describedby={note ? `${id}-note` : undefined}
-        {...rest}
-      />
+      {type === 'password'
+        ? <PasswordInput {...inputProps} />
+        : <input type={type} {...inputProps} />}
       {note && <span id={`${id}-note`} className={error ? 'field-error' : 'hint'} role={error ? 'alert' : undefined}>{note}</span>}
     </div>
   );

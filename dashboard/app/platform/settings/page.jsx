@@ -3,6 +3,7 @@ import { useState } from 'react';
 import RequirePlatformAuth from '../../../components/RequirePlatformAuth';
 import { platformApi } from '../../../lib/api';
 import { useToast } from '../../../lib/Toast';
+import PasswordInput from '../../../components/PasswordInput';
 
 function ChangePasswordCard() {
   const toast = useToast();
@@ -33,11 +34,11 @@ function ChangePasswordCard() {
       <form onSubmit={submit} className="row" style={{ alignItems: 'flex-end' }}>
         <div className="field" style={{ flex: 1 }}>
           <label>Current password</label>
-          <input type="password" required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+          <PasswordInput required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
         </div>
         <div className="field" style={{ flex: 1 }}>
           <label>New password</label>
-          <input type="password" required minLength={10} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          <PasswordInput required minLength={10} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
         </div>
         <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving...' : 'Change'}</button>
       </form>

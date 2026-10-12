@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, unifiedLogin, storeTokenForRole } from '../../lib/api';
 import AuthShell from '../../components/AuthShell';
+import PasswordInput from '../../components/PasswordInput';
 
 // One login for both roles — the backend (src/routes/unifiedLogin.js) figures out
 // whether these credentials belong to a platform admin or a company admin, so nobody
@@ -92,7 +93,7 @@ export default function LoginPage() {
         </div>
         <div className="field">
           <label>Password</label>
-          <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+          <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         {error && <p className="error-text">{error}</p>}
         <button type="submit" className="primary" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>

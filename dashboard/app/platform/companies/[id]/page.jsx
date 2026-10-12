@@ -6,6 +6,7 @@ import RequirePlatformAuth from '../../../../components/RequirePlatformAuth';
 import { platformApi, ApiError } from '../../../../lib/api';
 import { useToast } from '../../../../lib/Toast';
 import Loading from '../../../../components/Skeleton';
+import PasswordInput from '../../../../components/PasswordInput';
 
 function ResetPasswordRow({ admin }) {
   const toast = useToast();
@@ -49,7 +50,7 @@ function ResetPasswordRow({ admin }) {
       <td>
         {open ? (
           <form onSubmit={submit} className="row" style={{ alignItems: 'center', flexWrap: 'nowrap' }}>
-            <input type="password" required minLength={10} autoFocus placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} style={{ width: 160 }} />
+            <PasswordInput required minLength={10} autoFocus placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} style={{ width: 160 }} />
             <button type="submit" className="primary" disabled={saving}>{saving ? '...' : 'Set'}</button>
             <button type="button" className="ghost" onClick={() => setOpen(false)}>Cancel</button>
           </form>

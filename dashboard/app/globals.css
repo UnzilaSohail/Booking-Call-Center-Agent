@@ -219,6 +219,13 @@ input, select, textarea {
 }
 input:disabled, select:disabled { background: var(--surface-alt); color: var(--text-faint); }
 
+/* ---- Password box with a show/hide eye ---- */
+.pw-wrap { position: relative; width: 100%; }
+.pw-wrap > input { padding-right: 42px; }
+.pw-toggle { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; box-shadow: none; color: var(--text-faint); cursor: pointer; border-radius: 6px; }
+.pw-toggle:hover { color: var(--text); background: var(--surface-alt); }
+.pw-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 /* ---- Layout primitives ---- */
 .card {
   background: var(--surface);

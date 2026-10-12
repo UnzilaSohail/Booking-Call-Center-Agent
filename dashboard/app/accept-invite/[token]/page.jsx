@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { acceptInviteApi, setToken, ApiError } from '../../../lib/api';
 import Loading from '../../../components/Skeleton';
 import AuthShell from '../../../components/AuthShell';
+import PasswordInput from '../../../components/PasswordInput';
 
 const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', receptionist: 'Receptionist', staff: 'Staff', billing: 'Billing', custom: 'Custom access' };
 
@@ -59,11 +60,11 @@ function AcceptInviteInner() {
             </p>
             <div className="field">
               <label>Password</label>
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
             <div className="field">
               <label>Confirm password</label>
-              <input type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+              <PasswordInput required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
             </div>
             {formError && <p className="error-text">{formError}</p>}
             <button type="submit" className="primary" disabled={saving}>{saving ? 'Setting up...' : 'Set password and log in'}</button>
