@@ -7,6 +7,7 @@ import { startReminderWorker } from './notifications/reminder-worker.js';
 import { startRetentionWorker } from './services/retentionWorker.js';
 import { startBillingWorker } from './billing/worker.js';
 import { startMonthlyReportWorker } from './services/reportService.js';
+import { startStaleCallWorker } from './services/staleCalls.js';
 
 // Node 20 exits on an unhandled rejection, which would drop every live call over one failed
 // background write. Log it and keep serving; the failing path owns its own error handling.
@@ -26,6 +27,7 @@ const stopReminderWorker = startReminderWorker();
 const stopRetentionWorker = startRetentionWorker();
 const stopBillingWorker = startBillingWorker();
 const stopReportWorker = startMonthlyReportWorker();
+const stopStaleCallWorker = startStaleCallWorker();
 
 // 27l: on a restart signal stop the workers, refuse NEW calls politely, and let calls already in
 // progress finish (up to DRAIN_TIMEOUT_MS) before exiting. A second signal exits immediately.
@@ -39,6 +41,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     stopRetentionWorker();
     stopBillingWorker();
     stopReportWorker();
+    stopStaleCallWorker();
     const active = getActiveCalls();
     if (active) console.log(`${signal}: waiting for ${active} active call(s) to finish before exiting`);
     const clean = await beginDrain();
