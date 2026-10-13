@@ -204,7 +204,7 @@ platformRouter.patch('/admins/:adminId/password', async (req, res, next) => {
 
     const db = await getDb();
     const password_hash = await bcrypt.hash(newPassword, 10);
-    const result = await db.collection('admins').updateOne({ _id: req.params.adminId }, { $set: { password_hash } });
+    const result = await db.collection('admins').updateOne({ _id: req.params.adminId }, { $set: { password_hash, tokens_valid_after: new Date() } });
     if (result.matchedCount === 0) return res.status(404).json({ error: 'admin not found' });
     res.json({ ok: true });
   } catch (err) {

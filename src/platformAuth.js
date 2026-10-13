@@ -3,6 +3,7 @@
 // role anymore, since companies are meant to be admin-registered, not self-service.
 // There's also no public way to create a platform admin — see scripts/createPlatformAdmin.js.
 import { loginAttempt, loginSucceeded } from './rateLimit.js';
+import { tokenRevoked } from './sessionRevocation.js';
 import { notifyLockout } from './lockoutNotice.js';
 import { checkPassword } from './passwordPolicy.js';
 import bcrypt from 'bcryptjs';
@@ -52,18 +53,28 @@ platformAuthRouter.get('/auth/me', requirePlatformAuth, async (req, res, next) =
   }
 });
 
-export function requirePlatformAuth(req, res, next) {
+export async function requirePlatformAuth(req, res, next) {
   const header = req.headers.authorization ?? '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'missing bearer token' });
 
+  let payload;
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    if (payload.role !== 'platform') return res.status(401).json({ error: 'invalid token for this endpoint' });
+    payload = jwt.verify(token, JWT_SECRET);
+  } catch {
+    return res.status(401).json({ error: 'invalid or expired token' });
+  }
+  if (payload.role !== 'platform') return res.status(401).json({ error: 'invalid token for this endpoint' });
+
+  try {
+    // A deleted platform admin, or a token minted before their last password change, must stop working at once.
+    const admin = await (await getDb()).collection('platform_admins').findOne({ _id: payload.platformAdminId }, { projection: { tokens_valid_after: 1 } });
+    if (!admin) return res.status(401).json({ error: 'admin not found' });
+    if (tokenRevoked(payload, admin.tokens_valid_after)) return res.status(401).json({ error: 'your session ended, please log in again' });
     req.platformAdminId = payload.platformAdminId;
     next();
-  } catch {
-    res.status(401).json({ error: 'invalid or expired token' });
+  } catch (err) {
+    next(err);
   }
 }
 
@@ -82,8 +93,8 @@ platformAuthRouter.patch('/auth/password', requirePlatformAuth, async (req, res,
     }
 
     const password_hash = await bcrypt.hash(newPassword, 10);
-    await db.collection('platform_admins').updateOne({ _id: req.platformAdminId }, { $set: { password_hash } });
-    res.json({ ok: true });
+    await db.collection('platform_admins').updateOne({ _id: req.platformAdminId }, { $set: { password_hash, tokens_valid_after: new Date() } });
+    res.json({ ok: true, token: jwt.sign({ role: 'platform', platformAdminId: req.platformAdminId }, JWT_SECRET, { expiresIn: '12h' }) });
   } catch (err) {
     next(err);
   }

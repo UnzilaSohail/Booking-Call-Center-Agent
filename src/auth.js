@@ -8,6 +8,7 @@ import { getDb } from './db.js';
 import { verifyCompanyAdmin, LoginError } from './loginHelpers.js';
 import { areasFor } from './permissions.js';
 import { generateSecret, verifyTotp, otpauthUrl } from './mfa.js';
+import { tokenRevoked } from './sessionRevocation.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
@@ -106,11 +107,12 @@ export async function resolveSessionFromToken(token) {
   const db = await getDb();
   const [business, admin] = await Promise.all([
     db.collection('businesses').findOne({ _id: payload.businessId }, { projection: { status: 1 } }),
-    db.collection('admins').findOne({ _id: payload.adminId }, { projection: { role: 1, permissions: 1, status: 1 } }),
+    db.collection('admins').findOne({ _id: payload.adminId }, { projection: { role: 1, permissions: 1, status: 1, tokens_valid_after: 1 } }),
   ]);
   if (business?.status === 'suspended') throw new SessionError(403, 'this account has been suspended — contact the platform');
   if (!admin) throw new SessionError(401, 'admin not found');
   if (admin.status === 'suspended') throw new SessionError(403, 'your access has been suspended — contact your business owner');
+  if (tokenRevoked(payload, admin.tokens_valid_after)) throw new SessionError(401, 'your session ended, please log in again');
 
   return { businessId: payload.businessId, adminId: payload.adminId, admin: { role: admin.role ?? 'owner', areas: areasFor(admin) } };
 }
@@ -181,8 +183,9 @@ authRouter.patch('/password', requireAuth, async (req, res, next) => {
     }
 
     const password_hash = await bcrypt.hash(newPassword, 10);
-    await db.collection('admins').updateOne({ _id: req.adminId }, { $set: { password_hash } });
-    res.json({ ok: true });
+    // Every older token (a stolen one included) stops working; this person gets a fresh one so they stay logged in.
+    await db.collection('admins').updateOne({ _id: req.adminId }, { $set: { password_hash, tokens_valid_after: new Date() } });
+    res.json({ ok: true, token: signSessionToken(req.adminId, req.businessId) });
   } catch (err) {
     next(err);
   }
@@ -194,7 +197,12 @@ authRouter.patch('/password', requireAuth, async (req, res, next) => {
 authRouter.post('/mfa/enroll', requireAuth, async (req, res, next) => {
   try {
     const db = await getDb();
-    const admin = await db.collection('admins').findOne({ _id: req.adminId }, { projection: { email: 1 } });
+    const admin = await db.collection('admins').findOne({ _id: req.adminId }, { projection: { email: 1, mfa_enabled: 1, password_hash: 1 } });
+    // Replacing an authenticator that is already switched on needs the password, not just a login token.
+    const { password } = req.body ?? {};
+    if (admin.mfa_enabled && !(typeof password === 'string' && (await bcrypt.compare(password, admin.password_hash)))) {
+      return res.status(401).json({ error: 'enter your password to replace the authenticator' });
+    }
     const secret = generateSecret();
     await db.collection('admins').updateOne({ _id: req.adminId }, { $set: { mfa_secret_pending: secret } });
     res.json({ secret, otpauthUrl: otpauthUrl(admin.email, 'Booking', secret) });

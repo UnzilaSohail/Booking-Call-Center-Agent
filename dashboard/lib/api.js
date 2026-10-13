@@ -55,11 +55,16 @@ async function requestText(path, { tokenStore } = {}) {
 export const api = {
   login: (payload) => request('/api/auth/login', { method: 'POST', body: payload }),
   getMe: () => request('/api/auth/me', { tokenStore: companyTokenStore }),
-  changePassword: (payload) => request('/api/auth/password', { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
+  // The server ends every older session on a password change and hands back a fresh token for this one.
+  changePassword: async (payload) => {
+    const res = await request('/api/auth/password', { method: 'PATCH', body: payload, tokenStore: companyTokenStore });
+    if (res?.token) companyTokenStore.set(res.token);
+    return res;
+  },
 
   // MFA (ROADMAP.md §12) — enroll returns a secret + otpauth URL for manual entry into
   // an authenticator app (no QR image rendered client-side, see plan.md §11 item 9).
-  mfaEnroll: () => request('/api/auth/mfa/enroll', { method: 'POST', tokenStore: companyTokenStore }),
+  mfaEnroll: (password) => request('/api/auth/mfa/enroll', { method: 'POST', body: password ? { password } : undefined, tokenStore: companyTokenStore }),
   mfaEnrollConfirm: (code) => request('/api/auth/mfa/enroll/confirm', { method: 'POST', body: { code }, tokenStore: companyTokenStore }),
   mfaDisable: (password) => request('/api/auth/mfa/disable', { method: 'POST', body: { password }, tokenStore: companyTokenStore }),
   // No tokenStore — this exchanges a short-lived mfaToken from login, not a session token.
@@ -244,7 +249,11 @@ export const platformApi = {
   clearToken: platformTokenStore.clear,
 
   login: (payload) => request('/api/platform/auth/login', { method: 'POST', body: payload }),
-  changePassword: (payload) => request('/api/platform/auth/password', { method: 'PATCH', body: payload, tokenStore: platformTokenStore }),
+  changePassword: async (payload) => {
+    const res = await request('/api/platform/auth/password', { method: 'PATCH', body: payload, tokenStore: platformTokenStore });
+    if (res?.token) platformTokenStore.set(res.token);
+    return res;
+  },
   getMe: () => request('/api/platform/auth/me', { tokenStore: platformTokenStore }),
   listCompanies: (q) => request(`/api/platform/businesses${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: platformTokenStore }),
   getCompany: (id) => request(`/api/platform/businesses/${id}`, { tokenStore: platformTokenStore }),

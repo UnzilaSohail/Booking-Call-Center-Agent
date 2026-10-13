@@ -4,7 +4,7 @@ import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { DateTime } from 'luxon';
-import { createTenant, dropTenants, skip, getDb, newId } from './support/tenantFixture.js';
+import { createTenant, dropTenants, skip, getDb, newId, ensurePlatformAdmin } from './support/tenantFixture.js';
 import { app } from '../src/app.js';
 import { clearRateLimits } from '../src/rateLimit.js';
 import { createBooking, cancelBooking } from '../src/services/bookingService.js';
@@ -284,6 +284,7 @@ describe('reminders, waiting list, reviews and reports', { skip }, () => {
   });
 
   it('EN-20 the platform sums what the product delivered across companies', async () => {
+    await ensurePlatformAdmin();
     const token = jwt.sign({ role: 'platform', platformAdminId: 'p1' }, process.env.JWT_SECRET, { expiresIn: '1h' });
     const res = await fetch(`${base}/api/platform/analytics`, { headers: { authorization: `Bearer ${token}` } });
     assert.equal(res.status, 200);

@@ -3,7 +3,7 @@ import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import bcrypt from 'bcryptjs';
-import { createTenant, dropTenants, skip, getDb, newId } from './support/tenantFixture.js';
+import { createTenant, dropTenants, skip, getDb, newId, ensurePlatformAdmin } from './support/tenantFixture.js';
 import { app } from '../src/app.js';
 import { clearRateLimits, blocked, fail, forgive } from '../src/rateLimit.js';
 import { fakeVerify } from '../src/verification.js';
@@ -91,6 +91,7 @@ describe('login and input protections', { skip }, () => {
   });
 
   it('the platform team can see and lift a lock; the owner is not stuck for 15 minutes (SEC-11)', async () => {
+    await ensurePlatformAdmin();
     const platform = jwt.sign({ role: 'platform', platformAdminId: 'p1' }, process.env.JWT_SECRET, { expiresIn: '1h' });
     const adminId = (await db.collection('admins').findOne({ email }))._id;
     const detail = () => fetch(`${base}/api/platform/businesses/${t.businessId}`, { headers: { authorization: `Bearer ${platform}` } }).then((r) => r.json());

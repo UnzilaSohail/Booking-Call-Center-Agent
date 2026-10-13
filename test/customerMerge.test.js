@@ -4,7 +4,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import jwt from 'jsonwebtoken';
-import { createTenant, dropTenants, skip, getDb, newId } from './support/tenantFixture.js';
+import { createTenant, dropTenants, skip, getDb, newId, ensurePlatformAdmin } from './support/tenantFixture.js';
 import { app } from '../src/app.js';
 import { clearRateLimits } from '../src/rateLimit.js';
 import { createBooking } from '../src/services/bookingService.js';
@@ -33,6 +33,7 @@ describe('duplicates, merge and moderation', { skip }, () => {
     const adminId = newId();
     await db.collection('admins').insertOne({ _id: adminId, business_id: salon.businessId, email: `o-${adminId}@example.test`, name: 'Owner', role: 'owner', status: 'active', password_hash: 'x' });
     ownerToken = jwt.sign({ role: 'business', adminId, businessId: salon.businessId }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    await ensurePlatformAdmin();
     platformToken = jwt.sign({ role: 'platform', platformAdminId: 'p1' }, process.env.JWT_SECRET, { expiresIn: '1h' });
     server = createServer(app);
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
