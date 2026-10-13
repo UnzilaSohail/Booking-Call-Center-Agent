@@ -18,9 +18,17 @@ twilioWebhookRouter.use(express.urlencoded({ extended: false }));
 
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 
+// A suspended or deleted company keeps its number but gets no AI call (and no bill): same answer as an unknown number.
+const activeOnly = (business) => (business && ['suspended', 'deleted'].includes(business.status) ? null : business);
+
 function verifyTwilioSignature(req) {
   if (!authToken) {
-    console.warn('TWILIO_AUTH_TOKEN not set — skipping signature verification (dev only, never in production)');
+    // Fail closed in production: a missing env var must not turn every webhook into unauthenticated input.
+    if (process.env.NODE_ENV === 'production') {
+      console.error('TWILIO_AUTH_TOKEN is not set: refusing every Twilio webhook until it is');
+      return false;
+    }
+    console.warn('TWILIO_AUTH_TOKEN not set — skipping signature verification (development only)');
     return true;
   }
   const signature = req.headers['x-twilio-signature'];
@@ -102,8 +110,7 @@ twilioWebhookRouter.post('/voice/incoming', async (req, res) => {
     return res.status(403).send('invalid signature');
   }
 
-  const business = await findBusinessByPhoneNumber(req.body.To);
-  await respondWithVoiceAgent(res, req, business);
+  await respondWithVoiceAgent(res, req, activeOnly(await findBusinessByPhoneNumber(req.body.To)));
 });
 
 // Onboarding's "make a test call" step (src/routes/onboarding.js POST /onboarding/test-call)
@@ -119,8 +126,7 @@ twilioWebhookRouter.post('/voice/test-call', async (req, res) => {
   // businessId is exactly what withSystemAccess exists for (src/db.js), same as the
   // called-number lookup /voice/incoming does via findBusinessByPhoneNumber.
   const doc = await withSystemAccess((c) => c('businesses').findOne({ _id: req.query.businessId }));
-  const business = doc ? serialize(doc) : null;
-  await respondWithVoiceAgent(res, req, business, { isTest: true });
+  await respondWithVoiceAgent(res, req, activeOnly(doc ? serialize(doc) : null), { isTest: true });
 });
 
 function twilioClient() {
