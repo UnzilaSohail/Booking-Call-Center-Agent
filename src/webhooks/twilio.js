@@ -9,6 +9,7 @@ import { findBusinessByPhoneNumber, cancelBooking, assertWithinChangeCutoff } fr
 import { upsertCustomer, markRecordingAcknowledged, setSmsOptIn, normalizePhone } from '../services/customerService.js';
 import { isOpenNow } from '../voice/geminiSession.js';
 import { withTenant, withSystemAccess, newId, serialize } from '../db.js';
+import { signStreamToken } from '../voice/streamToken.js';
 
 export const twilioWebhookRouter = Router();
 // Twilio posts application/x-www-form-urlencoded, not JSON — the app-wide express.json()
@@ -90,6 +91,7 @@ async function respondWithVoiceAgent(res, req, business, { isTest = false } = {}
   stream.parameter({ name: 'businessId', value: business.id });
   stream.parameter({ name: 'callSid', value: req.body.CallSid });
   stream.parameter({ name: 'from', value: req.body.From });
+  stream.parameter({ name: 'streamToken', value: signStreamToken(business.id, req.body.CallSid) });
 
   res.type('text/xml').send(twiml.toString());
 }

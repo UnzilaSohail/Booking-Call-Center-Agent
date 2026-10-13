@@ -9,6 +9,7 @@ import { WebSocket } from 'ws';
 import { createTenant, dropTenants, skip, getDb, newId } from './support/tenantFixture.js';
 import { attachTwilioMediaStreamServer, beginDrain, resetDrain, getActiveCalls } from '../src/voice/twilioBridge.js';
 import { mulawFrameLevel, SPEECH_LEVEL } from '../src/voice/audio.js';
+import { signStreamToken } from '../src/voice/streamToken.js';
 
 const SILENT = Buffer.alloc(160, 0xff).toString('base64'); // mu-law silence
 const LOUD = Buffer.alloc(160, 0x00).toString('base64'); // mu-law full-scale
@@ -53,7 +54,7 @@ describe('twilio media stream bridge', { skip }, () => {
     const ws = new WebSocket(url);
     const closed = new Promise((r) => ws.on('close', r));
     await new Promise((r) => ws.on('open', r));
-    ws.send(JSON.stringify({ event: 'start', start: { streamSid: `MZ${newId()}`, callSid, customParameters: { businessId: t.businessId, from: '+15550800001' } } }));
+    ws.send(JSON.stringify({ event: 'start', start: { streamSid: `MZ${newId()}`, callSid, customParameters: { businessId: t.businessId, from: '+15550800001', streamToken: signStreamToken(t.businessId, callSid) } } }));
     return { ws, callSid, closed };
   }
   const row = (callSid) => db.collection('call_logs').findOne({ call_sid: callSid });
@@ -172,5 +173,38 @@ describe('twilio media stream bridge', { skip }, () => {
     await call.closed;
     await until(() => getActiveCalls() === 0);
     resetDrain();
+  });
+  it('VR-08 a stream without a valid token is refused and starts no Gemini session (AIN-466)', async () => {
+    sessions = [];
+    for (const streamToken of [undefined, 'nope', signStreamToken(t.businessId, 'a-different-call')]) {
+      const callSid = `CA${newId()}`;
+      await db.collection('call_logs').insertOne({ _id: newId(), business_id: t.businessId, call_sid: callSid, phone: '+15550800002', outcome: 'in_progress', created_at: new Date() });
+      const ws = new WebSocket(url);
+      const closed = new Promise((r) => ws.on('close', r));
+      await new Promise((r) => ws.on('open', r));
+      ws.send(JSON.stringify({ event: 'start', start: { streamSid: `MZ${newId()}`, callSid, customParameters: { businessId: t.businessId, from: '+15550800002', streamToken } } }));
+      await closed;
+      assert.equal((await row(callSid)).outcome, 'in_progress', 'the call log row is untouched');
+    }
+    assert.equal(sessions.length, 0);
+  });
+
+  it('VR-09 a socket that never sends start is dropped, and an oversized frame closes the socket (AIN-466)', async () => {
+    process.env.STREAM_START_TIMEOUT_MS = '300';
+    try {
+      const idle = new WebSocket(url);
+      const idleClosed = new Promise((r) => idle.on('close', r));
+      await new Promise((r) => idle.on('open', r));
+      const t0 = Date.now();
+      await idleClosed;
+      assert.ok(Date.now() - t0 < 3000, 'closed by the start timeout');
+    } finally {
+      delete process.env.STREAM_START_TIMEOUT_MS;
+    }
+    const big = new WebSocket(url);
+    const code = new Promise((r) => big.on('close', (c) => r(c)));
+    await new Promise((r) => big.on('open', r));
+    big.send('x'.repeat(200 * 1024));
+    assert.equal(await code, 1009, 'message too big');
   });
 });

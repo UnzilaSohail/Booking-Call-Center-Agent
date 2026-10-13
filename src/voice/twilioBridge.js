@@ -7,12 +7,20 @@ import { twilioPayloadToGeminiPCM, geminiPCMToTwilioPayload, mulawFrameLevel, SP
 import { startGeminiSession, summarizeCall } from './geminiSession.js';
 import { transferCallToHuman, endCallWithMessage } from '../webhooks/twilio.js';
 import { getDb, withTenant, newId, serialize } from '../db.js';
+import { verifyStreamToken } from './streamToken.js';
 
 // KG-11/27f: single-process guard against overloading one Gemini Live API key/Mongo
 // pool. Only meaningful in PM2 fork mode (27i) — a cluster of N processes would each
 // allow this many, since the counter is in-memory per process, not shared.
 const MAX_CONCURRENT_CALLS = process.env.MAX_CONCURRENT_CALLS ? Number(process.env.MAX_CONCURRENT_CALLS) : null;
 let activeCalls = 0;
+// Live calls per business, so one tenant (a free signup, a runaway script) cannot take every line.
+const MAX_CALLS_PER_BUSINESS = process.env.MAX_CALLS_PER_BUSINESS ? Number(process.env.MAX_CALLS_PER_BUSINESS) : 10;
+const callsByBusiness = new Map();
+// Twilio media frames are a few hundred bytes of JSON; the ws default of 100 MiB per message is an open invitation.
+const MAX_FRAME_BYTES = 64 * 1024;
+// A socket that has not sent a valid `start` by now is not a call.
+const START_TIMEOUT_MS = () => Number(process.env.STREAM_START_TIMEOUT_MS) || 5_000;
 
 // 27l: on SIGTERM/restart, stop taking new calls and let the ones in progress finish (up to a
 // limit) instead of cutting every caller off mid-sentence. server.js calls beginDrain().
@@ -39,7 +47,7 @@ export function beginDrain(timeoutMs = DRAIN_TIMEOUT_MS) {
 export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream', deps = {}) {
   const startSession = deps.startGeminiSession ?? startGeminiSession;
   const summarize = deps.summarizeCall ?? summarizeCall;
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
 
   httpServer.on('upgrade', (req, socket, head) => {
     let pathname;
@@ -62,6 +70,9 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
     let isTest = false;
     let counted = false; // whether this call incremented activeCalls (only once it actually started)
     const transcript = [];
+
+    const startTimer = setTimeout(() => { if (!callSid) ws.close(); }, START_TIMEOUT_MS());
+    ws.on('close', () => clearTimeout(startTimer));
 
     // plan.md §6 "Dead air / silence handling": Gemini Live's own VAD handles normal
     // turn-taking, but a genuinely dead line (no media frames at all — not even comfort
@@ -92,7 +103,11 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
     async function finalizeCall() {
       if (finalized) return;
       finalized = true;
-      if (counted) { activeCalls--; counted = false; }
+      if (counted) {
+        activeCalls--;
+        callsByBusiness.set(business.id, Math.max(0, (callsByBusiness.get(business.id) ?? 1) - 1));
+        counted = false;
+      }
       gemini?.close();
       if (!business) return;
       const transcriptText = transcript.join('\n');
@@ -129,6 +144,13 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
             callSid = msg.start.callSid;
             fromNumber = msg.start.customParameters?.from ?? null;
             const businessId = msg.start.customParameters?.businessId;
+            if (!verifyStreamToken(businessId, callSid, msg.start.customParameters?.streamToken)) {
+              console.error(`media stream refused: missing or wrong stream token (call ${callSid})`);
+              callSid = null; // not a call we answered: never touch its call_logs row
+              ws.close();
+              return;
+            }
+            clearTimeout(startTimer);
             // Set by the onboarding test-call webhook (src/webhooks/twilio.js
             // /voice/test-call) — real inbound calls never carry this parameter.
             isTest = msg.start.customParameters?.isTest === 'true';
@@ -143,7 +165,8 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
             }
 
             lastActivityAt = Date.now();
-            if (draining || (MAX_CONCURRENT_CALLS && activeCalls >= MAX_CONCURRENT_CALLS)) {
+            const tenantFull = MAX_CALLS_PER_BUSINESS && (callsByBusiness.get(business.id) ?? 0) >= MAX_CALLS_PER_BUSINESS;
+            if (draining || tenantFull || (MAX_CONCURRENT_CALLS && activeCalls >= MAX_CONCURRENT_CALLS)) {
               console.warn(`call ${callSid} rejected — ${draining ? 'server is draining for a restart' : `at MAX_CONCURRENT_CALLS (${MAX_CONCURRENT_CALLS})`}`);
               await withTenant(business.id, (c) => c('call_logs').updateOne({ call_sid: callSid }, { $set: { outcome: draining ? 'failed: restarting' : 'failed: lines_busy' } }));
               await endCallWithMessage(callSid, draining
@@ -224,6 +247,7 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
                 },
               });
               activeCalls++;
+              callsByBusiness.set(business.id, (callsByBusiness.get(business.id) ?? 0) + 1);
               counted = true;
             } catch (err) {
               console.error(`gemini session failed to start for call ${callSid}:`, err.message);
