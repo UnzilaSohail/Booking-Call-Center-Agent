@@ -1,14 +1,9 @@
 // Real aggregated analytics for the dashboard home page — revenue, trends, breakdowns —
 // as opposed to the simple counts in getDashboardStats (src/services/bookingService.js).
 // Kept separate since this is read-only reporting, not core booking logic.
+import { DateTime } from 'luxon';
 import { withTenant } from '../db.js';
-
-function daysAgo(n) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - n);
-  return d;
-}
+import { getBusiness } from './bookingService.js';
 
 function trendPct(current, previous) {
   if (previous === 0) return current > 0 ? 100 : 0;
@@ -16,11 +11,12 @@ function trendPct(current, previous) {
 }
 
 export async function getAnalytics(businessId) {
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const prevMonthStart = new Date(monthStart);
-  prevMonthStart.setMonth(prevMonthStart.getMonth() - 1);
+  // Days and months are the business's own, not the server's (B-ENG-11).
+  const zone = (await getBusiness(businessId)).timezone;
+  const today = DateTime.now().setZone(zone).startOf('day');
+  const daysAgo = (n) => today.minus({ days: n }).toJSDate();
+  const monthStart = today.startOf('month').toJSDate();
+  const prevMonthStart = today.startOf('month').minus({ months: 1 }).toJSDate();
   const now = new Date();
   const prevSamePoint = new Date(Math.min(monthStart.getTime(), prevMonthStart.getTime() + (now.getTime() - monthStart.getTime())));
   const trendStart = daysAgo(13); // 14-day window including today
@@ -48,7 +44,7 @@ export async function getAnalytics(businessId) {
       // Confirmed + cancelled bookings per day for the last 14 days, for the activity chart.
       col('bookings').aggregate([
         { $match: { start_time: { $gte: trendStart }, status: { $in: ['confirmed', 'cancelled'] }, is_test: { $ne: true } } },
-        { $group: { _id: { date: { $dateToString: { format: '%Y-%m-%d', date: '$start_time' } }, status: '$status' }, count: { $sum: 1 } } },
+        { $group: { _id: { date: { $dateToString: { format: '%Y-%m-%d', date: '$start_time', timezone: zone } }, status: '$status' }, count: { $sum: 1 } } },
         { $sort: { '_id.date': 1 } },
       ]).toArray(),
 
@@ -119,8 +115,7 @@ export async function getAnalytics(businessId) {
     }
     const daily = [];
     for (let i = 13; i >= 0; i--) {
-      const d = daysAgo(i);
-      const key = d.toISOString().slice(0, 10);
+      const key = today.minus({ days: i }).toISODate();
       daily.push({
         date: key,
         count: dailyByDate[key]?.confirmed ?? 0, // kept for callers still reading the old shape

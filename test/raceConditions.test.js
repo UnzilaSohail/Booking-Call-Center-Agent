@@ -175,11 +175,14 @@ describe('booking race conditions', { skip }, () => {
     assert.deepEqual(listA.map((x) => x.id), [a.booking.id], 'tenant A sees only its own booking');
   });
 
-  it('RC-13 [known limitation] bookings with no staff and with a named staff do not block each other', async () => {
+  it('RC-13 a booking with no staff and a booking for a named person block each other (KG-03)', async () => {
     const startTime = at(19, '14');
     const noStaff = await Promise.allSettled([book(startTime, { staff: null }), book(startTime, { staff: null, phone: '+15550001302' })]);
-    assert.equal(noStaff.filter((r) => r.status === 'fulfilled').length, 1, 'two no-staff bookings still collide');
-    await book(startTime, { staff: 'Jessica' }); // documented behaviour (KG-03): separate lock namespace
+    assert.equal(noStaff.filter((r) => r.status === 'fulfilled').length, 1, 'two no-staff bookings collide');
+    await assert.rejects(book(startTime, { staff: 'Jessica' }), 'a named-staff booking cannot take a time an unassigned booking holds');
+    const later = at(19, '16');
+    await book(later, { staff: 'Jessica' });
+    await assert.rejects(book(later, { staff: null, phone: '+15550001303' }), 'an unassigned booking cannot take a time a named person already has');
   });
 
   it('RC-14 a cancelled booking cannot be rescheduled', async () => {

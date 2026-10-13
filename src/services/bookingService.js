@@ -209,19 +209,26 @@ function floorToGrid(date) {
 // Locks only matter until the booking's time has passed. expires_at (end + 1 day) lets a TTL
 // index (db/schema.js) delete them by itself, so booking_slot_locks stops growing (KG-14).
 const LOCK_GRACE_MS = 24 * 60 * 60_000;
-export function lockDocs(businessId, bookingId, staffId, startDate, endDate) {
+export function lockDocs(businessId, bookingId, staffId, startDate, endDate, allStaffIds = []) {
   const expires_at = new Date(endDate.getTime() + LOCK_GRACE_MS);
-  return slotLockIds(businessId, staffId, startDate, endDate).map((id) => ({ _id: id, business_id: businessId, booking_id: bookingId, expires_at }));
+  return slotLockIds(businessId, staffId, startDate, endDate, allStaffIds).map((id) => ({ _id: id, business_id: businessId, booking_id: bookingId, expires_at }));
 }
 
-function slotLockIds(businessId, staffId, startDate, endDate) {
+// KG-03: a booking with nobody assigned blocks the time for the whole business, so it also takes
+// every staff member's lock; otherwise it could share a time with a booking for a named person.
+// shortcut: only staff that exist when the booking is made are locked, so someone added later is not
+// blocked by older unassigned bookings; upgrade by assigning a concrete staff member when booking.
+function slotLockIds(businessId, staffId, startDate, endDate, allStaffIds = []) {
   const ids = [];
-  const staffKey = staffId || 'none';
+  const staffKeys = staffId ? [staffId] : ['none', ...allStaffIds];
   for (let t = floorToGrid(startDate).getTime(); t < endDate.getTime(); t += SLOT_GRANULARITY_MS) {
-    ids.push(`${businessId}:${staffKey}:${new Date(t).toISOString()}`);
+    for (const key of staffKeys) ids.push(`${businessId}:${key}:${new Date(t).toISOString()}`);
   }
   return ids;
 }
+
+const staffIdsFor = (businessId, staffId) =>
+  staffId ? [] : withTenant(businessId, (col) => col('staff').find({}, { projection: { _id: 1 } }).toArray()).then((rows) => rows.map((r) => r._id));
 
 // KG-02/28c: the hard backstop behind check_availability — re-derives the same slot list
 // and checks the requested start is actually in it, so a caller can't book a time
@@ -309,6 +316,7 @@ export async function createBooking(businessId, { customerName, phone, customerE
     ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}), // omitted entirely when absent, matching the partial unique index (db/schema.js)
   };
 
+  const allStaffIds = await staffIdsFor(businessId, staffId);
   const db = await getDb();
   const session = client.startSession();
   try {
@@ -316,7 +324,7 @@ export async function createBooking(businessId, { customerName, phone, customerE
       // Locks inserted first: if any slot in the range is already taken, this throws
       // (duplicate key on _id) before the booking document itself is ever written.
       await db.collection('booking_slot_locks').insertMany(
-        lockDocs(businessId, bookingId, staffId, startDate, endDate),
+        lockDocs(businessId, bookingId, staffId, startDate, endDate, allStaffIds),
         { session, ordered: true }
       );
       await db.collection('bookings').insertOne(bookingDoc, { session });
@@ -381,6 +389,7 @@ export async function rescheduleBooking(businessId, bookingId, startTime) {
   const startDate = start.toJSDate();
   const endDate = end.toJSDate();
 
+  const allStaffIds = await staffIdsFor(businessId, current.staff_id);
   const db = await getDb();
   const session = client.startSession();
   let updated;
@@ -391,7 +400,7 @@ export async function rescheduleBooking(businessId, bookingId, startTime) {
       // this same transaction) are restored by the abort, not left dangling.
       await db.collection('booking_slot_locks').deleteMany({ booking_id: bookingId, business_id: businessId }, { session });
       await db.collection('booking_slot_locks').insertMany(
-        lockDocs(businessId, bookingId, current.staff_id, startDate, endDate),
+        lockDocs(businessId, bookingId, current.staff_id, startDate, endDate, allStaffIds),
         { session, ordered: true }
       );
       updated = await db.collection('bookings').findOneAndUpdate(
@@ -474,11 +483,14 @@ function trendPct(current, previous) {
 // rolling-window approach as the platform Overview (src/routes/platform.js /analytics).
 export async function getDashboardStats(businessId) {
   const now = new Date();
-  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
-  const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-  const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
-  const lastWeekStart = new Date(todayStart); lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+  // Days are the business's own calendar days (B-ENG-11), not the server's.
+  const midnight = DateTime.now().setZone((await getBusiness(businessId)).timezone).startOf('day');
+  const dayOffset = (n) => midnight.plus({ days: n }).toJSDate();
+  const todayStart = dayOffset(0);
+  const todayEnd = dayOffset(1);
+  const yesterdayStart = dayOffset(-1);
+  const weekEnd = dayOffset(7);
+  const lastWeekStart = dayOffset(-7);
 
   return withTenant(businessId, async (col) => {
     const [todayCount, yesterdayCount, weekCount, lastWeekCount, totalUpcoming, serviceCount, staffCount] = await Promise.all([

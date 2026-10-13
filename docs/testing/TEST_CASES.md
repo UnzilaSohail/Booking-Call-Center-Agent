@@ -41,7 +41,7 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 | RC-10 | Two reschedules into one free slot | Both target 17:00 | One wins; loser keeps its own slot | Pass |
 | RC-11 | Same idempotency key x10 | Ten parallel retries | All answered, one booking, one real insert | Pass |
 | RC-12 | Two businesses, same time | Same start and staff name in both | Both succeed; each lists only its own | Pass |
-| RC-13 | No-staff vs named staff | Two no-staff bookings, then a named one | No-staff pair collides; named one allowed (KG-03, documented limitation) | Pass |
+| RC-13 | No-staff vs named staff | Two no-staff bookings, then a named one, then the reverse order | No-staff pair collides; named one refused; unassigned refused after a named one (KG-03, fixed 2026-10-14) | Pass |
 | RC-14 | Reschedule a cancelled booking | Cancel then reschedule | Refused (KG-06, fixed 2026-09-30) | Pass |
 | RC-15 | Availability follows bookings | Slot listed, book, slot gone, cancel, slot back | As described | Pass |
 | RC-16 | 60 parallel bookings on distinct slots | One staff, 60 half-hour slots | No false conflicts (211 ms) | Pass |
