@@ -27,10 +27,14 @@ export const smsConfigured = () => Boolean(process.env.TWILIO_ACCOUNT_SID && pro
 // usage) — when given, this is the single choke point every SMS send goes through, so
 // it's where usage gets logged for billing (ROADMAP.md §11 "SMS usage tracking") rather
 // than each caller remembering to.
+// Phone numbers and message bodies (they carry login codes) stay out of production logs; local development
+// without Twilio still sees the whole text, which is how a code is read.
+const forLog = (to, body) => (process.env.NODE_ENV === 'production' ? [`***${String(to).slice(-4)}`] : [to, body]);
+
 export async function sendSms(businessId, to, body) {
   const c = getClient();
   if (!c) {
-    console.warn('SMS not sent (Twilio not configured):', to, body);
+    console.warn('SMS not sent (Twilio not configured):', ...forLog(to, body));
     return null;
   }
 
@@ -44,7 +48,7 @@ export async function sendSms(businessId, to, body) {
     if (business?.phone_number) from = business.phone_number;
   }
   if (!from) {
-    console.warn('SMS not sent (no sending number available for this business, and no platform fallback configured):', to, body);
+    console.warn('SMS not sent (no sending number available for this business, and no platform fallback configured):', ...forLog(to, body));
     return null;
   }
 
@@ -63,7 +67,7 @@ export async function sendSms(businessId, to, body) {
     }
     return message.sid;
   } catch (err) {
-    console.error(`SMS send to ${to} failed:`, err.message);
+    console.error(`SMS send to ${forLog(to)[0]} failed:`, err.message);
     return null;
   }
 }

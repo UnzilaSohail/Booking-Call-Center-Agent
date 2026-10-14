@@ -281,10 +281,11 @@ me.post('/appointments/:id/cancel', async (req, res, next) => {
   }
 });
 
-// Everything stored about this customer at this business (their data-access right).
+// Everything stored about this customer at this business (their data-access right), except what staff
+// wrote about them privately (notes, tags).
 me.get('/export', async (req, res, next) => {
   try {
-    const { _id, business_id, ...rest } = req.customer;
+    const { _id, business_id, notes, tags, ...rest } = req.customer;
     res.json({ exportedAt: new Date().toISOString(), customer: { id: _id, ...rest }, appointments: await myBookings(req) });
   } catch (err) {
     next(err);

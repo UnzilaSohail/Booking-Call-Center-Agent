@@ -8,12 +8,14 @@ import { startRetentionWorker } from './services/retentionWorker.js';
 import { startBillingWorker } from './billing/worker.js';
 import { startMonthlyReportWorker } from './services/reportService.js';
 import { startStaleCallWorker } from './services/staleCalls.js';
+import { reportMissingSettings } from './envCheck.js';
 
 // Node 20 exits on an unhandled rejection, which would drop every live call over one failed
 // background write. Log it and keep serving; the failing path owns its own error handling.
 process.on('unhandledRejection', (reason) => console.error('unhandledRejection:', reason));
 
 const port = process.env.PORT || 3000;
+reportMissingSettings();
 
 const httpServer = createServer(app);
 attachTwilioMediaStreamServer(httpServer, '/voice/stream'); // plan.md §8 phase 4

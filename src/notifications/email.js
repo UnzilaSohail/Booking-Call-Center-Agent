@@ -65,6 +65,6 @@ export async function sendEmail(to, subject, text, replyTo) {
     }
   }
 
-  console.warn('Email not sent (no provider configured):', to, subject);
+  console.warn('Email not sent (no provider configured):', ...(process.env.NODE_ENV === 'production' ? [subject] : [to, subject]));
   return { sent: false, reason: 'no email provider configured — set GMAIL_USER/GMAIL_APP_PASSWORD or SENDGRID_API_KEY/SENDGRID_FROM_EMAIL' };
 }

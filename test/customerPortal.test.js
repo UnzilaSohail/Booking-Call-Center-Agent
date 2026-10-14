@@ -217,8 +217,10 @@ describe('customer portal', { skip: skip || (realProvider ? 'a real SMS/email pr
   });
 
   it('CP-15 export holds only this customer\'s data; a delete request lands in the owner\'s queue once', async () => {
+    await db.collection('customers').updateOne({ business_id: salon.businessId, phone: PHONE }, { $set: { notes: 'staff-only gossip', tags: ['difficult'] } });
     const data = await (await api('/customer/export', { auth: token })).json();
     assert.equal(data.customer.phone, PHONE);
+    assert.ok(!JSON.stringify(data).includes('staff-only gossip') && !('tags' in data.customer), 'internal staff notes and tags are not exported');
     assert.ok(!JSON.stringify(data).includes(OTHER));
     assert.ok(!JSON.stringify(data).includes('business_id'));
     assert.equal((await api('/customer/delete-request', { method: 'POST', auth: token })).status, 202);

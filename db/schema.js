@@ -78,15 +78,16 @@ export async function ensureIndexes(db) {
     { unique: true, partialFilterExpression: { idempotency_key: { $exists: true } } }
   );
   // Polled by the calendar sync worker and the reminder cron (src/calendar/sync-worker.js,
-  // src/notifications/reminder-worker.js) — partial index keeps those scans cheap.
-  await db.collection('bookings').createIndex(
-    { sync_status: 1 },
-    { partialFilterExpression: { status: 'confirmed', sync_status: { $in: ['pending', 'failed'] } } }
-  );
-  await db.collection('bookings').createIndex(
-    { start_time: 1 },
-    { partialFilterExpression: { status: 'confirmed', reminder_24h_sent_at: null } }
-  );
+  // src/notifications/reminder-worker.js). The earlier partial versions were never used: the sync query also
+  // pushes cancellations (status is not 'confirmed'), and one start_time index could not serve both the 24h and
+  // the 2h reminder query, so every poll scanned all bookings. Plain indexes the queries can use replace them.
+  const bookings = db.collection('bookings');
+  for (const name of ['sync_status_1', 'start_time_1']) {
+    const old = (await bookings.indexes()).find((i) => i.name === name && i.partialFilterExpression);
+    if (old) await bookings.dropIndex(name);
+  }
+  await bookings.createIndex({ sync_status: 1 });
+  await bookings.createIndex({ status: 1, start_time: 1 });
 
   // No secondary index needed on booking_slot_locks — the collision guard IS the
   // default unique index on _id, and lookups are always by business_id/booking_id via

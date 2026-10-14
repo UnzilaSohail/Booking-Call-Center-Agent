@@ -166,7 +166,7 @@ exceptionsRouter.post('/exceptions/:type/:id/retry', gate, async (req, res, next
 
     if (req.params.type === 'calendar_sync') {
       const updated = await withTenant(req.businessId, (c) => c('bookings').findOneAndUpdate(
-        { _id: req.params.id }, { $set: { sync_status: 'pending', sync_attempts: 0, sync_error: null } }, { returnDocument: 'after' }
+        { _id: req.params.id }, { $set: { sync_status: 'pending', sync_attempts: 0, sync_error: null }, $unset: { next_retry_at: '' } }, { returnDocument: 'after' }
       ));
       if (!updated) return res.status(404).json({ error: 'booking not found' });
       return res.json({ ok: true });
