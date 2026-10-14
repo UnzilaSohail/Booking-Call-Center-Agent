@@ -28,13 +28,36 @@ class ApiError extends Error {
   }
 }
 
+// A request that never answers would leave a page spinning forever.
+const REQUEST_TIMEOUT_MS = 30_000;
+const EXPORT_TIMEOUT_MS = 120_000;
+
+async function timedFetch(url, options, timeoutMs) {
+  try {
+    return await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    if (err?.name === 'TimeoutError') throw new ApiError(0, 'The server took too long to answer. Please try again.');
+    throw err;
+  }
+}
+
+// The server marks "your login no longer works" (expired, revoked by a password change, account removed) with
+// code 'session'; other 401s (wrong password, wrong code) must not sign anyone out. Done here once instead of
+// in every page: forget the token and go to the login page, which says why.
+function endSessionIfExpired(res, data, tokenStore) {
+  if (res.status !== 401 || data?.code !== 'session' || !tokenStore?.get() || typeof window === 'undefined') return;
+  tokenStore.clear();
+  window.location.assign('/login?expired=1');
+}
+
 async function request(path, { method = 'GET', body, tokenStore } = {}) {
   const headers = { 'content-type': 'application/json' };
   const token = tokenStore?.get();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${API_URL}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const res = await timedFetch(`${API_URL}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined }, REQUEST_TIMEOUT_MS);
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
+  endSessionIfExpired(res, data, tokenStore);
   if (!res.ok) throw new ApiError(res.status, data?.error || `request failed (${res.status})`);
   return data;
 }
@@ -46,8 +69,9 @@ async function requestText(path, { tokenStore } = {}) {
   const headers = {};
   const token = tokenStore?.get();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${API_URL}${path}`, { headers });
+  const res = await timedFetch(`${API_URL}${path}`, { headers }, EXPORT_TIMEOUT_MS);
   const text = await res.text();
+  endSessionIfExpired(res, (() => { try { return JSON.parse(text); } catch { return null; } })(), tokenStore);
   if (!res.ok) throw new ApiError(res.status, text || `request failed (${res.status})`);
   return text;
 }

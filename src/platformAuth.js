@@ -54,23 +54,24 @@ platformAuthRouter.get('/auth/me', requirePlatformAuth, async (req, res, next) =
 });
 
 export async function requirePlatformAuth(req, res, next) {
+  const sessionEnded = (error) => res.status(401).json({ error, code: 'session' }); // see requireAuth in src/auth.js
   const header = req.headers.authorization ?? '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (!token) return res.status(401).json({ error: 'missing bearer token' });
+  if (!token) return sessionEnded('missing bearer token');
 
   let payload;
   try {
     payload = jwt.verify(token, JWT_SECRET);
   } catch {
-    return res.status(401).json({ error: 'invalid or expired token' });
+    return sessionEnded('invalid or expired token');
   }
-  if (payload.role !== 'platform') return res.status(401).json({ error: 'invalid token for this endpoint' });
+  if (payload.role !== 'platform') return sessionEnded('invalid token for this endpoint');
 
   try {
     // A deleted platform admin, or a token minted before their last password change, must stop working at once.
     const admin = await (await getDb()).collection('platform_admins').findOne({ _id: payload.platformAdminId }, { projection: { tokens_valid_after: 1 } });
-    if (!admin) return res.status(401).json({ error: 'admin not found' });
-    if (tokenRevoked(payload, admin.tokens_valid_after)) return res.status(401).json({ error: 'your session ended, please log in again' });
+    if (!admin) return sessionEnded('admin not found');
+    if (tokenRevoked(payload, admin.tokens_valid_after)) return sessionEnded('your session ended, please log in again');
     req.platformAdminId = payload.platformAdminId;
     next();
   } catch (err) {

@@ -44,7 +44,9 @@ describe('session revocation', { skip }, () => {
     assert.equal(res.status, 200);
     const { token } = await res.json();
     assert.equal((await call('/api/auth/me', { token })).status, 200, 'the fresh token keeps this person logged in');
-    assert.equal((await call('/api/auth/me', { token: stolen })).status, 401, 'the older token is revoked');
+    const revoked = await call('/api/auth/me', { token: stolen });
+    assert.equal(revoked.status, 401, 'the older token is revoked');
+    assert.equal((await revoked.json()).code, 'session', 'marked so the dashboard signs out');
   });
 
   it('SR-02 replacing an authenticator that is already on needs the password', async () => {
@@ -52,7 +54,9 @@ describe('session revocation', { skip }, () => {
     assert.equal((await call('/api/auth/mfa/enroll', { method: 'POST', token })).status, 200, 'first-time enrolment needs no password');
     await db.collection('admins').updateOne({ _id: adminId }, { $set: { mfa_enabled: true, mfa_secret: 'JBSWY3DPEHPK3PXP' } });
     assert.equal((await call('/api/auth/mfa/enroll', { method: 'POST', token })).status, 401);
-    assert.equal((await call('/api/auth/mfa/enroll', { method: 'POST', token, body: { password: 'wrong' } })).status, 401);
+    const wrongPassword = await call('/api/auth/mfa/enroll', { method: 'POST', token, body: { password: 'wrong' } });
+    assert.equal(wrongPassword.status, 401);
+    assert.equal((await wrongPassword.json()).code, undefined, 'a wrong password is not a dead session');
     assert.equal((await call('/api/auth/mfa/enroll', { method: 'POST', token, body: { password: 'Brand-New-Pass-456' } })).status, 200);
   });
 

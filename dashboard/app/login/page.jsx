@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, unifiedLogin, storeTokenForRole } from '../../lib/api';
@@ -21,6 +21,11 @@ export default function LoginPage() {
   const [code, setCode] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // lib/api.js sends people here with ?expired=1 when their login stopped working.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('expired')) setError('Your session ended. Please sign in again.');
+  }, []);
 
   async function submit(e) {
     e.preventDefault();

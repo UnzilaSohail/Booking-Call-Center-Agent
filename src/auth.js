@@ -124,7 +124,7 @@ export async function resolveSessionFromToken(token) {
 export async function requireAuth(req, res, next) {
   const header = req.headers.authorization ?? '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (!token) return res.status(401).json({ error: 'missing bearer token' });
+  if (!token) return res.status(401).json({ error: 'missing bearer token', code: 'session' });
 
   try {
     const session = await resolveSessionFromToken(token);
@@ -133,7 +133,7 @@ export async function requireAuth(req, res, next) {
     req.admin = session.admin;
     next();
   } catch (err) {
-    if (err instanceof SessionError) return res.status(err.status).json({ error: err.message });
+    if (err instanceof SessionError) return res.status(err.status).json({ error: err.message, ...(err.status === 401 ? { code: 'session' } : {}) });
     next(err);
   }
 }
