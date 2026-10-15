@@ -10,6 +10,8 @@ import { publicBookingRouter } from './routes/publicBooking.js';
 import { customerPortalRouter } from './routes/customerPortal.js';
 import { acceptInviteRouter } from './routes/acceptInvite.js';
 import { onboardingRouter } from './routes/onboarding.js';
+import { requestLog } from './requestLog.js';
+import { getDb } from './db.js';
 import { locationsRouter } from './routes/locations.js';
 import { customersRouter } from './routes/customers.js';
 import { servicesRouter } from './routes/services.js';
@@ -35,6 +37,7 @@ export const app = express();
 // Behind nginx: take the client IP from X-Forwarded-For so the public endpoints' rate
 // limits see visitors, not the proxy.
 app.set('trust proxy', 1);
+app.use(requestLog);
 
 // The dashboard (its own Next.js app, its own origin/port) talks to this API entirely
 // via fetch() with a Bearer token — no cookies involved, so a permissive CORS policy
@@ -76,7 +79,19 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/health', (req, res) => res.json({ ok: true }));
+// Answers ok only when the database does too, so an uptime monitor sees a dead database, not just a live process.
+app.get('/health', async (req, res) => {
+  try {
+    await Promise.race([
+      getDb().then((db) => db.command({ ping: 1 })),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('database ping timed out')), 2000).unref()),
+    ]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('health check failed:', err.message);
+    res.status(503).json({ ok: false, error: 'database unavailable' });
+  }
+});
 app.use('/api', unifiedLoginRouter);
 app.use('/api', signupRouter);
 app.use('/api', myBookingRouter);

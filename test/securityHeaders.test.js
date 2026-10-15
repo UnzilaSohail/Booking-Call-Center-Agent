@@ -10,8 +10,9 @@ test('API responses forbid scripts, framing and content sniffing', async () => {
   const server = createServer(app);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/health`);
-    assert.equal(res.status, 200);
+    // a route that answers without the database (/health now asks it, and Express's own 404 page sets its own CSP)
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/platform/auth/me`);
+    assert.equal(res.status, 401);
     assert.match(res.headers.get('content-security-policy'), /default-src 'none'/);
     assert.match(res.headers.get('content-security-policy'), /frame-ancestors 'none'/);
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff');

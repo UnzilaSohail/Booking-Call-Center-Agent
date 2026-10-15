@@ -9,6 +9,7 @@ import { startBillingWorker } from './billing/worker.js';
 import { startMonthlyReportWorker } from './services/reportService.js';
 import { startStaleCallWorker } from './services/staleCalls.js';
 import { reportMissingSettings } from './envCheck.js';
+import { client } from './db.js';
 
 // Node 20 exits on an unhandled rejection, which would drop every live call over one failed
 // background write. Log it and keep serving; the failing path owns its own error handling.
@@ -48,7 +49,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     if (active) console.log(`${signal}: waiting for ${active} active call(s) to finish before exiting`);
     const clean = await beginDrain();
     if (!clean) console.warn(`drain timed out with ${getActiveCalls()} call(s) still active, exiting anyway`);
-    httpServer.close(() => process.exit(0));
+    httpServer.close(async () => { await client.close().catch(() => {}); process.exit(0); });
     setTimeout(() => process.exit(0), 2000).unref(); // open sockets must not hold the exit
   });
 }

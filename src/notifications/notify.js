@@ -56,7 +56,7 @@ async function sendGated(business, booking, smsText, emailSubject, emailText) {
   const updates = {};
 
   if (consent?.smsOptIn === false) {
-    console.log(`SMS skipped for ${booking.phone} — opted out`);
+    console.log(`SMS skipped for ***${String(booking.phone).slice(-4)} — opted out`);
     updates.confirmation_sms_status = 'opted_out';
   } else {
     try {
@@ -72,7 +72,7 @@ async function sendGated(business, booking, smsText, emailSubject, emailText) {
   }
 
   if (consent?.emailOptIn === false) {
-    console.log(`Email skipped for ${booking.customer_email} — opted out`);
+    console.log(`Email skipped for booking ${booking._id} — opted out`);
     updates.confirmation_email_status = 'opted_out';
   } else if (!booking.customer_email) {
     // The customer gave no email: nothing was supposed to go out, so this is not a failure.
