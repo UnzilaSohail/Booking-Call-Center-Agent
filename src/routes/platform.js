@@ -141,7 +141,8 @@ platformRouter.patch('/businesses/:id/status', async (req, res, next) => {
     if (!['active', 'suspended'].includes(status)) return res.status(400).json({ error: "status must be 'active' or 'suspended'" });
 
     const db = await getDb();
-    const result = await db.collection('businesses').updateOne({ _id: req.params.id }, { $set: { status } });
+    // A person deciding the status overrides any automatic billing suspension (suspended_reason).
+    const result = await db.collection('businesses').updateOne({ _id: req.params.id }, { $set: { status }, $unset: { suspended_reason: '' } });
     if (result.matchedCount === 0) return res.status(404).json({ error: 'company not found' });
     res.json({ ok: true, status });
   } catch (err) {

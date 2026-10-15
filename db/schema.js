@@ -152,6 +152,11 @@ export async function ensureIndexes(db) {
   await db.collection('sms_sends').createIndex({ business_id: 1, sent_at: 1 });
 
   await db.collection('invoices').createIndex({ business_id: 1, created_at: -1 });
+  // One invoice per business per billing period: closing a period twice (a crash, a second process) cannot bill twice.
+  // (an earlier build of this index was not partial and would reject invoices that have no period_start: replace it)
+  const staleInvoiceIdx = (await db.collection('invoices').indexes()).find((i) => i.name === 'business_id_1_period_start_1' && !i.partialFilterExpression);
+  if (staleInvoiceIdx) await db.collection('invoices').dropIndex('business_id_1_period_start_1');
+  await db.collection('invoices').createIndex({ business_id: 1, period_start: 1 }, { unique: true, partialFilterExpression: { period_start: { $type: 'date' } } });
   // src/webhooks/stripe.js looks an invoice up by the PaymentIntent id Stripe's async
   // event carries, not business_id — matches how call_logs.call_sid works today.
   await db.collection('invoices').createIndex(

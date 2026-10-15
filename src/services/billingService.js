@@ -25,7 +25,7 @@ function round2(n) {
 export async function computeUsage(businessId, periodStart, periodEnd) {
   return withTenant(businessId, async (c) => {
     const [callAgg] = await c('call_logs').aggregate([
-      { $match: { created_at: { $gte: periodStart, $lt: periodEnd }, duration_seconds: { $type: 'number' } } },
+      { $match: { created_at: { $gte: periodStart, $lt: periodEnd }, duration_seconds: { $type: 'number' }, is_test: { $ne: true } } }, // onboarding test calls are free
       { $group: { _id: null, totalSeconds: { $sum: '$duration_seconds' } } },
     ]).toArray();
     const smsCount = await c('sms_sends').countDocuments({ sent_at: { $gte: periodStart, $lt: periodEnd } });
@@ -79,12 +79,25 @@ export async function chargeInvoice(business, invoice, { attempt = 0, stripe = g
   }
 }
 
+// A paid invoice ends a billing hold, but never lifts a suspension someone else (the platform, for abuse) set:
+// only a suspension this file made (suspended_reason 'billing') is undone.
+export async function clearBillingHold(businessId) {
+  const db = await getDb();
+  await db.collection('businesses').updateOne({ _id: businessId }, { $set: { billing_status: 'active' } });
+  await db.collection('businesses').updateOne({ _id: businessId, status: 'suspended', suspended_reason: 'billing' }, { $set: { status: 'active' }, $unset: { suspended_reason: '' } });
+}
+
 // Closes `business`'s current billing period: computes usage/amounts, records an
 // invoice, attempts to charge it, and advances the period by one month. If the
 // business already had a failed invoice going into this close, suspends it instead of
 // letting failures compound silently — reuses the existing suspension gate
 // (src/auth.js's requireAuth already blocks a suspended business) rather than a second
 // access-control path.
+//
+// One invoice per period, however many times or from however many processes this runs: the invoice is keyed by
+// (business, period_start) in the database (db/schema.js), and whoever moves the period forward first is the only one
+// that charges. A crash between the steps is safe: a leftover 'pending' invoice is charged next time (the charge's
+// idempotency key means it can never be taken twice) and one that was already charged is not touched again.
 export async function closeBillingPeriod(business) {
   const plan = getPlan(business.plan) ?? getPlan('trial');
   const periodStart = business.current_period_start;
@@ -92,10 +105,14 @@ export async function closeBillingPeriod(business) {
   const usage = await computeUsage(business.id, periodStart, periodEnd);
   const amounts = computeInvoiceAmounts(plan, usage);
 
-  const previousFailed = await withTenant(business.id, (c) => c('invoices').findOne({ status: 'failed' }, { sort: { created_at: -1 } }));
+  // Only the invoice just before this one decides a suspension: an older failure that has since been followed by
+  // a paid period is history, not a reason to suspend now.
+  const previous = await withTenant(business.id, (c) => c('invoices').findOne({ period_start: { $lt: periodStart } }, { sort: { period_start: -1 } }));
+  const previousFailed = previous?.status === 'failed';
 
-  const invoiceId = newId();
-  const invoiceDoc = {
+  const db = await getDb();
+  let invoiceId = newId();
+  let invoiceDoc = {
     _id: invoiceId, business_id: business.id, period_start: periodStart, period_end: periodEnd,
     plan: business.plan, base_amount: amounts.baseAmount, voice_minutes_used: usage.voiceMinutes,
     voice_overage_amount: amounts.voiceOverageAmount, sms_used: usage.smsCount,
@@ -103,7 +120,24 @@ export async function closeBillingPeriod(business) {
     total_amount: amounts.total, status: 'pending', stripe_payment_intent_id: null,
     created_at: new Date(), paid_at: null, failed_reason: null,
   };
-  await withTenant(business.id, (c) => c('invoices').insertOne(invoiceDoc));
+  let created = true;
+  try {
+    await withTenant(business.id, (c) => c('invoices').insertOne(invoiceDoc));
+  } catch (err) {
+    if (err.code !== 11000) throw err;
+    created = false;
+    invoiceDoc = await withTenant(business.id, (c) => c('invoices').findOne({ period_start: periodStart }));
+    invoiceId = invoiceDoc._id;
+  }
+
+  const nextPeriodStart = periodEnd;
+  const nextPeriodEnd = DateTime.fromJSDate(periodEnd).plus({ months: 1 }).toJSDate();
+  const advanced = await db.collection('businesses').updateOne(
+    { _id: business.id, current_period_end: periodEnd },
+    { $set: { current_period_start: nextPeriodStart, current_period_end: nextPeriodEnd } }
+  );
+  if (advanced.matchedCount === 0) return { invoiceId, status: invoiceDoc.status, skipped: true }; // another run already closed this period
+  if (!created && invoiceDoc.status !== 'pending') return { invoiceId, status: invoiceDoc.status, skipped: true }; // already charged; only the period needed moving
 
   const chargeResult = await chargeInvoice(business, invoiceDoc);
   const now = new Date();
@@ -114,9 +148,7 @@ export async function closeBillingPeriod(business) {
     failed_reason: chargeResult.reason ?? null,
   } }));
 
-  const nextPeriodStart = periodEnd;
-  const nextPeriodEnd = DateTime.fromJSDate(periodEnd).plus({ months: 1 }).toJSDate();
-  const businessUpdates = { current_period_start: nextPeriodStart, current_period_end: nextPeriodEnd };
+  const businessUpdates = {};
   if (chargeResult.status === 'failed') {
     businessUpdates.billing_status = 'past_due';
   } else if (chargeResult.status === 'paid') {
@@ -126,9 +158,8 @@ export async function closeBillingPeriod(business) {
   // suspended on the NEXT close regardless of how this attempt itself went (paid,
   // failed, or pending-no-payment-method) — letting unpaid periods compound silently is
   // the thing being prevented, not just consecutive failures specifically.
-  if (previousFailed) businessUpdates.status = 'suspended';
-  const db = await getDb();
-  await db.collection('businesses').updateOne({ _id: business.id }, { $set: businessUpdates });
+  if (previousFailed) Object.assign(businessUpdates, { status: 'suspended', suspended_reason: 'billing' });
+  if (Object.keys(businessUpdates).length) await db.collection('businesses').updateOne({ _id: business.id }, { $set: businessUpdates });
 
   const range = `${DateTime.fromJSDate(periodStart).toFormat('LLL d')}–${DateTime.fromJSDate(periodEnd).toFormat('LLL d, yyyy')}`;
   if (chargeResult.status === 'paid' && business.contact_email) {

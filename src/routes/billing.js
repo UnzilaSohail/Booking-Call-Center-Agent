@@ -7,7 +7,7 @@ import Stripe from 'stripe';
 import { getDb, withTenant, serializeAll } from '../db.js';
 import { requireArea } from '../auth.js';
 import { PLANS, PURCHASABLE_PLAN_IDS, getPlan } from '../billing/plans.js';
-import { computeUsage, computeInvoiceAmounts, chargeInvoice } from '../services/billingService.js';
+import { computeUsage, computeInvoiceAmounts, chargeInvoice, clearBillingHold } from '../services/billingService.js';
 
 export const billingRouter = Router();
 const gate = requireArea('billing');
@@ -88,7 +88,7 @@ billingRouter.post('/billing/invoices/:id/retry', gate, async (req, res, next) =
     const business = await loadBusiness(req.businessId);
     const invoice = await withTenant(req.businessId, (c) => c('invoices').findOne({ _id: req.params.id }));
     if (!invoice) return res.status(404).json({ error: 'invoice not found' });
-    if (invoice.status !== 'failed') return res.status(400).json({ error: 'only a failed invoice can be retried' });
+    if (!['failed', 'pending'].includes(invoice.status)) return res.status(400).json({ error: 'only a failed or unpaid invoice can be retried' });
 
     const stripe = getStripe();
     if (!stripe || !business.stripe_customer_id || !business.stripe_payment_method_id) {
@@ -101,10 +101,7 @@ billingRouter.post('/billing/invoices/:id/retry', gate, async (req, res, next) =
       status: result.status, stripe_payment_intent_id: result.stripePaymentIntentId ?? invoice.stripe_payment_intent_id, retry_count: attempt,
       paid_at: result.status === 'paid' ? new Date() : null, failed_reason: result.status === 'failed' ? (result.reason ?? 'payment failed') : null,
     } }));
-    if (result.status === 'paid') {
-      const db = await getDb();
-      await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { billing_status: 'active', status: 'active' } });
-    }
+    if (result.status === 'paid') await clearBillingHold(req.businessId);
     res.json({ ok: true, status: result.status, ...(result.reason ? { reason: result.reason } : {}) });
   } catch (err) {
     if (err.type === 'StripeCardError') return res.status(402).json({ error: err.message });
@@ -143,6 +140,11 @@ billingRouter.post('/billing/payment-method', gate, async (req, res, next) => {
     if (!stripe) return res.status(503).json({ error: 'Stripe is not configured' });
 
     const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    // A payment method id from someone else's Stripe customer must never become this business's card.
+    const business = await loadBusiness(req.businessId);
+    if (!business.stripe_customer_id || pm.customer !== business.stripe_customer_id) {
+      return res.status(403).json({ error: 'that card is not attached to this account' });
+    }
     const db = await getDb();
     await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: {
       stripe_payment_method_id: paymentMethodId,

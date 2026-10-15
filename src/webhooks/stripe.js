@@ -10,6 +10,7 @@ import express, { Router } from 'express';
 import Stripe from 'stripe';
 import { getDb, withTenant, newId } from '../db.js';
 import { sendEmail } from '../notifications/email.js';
+import { clearBillingHold } from '../services/billingService.js';
 
 export const stripeWebhookRouter = Router();
 
@@ -70,7 +71,7 @@ stripeWebhookRouter.post('/webhooks/stripe', express.raw({ type: 'application/js
         // A payment that is not one of our invoices (a manual charge, a test) must not flip the account's billing state.
         if (matched.matchedCount === 0) return res.json({ received: true, ignored: true });
         if (paid) {
-          await db.collection('businesses').updateOne({ _id: business._id }, { $set: { billing_status: 'active', status: 'active' } });
+          await clearBillingHold(business._id);
         } else {
           // Exception-queue alert (ROADMAP.md §9, plan.md §11 item 8) — the invoice
           // status update above is the billing source of truth; this is what gets a
