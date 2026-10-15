@@ -19,8 +19,10 @@ src/                  Express API + voice pipeline + background workers (the bac
 db/                   schema.js (index definitions) + migrate.js
 dashboard/            Next.js admin dashboard (separate app, separate package.json)
   app/onboarding/     Guided onboarding wizard (see "Guided onboarding" below)
-test/                 node:test unit tests
-scripts/              standalone scripts (e.g. the concurrency load test)
+test/                 node:test suite, 50+ files (npm test; needs a replica-set MongoDB for most of them)
+scripts/              standalone scripts: load tests, backups, demo data, platform-admin bootstrap
+  ops/                one-off checks you run by hand against real accounts or a running server
+                       (smsCheck, stripeCheck, lastCallCheck, wsSmoke)
 ```
 
 ## Database
@@ -64,8 +66,10 @@ they show up immediately — no separate sync step.
    creation is idempotent) and checks that transactions actually work against your
    `MONGODB_URI`, warning loudly if they don't (see the replica-set note above).
 4. `npm start` (or `npm run dev` for auto-restart on change).
-5. `npm test` — the one correctness test that matters most (plan.md §6): two concurrent
-   bookings for the same slot, only one may win. It skips cleanly if `MONGODB_URI` isn't set.
+5. `npm test` — the whole suite, run against a separate `<db>_test` database so your real data
+   is never touched (`npm run local-db` starts a throw-away local replica set). The test that
+   matters most (plan.md §6) is `test/raceConditions.test.js`: concurrent bookings for the same
+   slot, only one may win. Tests that need MongoDB skip cleanly if `MONGODB_URI` isn't set.
 6. `npm run load-test` — the same property, but through a *running* server over real
    HTTP concurrency rather than calling the booking service directly. Needs the server
    running and `MONGODB_URI` set.
@@ -132,10 +136,16 @@ part" costs when moving off Postgres.
 
 ## Background workers
 
-`npm start` runs three interval-based pollers in-process (not separate deploys — see
-plan.md §8's "simple job queue" note):
+`npm start` runs interval-based pollers in-process (not separate deploys — see
+plan.md §8's "simple job queue" note). Run ONE backend process: the calendar-sync and billing
+workers also take a lease (`src/workerLease.js`) so a second instance would sit idle instead of
+double-billing, but the in-memory call caps are per process.
 - Calendar sync (`src/calendar/sync-worker.js`, every 15s): mirrors confirmed/cancelled
-  bookings to Google Calendar, retrying failures up to 10 attempts.
+  bookings to Google Calendar. A failed push waits 30s, 1m, 2m ... up to 30 min between
+  attempts (10 attempts, about 2 hours); only then does it show in the owner's Exceptions list.
+- Billing (`src/billing/worker.js`, hourly): closes each finished billing period, one invoice
+  per period, and charges the saved card.
+- Stuck calls (`src/services/staleCalls.js`): closes calls a restart left `in_progress`.
 - Reminders (`src/notifications/reminder-worker.js`, every 5 min): sends the 24h/1h
   reminder SMS/email for upcoming bookings.
 - Recording retention (`src/services/retentionWorker.js`, hourly): for any business with
@@ -147,15 +157,22 @@ plan.md §8's "simple job queue" note):
 - **Call recording**: started via Twilio's REST API per call (`src/webhooks/twilio.js`),
   off by default in behavior only in the sense that a business can disable it
   (`recording_enabled`, Settings); the recording-consent disclosure line is always spoken.
-- **MFA**: TOTP, company-admin login only (`src/mfa.js`, `src/auth.js` `/mfa/*`) — enroll
-  from Settings, no third-party auth provider or new dependency.
+- **MFA**: TOTP for company admins and platform admins (`src/mfa.js`, `src/auth.js` and
+  `src/platformAuth.js` `/mfa/*`) — enroll from Settings, no third-party auth provider or new
+  dependency. The secrets are stored encrypted (`src/mfaSecret.js`).
+- **Platform audit log**: every change a platform admin makes is recorded
+  (`platform_audit_logs`, read it at `GET /api/platform/audit-logs`).
 - **Audit logs**: every authenticated mutating request is logged (`src/auditLog.js`),
   viewable at `/audit-log` in the dashboard or `GET /api/audit-logs`.
 - **Suspicious login alerts**: 5 failed attempts in 15 minutes, or a successful login from
   a new IP, emails the business's contact address (`src/loginHelpers.js`).
 - **Backup/recovery**: `npm run backup-db` / `npm run restore-db` wrap `mongodump`/
-  `mongorestore` — requires the MongoDB Database Tools installed. Not scheduled by this
-  repo; wire it into whatever cron/Task Scheduler the host already has.
+  `mongorestore` — requires the MongoDB Database Tools installed. Backups are encrypted
+  (`.gz.enc`) with `BACKUP_ENCRYPTION_KEY` or `ENCRYPTION_KEY`; keep a copy of that key
+  somewhere other than the backups. Not scheduled by this repo; wire it into whatever
+  cron/Task Scheduler the host already has.
+- **Health check**: `GET /health` answers 200 only when MongoDB answers, so an uptime monitor
+  sees a dead database, not just a live process.
 - **Payment failure alerts** (`src/webhooks/stripe.js`) are a stub — there is no live
   payment flow yet (plan.md §3 confirmed "no payment/deposit at booking"), so this just
   gives ROADMAP.md §16 somewhere to send failures once deposits actually ship.
@@ -164,4 +181,5 @@ plan.md §8's "simple job queue" note):
 
 These were given defaults rather than blocking the build (see plan.md §10 for the
 reasoning): English-only, Google Calendar only (no Outlook), inbound-only (no outbound
-reminder *calls*, only SMS/email), no SaaS pricing tiers yet. Revisit if requirements change.
+reminder *calls*, only SMS/email), and the four pricing plans in `src/billing/plans.js` (Trial, Starter, Growth, Scale) are fixed in
+code rather than set up in Stripe. Revisit if requirements change.

@@ -19,7 +19,7 @@ Latest run: 212 tests, 212 pass, 0 gaps (see `docs/testing/TEST_CASES.md`).
 ## What changed in the code (already pushed)
 - `package.json`: `npm run dev` now watches only `src/` (the local Mongo data folder was restarting the server in a loop).
 - `src/voice/geminiSession.js`: Gemini Live input/output transcription enabled so `call_logs.transcript` is filled (it was empty for every call).
-- New tests and `scripts/wsSmoke.js` (see Plan 2). No production behaviour changes besides the two fixes above.
+- New tests and `scripts/ops/wsSmoke.js` (see Plan 2). No production behaviour changes besides the two fixes above.
 
 ## Tomorrow — for the teammate with server access
 1. **Before pulling**, the server copy of `src/voice/geminiSession.js` was hand-patched with the same transcription change as commit 9d8449f. In `/var/www/booking-call-center` run `git status`. If that file shows as modified, run `git checkout src/voice/geminiSession.js` first, then `git pull`, then `pm2 restart booking-backend --update-env`. If the folder is not a git checkout, copy the file from the repo instead.

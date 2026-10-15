@@ -13,7 +13,7 @@ npm run local-db                      # local MongoDB replica set (transactions 
 npm test                              # uses a SEPARATE database "<name>_test", runs migrate first
 npm test -- test/publicBooking.test.js   # one file
 TEST_VERBOSE=1 npm test               # also print the "SMS/Email not sent" lines that are hidden by default
-node scripts/wsSmoke.js 100 http://localhost:3000              # socket burst against a running server
+node scripts/ops/wsSmoke.js 100 http://localhost:3000              # socket burst against a running server
 npm run load-test:public              # public booking page under load (server running, same MONGODB_URI)
 ```
 `npm test` never touches your real data: `scripts/test.mjs` points the suite at `<MONGODB_DB_NAME>_test`, and `src/db.js` refuses
@@ -22,7 +22,7 @@ Without `MONGODB_URI` the database tests skip cleanly and only the pure tests ru
 
 ## Latest run — 2026-09-30, local replica set
 
-`npm test` on 2026-10-02 after the recording-token, booking, voice, location and delivery-status work: **191 tests, 191 pass, 0 fail, 0 gap**. On 2026-10-01 it was 156 of 156, and on 2026-09-30 the first run was 96 tests with 6 gaps. `node scripts/wsSmoke.js 100`: 100 of 100 sockets closed by the server. Public load test (20 people on one slot: 1 winner, 40 different slots: 40 of 40, 100 availability reads: p95 about 300 ms).
+`npm test` on 2026-10-02 after the recording-token, booking, voice, location and delivery-status work: **191 tests, 191 pass, 0 fail, 0 gap**. On 2026-10-01 it was 156 of 156, and on 2026-09-30 the first run was 96 tests with 6 gaps. `node scripts/ops/wsSmoke.js 100`: 100 of 100 sockets closed by the server. Public load test (20 people on one slot: 1 winner, 40 different slots: 40 of 40, 100 availability reads: p95 about 300 ms).
 Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual booking won 14, and every round ended with exactly one booking.
 
 ## RC — Race conditions and overlaps (`test/raceConditions.test.js`)
@@ -71,7 +71,7 @@ Race check RC-01 over 20 randomised rounds: the voice call won 6, the manual boo
 ## CC — Concurrent calls
 | ID | Scenario | Expected | Status |
 |---|---|---|---|
-| CC-01 | 100 sockets to `/voice/stream` at once with garbage frames and an unknown business | Every socket closed by the server, `/health` still OK | Pass (`scripts/wsSmoke.js`, manual run) |
+| CC-01 | 100 sockets to `/voice/stream` at once with garbage frames and an unknown business | Every socket closed by the server, `/health` still OK | Pass (`scripts/ops/wsSmoke.js`, manual run) |
 | CC-02 | AI session fails to start | Caller hears a message, callback record created, outcome `failed: ai_unavailable` | Planned (Plan 4, Jira 27c/27d) |
 | CC-03 | Call closed by the server | Transcript, outcome and duration still saved | Planned (Plan 4, Jira 27e) |
 | CC-04 | `MAX_CONCURRENT_CALLS` reached | "All lines busy" message + callback | Planned (Plan 4, Jira 27f) |

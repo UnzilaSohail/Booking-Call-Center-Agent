@@ -6,7 +6,7 @@
 //
 // Reads the database named in .env (MONGODB_URI / MONGODB_DB_NAME); changes nothing.
 import 'dotenv/config';
-import { getDb, client } from '../src/db.js';
+import { getDb, client } from '../../src/db.js';
 
 const phone = process.argv[2];
 const db = await getDb();

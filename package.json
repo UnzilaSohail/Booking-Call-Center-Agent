@@ -24,9 +24,9 @@
     "demo:remove": "node scripts/demo/seedDemo.mjs --clean",
     "demo:walkthrough": "node scripts/demo/walkthrough.mjs",
     "smoke": "node scripts/smokeTest.mjs",
-    "sms:check": "node scripts/smsCheck.mjs",
-    "stripe:check": "node scripts/stripeCheck.mjs",
-    "call:check": "node scripts/lastCallCheck.mjs"
+    "sms:check": "node scripts/ops/smsCheck.mjs",
+    "stripe:check": "node scripts/ops/stripeCheck.mjs",
+    "call:check": "node scripts/ops/lastCallCheck.mjs"
   },
   "repository": {
     "type": "git",

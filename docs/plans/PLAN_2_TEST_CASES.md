@@ -27,5 +27,5 @@ Jira parents 20-23:
 - **23. Load, CI & Live Tests**: 23a loadTest `--public`; 23b GitHub Actions CI [T]; 23c real multi-call test [T][TM]; 23d post-deploy smoke [T][TM]; 23e staging DB for tests [T].
 
 ## What was done
-Files: `docs/testing/USE_CASES.md`, `TEST_CASES.md`, `KNOWN_GAPS.md`; tests `test/raceConditions.test.js`, `test/voiceCreateBooking.test.js`, `test/multiTenant.test.js`, fixture `test/support/tenantFixture.js`; script `scripts/wsSmoke.js`.
+Files: `docs/testing/USE_CASES.md`, `TEST_CASES.md`, `KNOWN_GAPS.md`; tests `test/raceConditions.test.js`, `test/voiceCreateBooking.test.js`, `test/multiTenant.test.js`, fixture `test/support/tenantFixture.js`; script `scripts/ops/wsSmoke.js`.
 Result: 96 tests, 90 pass, 0 fail, 6 documented gaps (todo). Steps T4/T5/T9/T10 and the public/directory/email/finalize tests wait for Plan 1 and Plan 4 (listed as Planned in TEST_CASES.md).
