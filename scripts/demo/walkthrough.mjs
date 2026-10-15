@@ -258,6 +258,32 @@ try {
     await go(page, '/billing', { wait: 2200 });
     await cap('Billing: plan, voice minutes and texts used this period, estimated bill, and invoice history');
     await pause(page, 6500);
+    // Stripe test mode: Stripe's published test card, no real money. Needs STRIPE_SECRET_KEY (sk_test_) in the backend .env and
+    // NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY in dashboard/.env.local, and the dashboard built after that.
+    await scrollDown(450, 1200);
+    await cap('Payments run on Stripe. The owner adds a card once, here. The card number never touches our servers');
+    await pause(page, 3500);
+    const stripeFrame = page.frameLocator('iframe[title*="card" i]').first();
+    const number = stripeFrame.locator('input[name="cardnumber"]');
+    await moveTo(page, page.locator('iframe[title*="card" i]').first());
+    await number.click();
+    await cap('Test mode: Stripe’s own test card. No real money moves');
+    await page.keyboard.type('4242424242424242', { delay: 90 });
+    await page.keyboard.type('1230', { delay: 90 });
+    await page.keyboard.type('123', { delay: 90 });
+    await page.keyboard.type('42424', { delay: 90 });
+    await pause(page, 1200);
+    await click(page, page.getByRole('button', { name: 'Save card' }), { after: 800 });
+    await page.getByText(/ending in 4242/).waitFor({ timeout: 20000 });
+    await cap('Saved. Only the card type and last four digits are kept. Each month the invoice is charged automatically');
+    await pause(page, 6000);
+    await go(page, '/billing', { wait: 400 });
+    await slide(page, {
+      kicker: 'Payments you can trust',
+      title: 'Built so a customer is never charged twice or left guessing',
+      lines: ['A restart or a double click can never charge the same invoice twice', 'Slow bank payments show as “settling”, not as a failure', 'If a bank asks the customer to confirm, the page says so in plain words', 'Failed payments and bank disputes land in “Needs attention” for a person to act on', 'Stripe’s results are signed, and every event is handled exactly once'],
+      foot: 'Today in test mode · live payments switch on when the business account is ready',
+    }, 11000);
   });
 
   await scene('settings', async () => {
@@ -365,7 +391,7 @@ try {
       kicker: 'Built to be trusted',
       title: 'Reliability you do not see, but depend on',
       lines: ['Two people can never book the same slot: 20 tried at once, exactly 1 won', 'Reminders go out exactly once; cancelled slots free up by themselves', 'If a call is cut by the server, its transcript and summary are still saved', 'Restarts wait for live calls to finish; call recordings play through short-lived private links', 'Every text and email is tracked, and failures show up under "Needs attention"'],
-      foot: '287 automated tests · browser checks for phones and accessibility · every push is tested on GitHub',
+      foot: '299 automated tests · browser checks for phones and accessibility · every push is tested on GitHub',
     }, 11000);
     await slide(page, {
       kicker: 'Why it sells',
