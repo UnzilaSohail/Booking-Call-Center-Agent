@@ -5,6 +5,7 @@ import { isListingEligible, LISTING_CATEGORIES } from '../services/listingServic
 import { geocode } from '../services/geocoding.js';
 import { validateSlug } from '../services/slug.js';
 import { isGoodReviewLink } from '../services/reviewService.js';
+import { dialablePhone } from '../phoneRules.js';
 
 export const settingsRouter = Router();
 
@@ -112,7 +113,11 @@ settingsRouter.patch('/business', gate, async (req, res, next) => {
       }
       updates.max_booking_window_days = maxBookingWindowDays;
     }
-    if (transferPhoneNumber !== undefined) updates.transfer_phone_number = transferPhoneNumber || null;
+    if (transferPhoneNumber !== undefined) {
+      const dial = transferPhoneNumber ? dialablePhone(transferPhoneNumber) : null;
+      if (transferPhoneNumber && !dial) return res.status(400).json({ error: 'the transfer number must be a full international number such as +14155550123, in a country we support' });
+      updates.transfer_phone_number = dial;
+    }
     if (recordingEnabled !== undefined) updates.recording_enabled = !!recordingEnabled;
     if (reviewLink !== undefined) {
       if (reviewLink && !isGoodReviewLink(reviewLink)) return res.status(400).json({ error: 'the review link must be a full web address starting with https://' });
@@ -315,7 +320,9 @@ settingsRouter.put('/business/transfer-departments', gate, async (req, res, next
   try {
     const { departments } = req.body ?? {};
     if (!Array.isArray(departments)) return res.status(400).json({ error: 'departments must be an array' });
-    const normalized = departments.filter((d) => d?.name && d?.phoneNumber).map((d) => ({ name: String(d.name).trim(), phoneNumber: String(d.phoneNumber).trim() }));
+    const normalized = departments.filter((d) => d?.name && d?.phoneNumber).map((d) => ({ name: String(d.name).trim(), phoneNumber: dialablePhone(d.phoneNumber) }));
+    const bad = normalized.find((d) => !d.phoneNumber);
+    if (bad) return res.status(400).json({ error: `the number for "${bad.name}" must be a full international number such as +14155550123, in a country we support` });
 
     const db = await getDb();
     await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { transfer_departments: normalized } });

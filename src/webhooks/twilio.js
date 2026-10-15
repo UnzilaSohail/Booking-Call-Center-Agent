@@ -10,6 +10,7 @@ import { upsertCustomer, markRecordingAcknowledged, setSmsOptIn, normalizePhone 
 import { isOpenNow } from '../voice/geminiSession.js';
 import { withTenant, withSystemAccess, newId, serialize } from '../db.js';
 import { signStreamToken } from '../voice/streamToken.js';
+import { serviceBlockedReason } from '../billing/access.js';
 
 export const twilioWebhookRouter = Router();
 // Twilio posts application/x-www-form-urlencoded, not JSON — the app-wide express.json()
@@ -45,6 +46,13 @@ async function respondWithVoiceAgent(res, req, business, { isTest = false } = {}
 
   if (!business) {
     twiml.say('Sorry, this number is not currently set up to take bookings.');
+    twiml.hangup();
+    return res.type('text/xml').send(twiml.toString());
+  }
+
+  // An ended trial (no card) or a trial that used its free minutes gets no AI call: nothing is logged or billed.
+  if (await serviceBlockedReason(business)) {
+    twiml.say('Sorry, this line is not available right now. Please try again later.');
     twiml.hangup();
     return res.type('text/xml').send(twiml.toString());
   }

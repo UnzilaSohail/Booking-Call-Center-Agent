@@ -7,6 +7,9 @@ import { getDb } from '../db.js';
 import { generateCode, hashCode, verifyCode, CODE_TTL_MS, MAX_ATTEMPTS } from '../verification.js';
 import { sendEmail } from '../notifications/email.js';
 import { sendSms, smsConfigured } from '../notifications/sms.js';
+import { dialablePhone } from '../phoneRules.js';
+import { tooMany } from '../rateLimit.js';
+import { normalizePhone } from '../services/customerService.js';
 
 export const onboardingRouter = Router();
 
@@ -161,14 +164,24 @@ onboardingRouter.post('/onboarding/test-call', async (req, res, next) => {
   try {
     const { toPhoneNumber } = req.body ?? {};
     if (!toPhoneNumber) return res.status(400).json({ error: 'toPhoneNumber is required' });
+    const to = dialablePhone(toPhoneNumber);
+    if (!to) return res.status(400).json({ error: 'enter a full international number such as +14155550123, in a country we support' });
 
     const db = await getDb();
+    // The test call may only ring the signed-in person's own phone, and only after it was verified: otherwise any
+    // account (even a free signup) could make the platform dial any number it likes.
+    const admin = await db.collection('admins').findOne({ _id: req.adminId }, { projection: { phone: 1, phone_verified_at: 1 } });
+    if (!admin?.phone_verified_at || normalizePhone(admin.phone ?? '') !== to) {
+      return res.status(403).json({ error: 'a test call can only ring your own verified phone number' });
+    }
+    if (await tooMany(`test-call:${req.businessId}`, 5, 24 * 60 * 60_000)) return res.status(429).json({ error: 'too many test calls today, try again tomorrow' });
+
     const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { phone_number: 1 } });
     if (!business?.phone_number) return res.status(409).json({ error: 'get a phone number before making a test call' });
 
     const client = twilioClient();
     const url = `${process.env.PUBLIC_HTTPS_URL}/voice/test-call?businessId=${encodeURIComponent(req.businessId)}`;
-    await client.calls.create({ to: toPhoneNumber, from: business.phone_number, url });
+    await client.calls.create({ to, from: business.phone_number, url });
 
     await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { test_call_at: new Date() } });
     res.json({ ok: true });

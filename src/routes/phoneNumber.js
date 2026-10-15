@@ -5,6 +5,10 @@ import { Router } from 'express';
 import twilio from 'twilio';
 import { getDb } from '../db.js';
 import { requireArea } from '../auth.js';
+import { getStripeOrNull } from '../services/billingService.js';
+
+// Countries a number may be bought in (Twilio's own list for local numbers); override with PHONE_NUMBER_COUNTRIES.
+const NUMBER_COUNTRIES = (process.env.PHONE_NUMBER_COUNTRIES || 'US,CA,GB,AU').split(',').map((c) => c.trim().toUpperCase());
 
 export const phoneNumberRouter = Router();
 
@@ -33,11 +37,14 @@ phoneNumberRouter.get('/phone-number', gate, async (req, res, next) => {
 phoneNumberRouter.post('/phone-number/provision', gate, async (req, res, next) => {
   try {
     const db = await getDb();
-    const existing = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { phone_number: 1 } });
+    const existing = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { phone_number: 1, stripe_payment_method_id: 1 } });
+    // A number costs real money every month: with billing switched on, a card must be on file first.
+    if (getStripeOrNull() && !existing?.stripe_payment_method_id) return res.status(402).json({ error: 'add a payment card on the Billing page before getting a phone number' });
     if (existing?.phone_number) return res.status(409).json({ error: 'this business already has a phone number', phoneNumber: existing.phone_number });
 
     const client = twilioClient();
-    const country = req.body?.country || 'US';
+    const country = String(req.body?.country || 'US').toUpperCase();
+    if (!NUMBER_COUNTRIES.includes(country)) return res.status(400).json({ error: `numbers can only be bought in: ${NUMBER_COUNTRIES.join(', ')}` });
     const searchParams = { limit: 1, voiceEnabled: true, ...(req.body?.areaCode ? { areaCode: req.body.areaCode } : {}) };
 
     const available = await client.availablePhoneNumbers(country).local.list(searchParams);

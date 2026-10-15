@@ -51,6 +51,9 @@ billingRouter.patch('/billing/plan', gate, async (req, res, next) => {
       return res.status(400).json({ error: `plan must be one of: ${PURCHASABLE_PLAN_IDS.join(', ')}` });
     }
     const db = await getDb();
+    // A paid plan needs a card behind it once billing is switched on (without one the invoice just sits unpaid).
+    const business = await loadBusiness(req.businessId);
+    if (getStripe() && !business.stripe_payment_method_id) return res.status(402).json({ error: 'add a payment card before choosing a paid plan' });
     await db.collection('businesses').updateOne({ _id: req.businessId }, { $set: { plan } });
     res.json({ ok: true, plan });
   } catch (err) {

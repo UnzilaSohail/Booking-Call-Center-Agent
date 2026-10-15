@@ -1,5 +1,6 @@
 import twilio from 'twilio';
 import { getDb, withTenant, newId } from '../db.js';
+import { trialExpired } from '../billing/access.js';
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -44,7 +45,11 @@ export async function sendSms(businessId, to, body) {
   // own yet (new signups, or an admin-facing send with no business at all).
   let from = fallbackFromNumber;
   if (businessId) {
-    const business = await (await getDb()).collection('businesses').findOne({ _id: businessId }, { projection: { phone_number: 1 } });
+    const business = await (await getDb()).collection('businesses').findOne({ _id: businessId }, { projection: { phone_number: 1, plan: 1, trial_ends_at: 1, stripe_payment_method_id: 1 } });
+    if (business && trialExpired(business)) {
+      console.warn(`SMS not sent (trial ended, no card on file) for business ${businessId}`);
+      return null;
+    }
     if (business?.phone_number) from = business.phone_number;
   }
   if (!from) {

@@ -11,6 +11,7 @@ import { getPlan } from '../billing/plans.js';
 import { sendEmail } from '../notifications/email.js';
 
 let stripeClient = null;
+export const getStripeOrNull = () => getStripe();
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return null;
@@ -58,11 +59,11 @@ function failureReason(code, fallback = '') {
 }
 
 export async function chargeInvoice(business, invoice, { attempt = 0, stripe = getStripe() } = {}) {
+  const amountCents = Math.round(invoice.total_amount * 100);
+  if (amountCents <= 0) return { status: 'paid', stripePaymentIntentId: null }; // nothing to collect (free trial)
   if (!stripe || !business.stripe_customer_id || !business.stripe_payment_method_id) {
     return { status: 'pending', reason: 'Stripe not configured or no payment method on file', stripePaymentIntentId: null };
   }
-  const amountCents = Math.round(invoice.total_amount * 100);
-  if (amountCents <= 0) return { status: 'paid', stripePaymentIntentId: null };
   try {
     const pi = await stripe.paymentIntents.create({
       amount: amountCents, currency: 'usd',
@@ -108,7 +109,8 @@ export async function closeBillingPeriod(business) {
   // Only the invoice just before this one decides a suspension: an older failure that has since been followed by
   // a paid period is history, not a reason to suspend now.
   const previous = await withTenant(business.id, (c) => c('invoices').findOne({ period_start: { $lt: periodStart } }, { sort: { period_start: -1 } }));
-  const previousFailed = previous?.status === 'failed';
+  // 'pending' with money owed means nothing was ever collected (no card): that counts as unpaid too.
+  const previousFailed = !!previous && (previous.status === 'failed' || (previous.status === 'pending' && previous.total_amount > 0));
 
   const db = await getDb();
   let invoiceId = newId();
@@ -132,9 +134,14 @@ export async function closeBillingPeriod(business) {
 
   const nextPeriodStart = periodEnd;
   const nextPeriodEnd = DateTime.fromJSDate(periodEnd).plus({ months: 1 }).toJSDate();
+  // A cancellation that has come due ends the account after this last invoice: no next period (the sweep stops
+  // picking the business up) and access is closed below.
+  const cancelling = !!business.cancel_at && new Date(business.cancel_at) <= periodEnd;
   const advanced = await db.collection('businesses').updateOne(
     { _id: business.id, current_period_end: periodEnd },
-    { $set: { current_period_start: nextPeriodStart, current_period_end: nextPeriodEnd } }
+    cancelling
+      ? { $set: { current_period_start: nextPeriodStart }, $unset: { current_period_end: '' } }
+      : { $set: { current_period_start: nextPeriodStart, current_period_end: nextPeriodEnd } }
   );
   if (advanced.matchedCount === 0) return { invoiceId, status: invoiceDoc.status, skipped: true }; // another run already closed this period
   if (!created && invoiceDoc.status !== 'pending') return { invoiceId, status: invoiceDoc.status, skipped: true }; // already charged; only the period needed moving
@@ -159,6 +166,7 @@ export async function closeBillingPeriod(business) {
   // failed, or pending-no-payment-method) — letting unpaid periods compound silently is
   // the thing being prevented, not just consecutive failures specifically.
   if (previousFailed) Object.assign(businessUpdates, { status: 'suspended', suspended_reason: 'billing' });
+  if (cancelling) Object.assign(businessUpdates, { status: 'suspended', suspended_reason: 'cancelled', billing_status: 'cancelled' });
   if (Object.keys(businessUpdates).length) await db.collection('businesses').updateOne({ _id: business.id }, { $set: businessUpdates });
 
   const range = `${DateTime.fromJSDate(periodStart).toFormat('LLL d')}–${DateTime.fromJSDate(periodEnd).toFormat('LLL d, yyyy')}`;
