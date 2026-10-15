@@ -105,7 +105,7 @@ function CustomersInner() {
       )}
 
       <form onSubmit={search} className="row">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, phone, or email" style={{ maxWidth: 320 }} />
+        <input aria-label="Search customers" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, phone, or email" style={{ maxWidth: 320 }} />
         <button type="submit" className="ghost">Search</button>
       </form>
 
