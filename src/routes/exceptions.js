@@ -62,19 +62,22 @@ function normalizeNested(type, booking, { summary, detail }) {
   };
 }
 
+// Each source is capped (newest first) so a business with a long history cannot make this page load everything.
+const EXCEPTION_CAP = 500;
+
 export async function listExceptions(businessId, status) {
   const [failedBookings, callbacks, voicemails, lowConfidenceCalls, failingBookings, paymentFailures] = await Promise.all([
-    withTenant(businessId, (c) => c('failed_bookings').find(status === 'open' ? { resolved_at: null } : { resolved_at: { $ne: null } }).toArray()),
-    withTenant(businessId, (c) => c('callback_requests').find({ status: status === 'open' ? 'pending' : 'resolved' }).toArray()),
-    withTenant(businessId, (c) => c('voicemails').find({ status: status === 'open' ? 'open' : 'resolved' }).toArray()),
+    withTenant(businessId, (c) => c('failed_bookings').find(status === 'open' ? { resolved_at: null } : { resolved_at: { $ne: null } }).sort({ created_at: -1 }).limit(EXCEPTION_CAP).toArray()),
+    withTenant(businessId, (c) => c('callback_requests').find({ status: status === 'open' ? 'pending' : 'resolved' }).sort({ created_at: -1 }).limit(EXCEPTION_CAP).toArray()),
+    withTenant(businessId, (c) => c('voicemails').find({ status: status === 'open' ? 'open' : 'resolved' }).sort({ created_at: -1 }).limit(EXCEPTION_CAP).toArray()),
     withTenant(businessId, (c) => c('call_logs').find({
       transfer_category: { $in: ['low_confidence', 'angry_customer'] },
       ...(status === 'open' ? { resolved_at: null } : { resolved_at: { $ne: null } }),
-    }).toArray()),
+    }).sort({ created_at: -1 }).limit(EXCEPTION_CAP).toArray()),
     withTenant(businessId, (c) => c('bookings').find({
       $or: [{ sync_status: 'failed' }, { confirmation_sms_error: { $ne: null } }, { confirmation_email_error: { $ne: null } }],
-    }).toArray()),
-    withTenant(businessId, (c) => c('payment_failures').find(status === 'open' ? { resolved_at: null } : { resolved_at: { $ne: null } }).toArray()),
+    }).sort({ created_at: -1 }).limit(EXCEPTION_CAP).toArray()),
+    withTenant(businessId, (c) => c('payment_failures').find(status === 'open' ? { resolved_at: null } : { resolved_at: { $ne: null } }).sort({ created_at: -1 }).limit(EXCEPTION_CAP).toArray()),
   ]);
 
   const items = [

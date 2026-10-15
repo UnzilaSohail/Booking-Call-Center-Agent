@@ -24,9 +24,14 @@ platformRouter.get('/businesses', async (req, res, next) => {
     const db = await getDb();
     const q = typeof req.query.q === 'string' ? req.query.q : ''; // ?q[]=x arrives as an array
     const filter = q ? { name: { $regex: escapeRegex(q), $options: 'i' } } : {};
+    // Pages of ?limit (default 500, at most 1000) and ?skip, newest first, so the list never loads every company at once.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 500, 1), 1000);
+    const skip = Math.max(parseInt(req.query.skip, 10) || 0, 0);
     const businesses = await db.collection('businesses')
       .find(filter, { projection: { name: 1, timezone: 1, phone_number: 1, created_at: 1, status: 1 } })
-      .sort({ created_at: -1 })
+      .sort({ created_at: -1, _id: 1 }) // _id breaks ties so pages never repeat or skip a company
+      .skip(skip)
+      .limit(limit)
       .toArray();
 
     // One aggregation instead of an N+1 count-per-business query. is_test excluded so
@@ -340,6 +345,31 @@ function trendPct(current, previous) {
 // upcoming-bookings feed, and a top-companies leaderboard — everything the Overview
 // page (dashboard/app/platform/page.jsx) renders, all real aggregates, no invented
 // metrics (no "avg response time" / "escalations" — this system doesn't track those).
+// Sum of every active company's Overview "impact" numbers. It is about 8 queries per company, so it is worked through ten
+// companies at a time (not all 300 at once, which opened thousands of queries together) and remembered for a minute: the
+// Overview page is refreshed far more often than these numbers change.
+// shortcut: one cache for the whole platform, per process; fine for one server, move to the database if there are several.
+const IMPACT_TTL_MS = 60_000;
+let impactCache = null;
+async function platformImpact(db, from, now) {
+  if (impactCache && Date.now() - impactCache.at < IMPACT_TTL_MS) return impactCache.value;
+  const ids = (await db.collection('businesses').find({ status: { $ne: 'suspended' } }, { projection: { _id: 1 } }).limit(300).toArray()).map((b) => b._id);
+  const impacts = [];
+  for (let i = 0; i < ids.length; i += 10) {
+    impacts.push(...await Promise.all(ids.slice(i, i + 10).map((id) => getImpact(id, from, new Date(now.getTime() + 60_000)).catch(() => null))));
+  }
+  const sum = (pick) => impacts.reduce((n, i) => n + (i ? pick(i) : 0), 0);
+  const visits = sum((i) => i.noShows.visits);
+  const value = {
+    afterHoursValue: sum((i) => i.afterHours.value), afterHoursBookings: sum((i) => i.afterHours.bookings), afterHoursCalls: sum((i) => i.afterHours.calls),
+    remindersSent: sum((i) => i.reminders.sent), cancelledInTime: sum((i) => i.reminders.cancelledInTime), valueFreed: sum((i) => i.reminders.valueFreed),
+    waitlistRefilled: sum((i) => i.reminders.waitlistRefilled), noShows: sum((i) => i.noShows.count), visits,
+    noShowRatePct: visits ? Math.round((sum((i) => i.noShows.count) / visits) * 1000) / 10 : null,
+  };
+  impactCache = { at: Date.now(), value };
+  return value;
+}
+
 platformRouter.get('/analytics', async (req, res, next) => {
   try {
     const db = await getDb();
@@ -474,16 +504,7 @@ platformRouter.get('/analytics', async (req, res, next) => {
     const prevCost = prevMinutes * (twilioRate + geminiRate);
 
     // What the product delivered to all active clients in the last 30 days (the same numbers each owner sees on their Overview).
-    const impactBusinesses = await db.collection('businesses').find({ status: { $ne: 'suspended' } }, { projection: { _id: 1 } }).limit(300).toArray();
-    const impacts = await Promise.all(impactBusinesses.map((b) => getImpact(b._id, trendStart, new Date(now.getTime() + 60_000)).catch(() => null)));
-    const sum = (pick) => impacts.reduce((n, i) => n + (i ? pick(i) : 0), 0);
-    const visits = sum((i) => i.noShows.visits);
-    const impact = {
-      afterHoursValue: sum((i) => i.afterHours.value), afterHoursBookings: sum((i) => i.afterHours.bookings), afterHoursCalls: sum((i) => i.afterHours.calls),
-      remindersSent: sum((i) => i.reminders.sent), cancelledInTime: sum((i) => i.reminders.cancelledInTime), valueFreed: sum((i) => i.reminders.valueFreed),
-      waitlistRefilled: sum((i) => i.reminders.waitlistRefilled), noShows: sum((i) => i.noShows.count), visits,
-      noShowRatePct: visits ? Math.round((sum((i) => i.noShows.count) / visits) * 1000) / 10 : null,
-    };
+    const impact = await platformImpact(db, trendStart, now);
 
     res.json({
       impact,

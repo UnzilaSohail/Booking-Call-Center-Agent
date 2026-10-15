@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getDb, withTenant, serializeAll } from '../db.js';
+import { getDb, withTenant, serializeAll, serialize } from '../db.js';
 import { requireArea, requireOwner } from '../auth.js';
 import { isListingEligible, LISTING_CATEGORIES } from '../services/listingService.js';
 import { geocode } from '../services/geocoding.js';
@@ -151,14 +151,26 @@ settingsRouter.get('/business/export', gate, requireOwner, async (req, res, next
   try {
     const db = await getDb();
     const business = await db.collection('businesses').findOne({ _id: req.businessId }, { projection: { password_hash: 0, google_refresh_token: 0 } });
-    const data = await withTenant(req.businessId, async (c) => {
-      const entries = await Promise.all(EXPORT_COLLECTIONS.map((name) => c(name).find({}).toArray().then((rows) => [name, serializeAll(rows)])));
-      return Object.fromEntries(entries);
-    });
-
+    // Written to the response one row at a time: a business with years of call transcripts used to be built up in server
+    // memory as one big object first.
     res.setHeader('Content-Disposition', `attachment; filename="${req.businessId}-export.json"`);
-    res.json({ exportedAt: new Date().toISOString(), business, ...data });
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.write(`{"exportedAt":${JSON.stringify(new Date().toISOString())},"business":${JSON.stringify(business)}`);
+    await withTenant(req.businessId, async (c) => {
+      for (const name of EXPORT_COLLECTIONS) {
+        res.write(`,${JSON.stringify(name)}:[`);
+        let first = true;
+        for await (const row of c(name).find({})) {
+          res.write(`${first ? '' : ','}${JSON.stringify(serialize(row))}`);
+          first = false;
+        }
+        res.write(']');
+      }
+    });
+    res.end('}');
   } catch (err) {
+    // Once the file has started there is no way to send an error page: cut the connection so the download visibly fails.
+    if (res.headersSent) return res.destroy(err);
     next(err);
   }
 });
