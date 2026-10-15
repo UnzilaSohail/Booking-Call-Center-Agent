@@ -23,12 +23,12 @@ function link(root) {
 
 export default function A11yLabels() {
   useEffect(() => {
-    let frame = 0;
-    const run = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => link(document.body)); };
+    let timer = 0;
+    const run = () => { clearTimeout(timer); timer = setTimeout(() => link(document.body), 0); }; // a timer, not requestAnimationFrame: that one never fires in a hidden tab or embedded pane
     run();
     const observer = new MutationObserver(run);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+    return () => { observer.disconnect(); clearTimeout(timer); };
   }, []);
   return null;
 }

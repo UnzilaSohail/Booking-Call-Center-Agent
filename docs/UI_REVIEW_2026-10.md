@@ -33,7 +33,7 @@ tabs show all of their sections with no console errors.
 
 ## Notes for whoever repeats this
 
-* The pane's browser does not run `requestAnimationFrame`, so `components/A11yLabels.jsx` (which links form labels to their
-  inputs using it) looked broken here: 0 of 19 labels linked. In a normal browser it runs. Do not trust "unlabeled input" counts
-  from this pane; use a real browser for that check. Using a timer instead of `requestAnimationFrame` there would make it work everywhere.
+* The built-in preview browser does not run `requestAnimationFrame`, and `components/A11yLabels.jsx` (which links form labels
+  to their inputs) used it, so it looked broken there: 0 of 19 labels linked. It now uses a timer instead (checked: 2 of 2
+  labels linked on the login page), which also works in a hidden tab. Do not trust "unlabeled input" counts taken before that.
 * Colour contrast was not measured by script; `test/contrast.test.js` already covers the theme colours.
