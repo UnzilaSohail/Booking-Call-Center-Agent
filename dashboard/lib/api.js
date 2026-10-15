@@ -279,6 +279,11 @@ export const platformApi = {
     return res;
   },
   getMe: () => request('/api/platform/auth/me', { tokenStore: platformTokenStore }),
+  // Authenticator (same calls as the company `api` above, on the platform endpoints)
+  mfaEnroll: (password) => request('/api/platform/auth/mfa/enroll', { method: 'POST', body: password ? { password } : undefined, tokenStore: platformTokenStore }),
+  mfaEnrollConfirm: (code) => request('/api/platform/auth/mfa/enroll/confirm', { method: 'POST', body: { code }, tokenStore: platformTokenStore }),
+  mfaDisable: (password) => request('/api/platform/auth/mfa/disable', { method: 'POST', body: { password }, tokenStore: platformTokenStore }),
+  mfaVerifyLogin: (mfaToken, code) => request('/api/platform/auth/mfa/verify-login', { method: 'POST', body: { mfaToken, code } }),
   listCompanies: (q) => request(`/api/platform/businesses${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: platformTokenStore }),
   getCompany: (id) => request(`/api/platform/businesses/${id}`, { tokenStore: platformTokenStore }),
   setCompanyStatus: (id, status) => request(`/api/platform/businesses/${id}/status`, { method: 'PATCH', body: { status }, tokenStore: platformTokenStore }),

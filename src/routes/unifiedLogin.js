@@ -8,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import { verifyCompanyAdmin, verifyPlatformAdmin, LoginError } from '../loginHelpers.js';
 import { loginAttempt, loginSucceeded } from '../rateLimit.js';
 import { notifyLockout } from '../lockoutNotice.js';
+import { signPlatformSession, signPlatformMfaToken } from '../platformAuth.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -24,11 +25,10 @@ unifiedLoginRouter.post('/login', async (req, res, next) => {
     const platformResult = await verifyPlatformAdmin(normalizedEmail, password);
     if (platformResult) {
       await loginSucceeded(req.ip, normalizedEmail);
-      const token = jwt.sign({ role: 'platform', ...platformResult }, JWT_SECRET, { expiresIn: '12h' });
-      return res.json({ token, role: 'platform' });
+      if (platformResult.mfaEnabled) return res.json({ mfaRequired: true, mfaToken: signPlatformMfaToken(platformResult.platformAdminId), role: 'platform' });
+      return res.json({ token: signPlatformSession(platformResult.platformAdminId), role: 'platform' });
     }
 
-    // MFA is company-admin only (plan.md §11 item 9) — platform admins aren't gated above.
     const companyResult = await verifyCompanyAdmin(normalizedEmail, password, req.ip);
     if (companyResult) {
       await loginSucceeded(req.ip, normalizedEmail);

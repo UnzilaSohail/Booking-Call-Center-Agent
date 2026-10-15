@@ -15,10 +15,28 @@
 //    on that _id and Mongo's default unique _id index rejects the loser — this file just
 //    needs the collection to exist, no extra index required.
 import { backfillSlugs } from '../src/services/slug.js';
+import { sealSecret } from '../src/mfaSecret.js';
 
 // Gives locks created before expires_at existed their expiry (booking end + 1 day). A lock whose
 // booking no longer exists is an orphan and gets an expiry in the past, so the TTL sweeps it.
 // Idempotent; returns how many locks it touched.
+// Encrypts authenticator secrets saved before they were sealed (src/mfaSecret.js). Idempotent; needs ENCRYPTION_KEY, and
+// does nothing without it. Returns how many it touched.
+export async function sealMfaSecrets(db) {
+  if (!process.env.ENCRYPTION_KEY) return 0;
+  let touched = 0;
+  for (const name of ['admins', 'platform_admins']) {
+    for (const field of ['mfa_secret', 'mfa_secret_pending']) {
+      const rows = await db.collection(name).find({ [field]: { $type: 'string', $not: /^enc:/ } }, { projection: { [field]: 1 } }).toArray();
+      for (const row of rows) {
+        await db.collection(name).updateOne({ _id: row._id }, { $set: { [field]: sealSecret(row[field]) } });
+        touched += 1;
+      }
+    }
+  }
+  return touched;
+}
+
 export async function backfillLockExpiry(db) {
   const rows = await db.collection('booking_slot_locks').aggregate([
     { $match: { expires_at: { $exists: false } } },
@@ -96,6 +114,8 @@ export async function ensureIndexes(db) {
   // Locks delete themselves a day after their booking ends (KG-14, src/services/bookingService.js).
   await db.collection('booking_slot_locks').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
   await backfillLockExpiry(db);
+  await sealMfaSecrets(db);
+  await db.collection('platform_audit_logs').createIndex({ created_at: -1 });
 
   await db.collection('call_logs').createIndex({ business_id: 1, created_at: 1 });
   await db.collection('call_logs').createIndex(

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api, unifiedLogin, storeTokenForRole } from '../../lib/api';
+import { api, platformApi, unifiedLogin, storeTokenForRole } from '../../lib/api';
 import AuthShell from '../../components/AuthShell';
 import PasswordInput from '../../components/PasswordInput';
 
@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mfaToken, setMfaToken] = useState(null);
+  const [mfaRole, setMfaRole] = useState('business');
   const [code, setCode] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -35,6 +36,7 @@ export default function LoginPage() {
       const result = await unifiedLogin({ email, password });
       if (result.mfaRequired) {
         setMfaToken(result.mfaToken);
+        setMfaRole(result.role);
         return;
       }
       storeTokenForRole(result.role, result.token);
@@ -51,9 +53,9 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const { token } = await api.mfaVerifyLogin(mfaToken, code);
-      storeTokenForRole('business', token);
-      router.push('/');
+      const { token } = await (mfaRole === 'platform' ? platformApi : api).mfaVerifyLogin(mfaToken, code);
+      storeTokenForRole(mfaRole, token);
+      router.push(mfaRole === 'platform' ? '/platform' : '/');
     } catch (err) {
       setError(err.message);
     } finally {

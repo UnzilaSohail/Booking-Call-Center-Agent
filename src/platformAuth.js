@@ -11,11 +11,19 @@ import jwt from 'jsonwebtoken';
 import { Router } from 'express';
 import { getDb } from './db.js';
 import { verifyPlatformAdmin } from './loginHelpers.js';
+import { fail, forgive } from './rateLimit.js';
+import { generateSecret, verifyTotp, otpauthUrl } from './mfa.js';
+import { sealSecret, openSecret } from './mfaSecret.js';
+import { platformAuditLogger } from './auditLog.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
 
 export const platformAuthRouter = Router();
+
+export const signPlatformSession = (platformAdminId) => jwt.sign({ role: 'platform', platformAdminId }, JWT_SECRET, { expiresIn: '12h' });
+// Issued instead of a session when the admin has an authenticator: good for five minutes, only for POST /auth/mfa/verify-login.
+export const signPlatformMfaToken = (platformAdminId) => jwt.sign({ role: 'platform_mfa_pending', platformAdminId }, JWT_SECRET, { expiresIn: '5m' });
 
 // Mounted at /api/platform in app.js, so this is /api/platform/auth/login. Kept as its
 // own endpoint for direct API use; the dashboard itself calls the unified /api/login
@@ -32,8 +40,33 @@ platformAuthRouter.post('/auth/login', async (req, res, next) => {
     if (!result) { if (attempt.lockedNow) notifyLockout(id); return res.status(401).json({ error: 'invalid credentials' }); }
     await loginSucceeded(req.ip, id);
 
-    const token = jwt.sign({ role: 'platform', ...result }, JWT_SECRET, { expiresIn: '12h' });
-    res.json({ token });
+    if (result.mfaEnabled) return res.json({ mfaRequired: true, mfaToken: signPlatformMfaToken(result.platformAdminId) });
+    res.json({ token: signPlatformSession(result.platformAdminId) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Second step of a login for an admin with an authenticator: the short-lived token from the password step plus a live code.
+platformAuthRouter.post('/auth/mfa/verify-login', async (req, res, next) => {
+  try {
+    const { mfaToken, code } = req.body ?? {};
+    if (!mfaToken || !code) return res.status(400).json({ error: 'mfaToken and code are required' });
+    let payload;
+    try {
+      payload = jwt.verify(mfaToken, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'invalid or expired login - please log in again' });
+    }
+    if (payload.role !== 'platform_mfa_pending') return res.status(401).json({ error: 'invalid token for this endpoint' });
+
+    // 6 tries in 15 minutes, counted before the code is checked (same policy as company admins).
+    const key = `pmfa:${payload.platformAdminId}`;
+    if (await fail(key, 15 * 60_000) > 6) return res.status(429).json({ error: 'too many wrong codes, log in again in 15 minutes' });
+    const admin = await (await getDb()).collection('platform_admins').findOne({ _id: payload.platformAdminId });
+    if (!admin?.mfa_enabled || !verifyTotp(openSecret(admin.mfa_secret), String(code))) return res.status(401).json({ error: 'invalid code' });
+    await forgive(key);
+    res.json({ token: signPlatformSession(payload.platformAdminId) });
   } catch (err) {
     next(err);
   }
@@ -45,9 +78,9 @@ platformAuthRouter.post('/auth/login', async (req, res, next) => {
 platformAuthRouter.get('/auth/me', requirePlatformAuth, async (req, res, next) => {
   try {
     const db = await getDb();
-    const admin = await db.collection('platform_admins').findOne({ _id: req.platformAdminId }, { projection: { email: 1 } });
+    const admin = await db.collection('platform_admins').findOne({ _id: req.platformAdminId }, { projection: { email: 1, mfa_enabled: 1 } });
     if (!admin) return res.status(404).json({ error: 'admin not found' });
-    res.json({ email: admin.email });
+    res.json({ email: admin.email, mfaEnabled: !!admin.mfa_enabled });
   } catch (err) {
     next(err);
   }
@@ -80,7 +113,7 @@ export async function requirePlatformAuth(req, res, next) {
 }
 
 // Mounted at /api/platform, behind requirePlatformAuth in app.js — /api/platform/auth/password.
-platformAuthRouter.patch('/auth/password', requirePlatformAuth, async (req, res, next) => {
+platformAuthRouter.patch('/auth/password', requirePlatformAuth, platformAuditLogger, async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body ?? {};
     if (!currentPassword || !newPassword) return res.status(400).json({ error: 'currentPassword and newPassword are required' });
@@ -96,6 +129,50 @@ platformAuthRouter.patch('/auth/password', requirePlatformAuth, async (req, res,
     const password_hash = await bcrypt.hash(newPassword, 10);
     await db.collection('platform_admins').updateOne({ _id: req.platformAdminId }, { $set: { password_hash, tokens_valid_after: new Date() } });
     res.json({ ok: true, token: jwt.sign({ role: 'platform', platformAdminId: req.platformAdminId }, JWT_SECRET, { expiresIn: '12h' }) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Authenticator setup for platform admins, same two-step shape as company admins (src/auth.js): the secret is stored
+// pending until a live code proves it was captured, so a dropped response cannot lock the admin out.
+platformAuthRouter.post('/auth/mfa/enroll', requirePlatformAuth, platformAuditLogger, async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const admin = await db.collection('platform_admins').findOne({ _id: req.platformAdminId }, { projection: { email: 1, mfa_enabled: 1, password_hash: 1 } });
+    const { password } = req.body ?? {};
+    if (admin.mfa_enabled && !(typeof password === 'string' && (await bcrypt.compare(password, admin.password_hash)))) {
+      return res.status(401).json({ error: 'enter your password to replace the authenticator' });
+    }
+    const secret = generateSecret();
+    await db.collection('platform_admins').updateOne({ _id: req.platformAdminId }, { $set: { mfa_secret_pending: sealSecret(secret) } });
+    res.json({ secret, otpauthUrl: otpauthUrl(admin.email, 'Booking platform', secret) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformAuthRouter.post('/auth/mfa/enroll/confirm', requirePlatformAuth, platformAuditLogger, async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const admin = await db.collection('platform_admins').findOne({ _id: req.platformAdminId }, { projection: { mfa_secret_pending: 1 } });
+    if (!admin?.mfa_secret_pending) return res.status(400).json({ error: 'no MFA enrollment in progress - call /auth/mfa/enroll first' });
+    if (!verifyTotp(openSecret(admin.mfa_secret_pending), String(req.body?.code ?? ''))) return res.status(401).json({ error: 'invalid code' });
+    await db.collection('platform_admins').updateOne({ _id: req.platformAdminId }, { $set: { mfa_enabled: true, mfa_secret: admin.mfa_secret_pending }, $unset: { mfa_secret_pending: '' } });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformAuthRouter.post('/auth/mfa/disable', requirePlatformAuth, platformAuditLogger, async (req, res, next) => {
+  try {
+    const { password } = req.body ?? {};
+    const db = await getDb();
+    const admin = await db.collection('platform_admins').findOne({ _id: req.platformAdminId });
+    if (!password || !(await bcrypt.compare(password, admin.password_hash))) return res.status(401).json({ error: 'incorrect password' });
+    await db.collection('platform_admins').updateOne({ _id: req.platformAdminId }, { $unset: { mfa_enabled: '', mfa_secret: '', mfa_secret_pending: '' } });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

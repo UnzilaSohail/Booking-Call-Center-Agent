@@ -79,5 +79,5 @@ export async function verifyPlatformAdmin(email, password) {
   const admin = await db.collection('platform_admins').findOne({ email });
   if (!admin) { await fakeVerify(password); return null; }
   if (!(await bcrypt.compare(password, admin.password_hash))) return null;
-  return { platformAdminId: admin._id };
+  return { platformAdminId: admin._id, mfaEnabled: !!admin.mfa_enabled };
 }

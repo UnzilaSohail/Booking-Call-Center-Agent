@@ -294,6 +294,19 @@ platformRouter.get('/leads', async (req, res, next) => {
   }
 });
 
+// The platform's own action trail (src/auditLog.js platformAuditLogger), newest first.
+platformRouter.get('/audit-logs', async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const rows = await db.collection('platform_audit_logs').find({}).sort({ created_at: -1 }).limit(200).toArray();
+    const admins = await db.collection('platform_admins').find({ _id: { $in: [...new Set(rows.map((r) => r.admin_id))] } }, { projection: { email: 1 } }).toArray();
+    const email = Object.fromEntries(admins.map((a) => [a._id, a.email]));
+    res.json(rows.map((r) => ({ id: r._id, admin: email[r.admin_id] ?? r.admin_id, method: r.method, path: r.path, ip: r.ip, at: r.created_at })));
+  } catch (err) {
+    next(err);
+  }
+});
+
 platformRouter.get('/stats', async (req, res, next) => {
   try {
     const db = await getDb();

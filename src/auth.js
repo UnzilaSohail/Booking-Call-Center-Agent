@@ -9,6 +9,7 @@ import { verifyCompanyAdmin, LoginError } from './loginHelpers.js';
 import { areasFor } from './permissions.js';
 import { generateSecret, verifyTotp, otpauthUrl } from './mfa.js';
 import { tokenRevoked } from './sessionRevocation.js';
+import { sealSecret, openSecret } from './mfaSecret.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
@@ -70,7 +71,7 @@ authRouter.post('/mfa/verify-login', async (req, res, next) => {
     if (await fail(mfaKey, 15 * 60_000) > 6) return res.status(429).json({ error: 'too many wrong codes, log in again in 15 minutes' });
     const db = await getDb();
     const admin = await db.collection('admins').findOne({ _id: payload.adminId });
-    if (!admin?.mfa_enabled || !verifyTotp(admin.mfa_secret, String(code))) return res.status(401).json({ error: 'invalid code' });
+    if (!admin?.mfa_enabled || !verifyTotp(openSecret(admin.mfa_secret), String(code))) return res.status(401).json({ error: 'invalid code' });
     await forgive(mfaKey);
 
     res.json({ token: signSessionToken(payload.adminId, payload.businessId) });
@@ -204,7 +205,7 @@ authRouter.post('/mfa/enroll', requireAuth, async (req, res, next) => {
       return res.status(401).json({ error: 'enter your password to replace the authenticator' });
     }
     const secret = generateSecret();
-    await db.collection('admins').updateOne({ _id: req.adminId }, { $set: { mfa_secret_pending: secret } });
+    await db.collection('admins').updateOne({ _id: req.adminId }, { $set: { mfa_secret_pending: sealSecret(secret) } });
     res.json({ secret, otpauthUrl: otpauthUrl(admin.email, 'Booking', secret) });
   } catch (err) {
     next(err);
@@ -217,7 +218,7 @@ authRouter.post('/mfa/enroll/confirm', requireAuth, async (req, res, next) => {
     const db = await getDb();
     const admin = await db.collection('admins').findOne({ _id: req.adminId }, { projection: { mfa_secret_pending: 1 } });
     if (!admin?.mfa_secret_pending) return res.status(400).json({ error: 'no MFA enrollment in progress — call /mfa/enroll first' });
-    if (!verifyTotp(admin.mfa_secret_pending, code)) return res.status(401).json({ error: 'invalid code' });
+    if (!verifyTotp(openSecret(admin.mfa_secret_pending), code)) return res.status(401).json({ error: 'invalid code' });
 
     await db.collection('admins').updateOne(
       { _id: req.adminId },

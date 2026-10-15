@@ -27,7 +27,7 @@ import { waitlistRouter } from './routes/waitlist.js';
 import { reportsRouter } from './routes/reports.js';
 import { twilioWebhookRouter } from './webhooks/twilio.js';
 import { stripeWebhookRouter } from './webhooks/stripe.js';
-import { auditLogger } from './auditLog.js';
+import { auditLogger, platformAuditLogger } from './auditLog.js';
 import { clearDirectoryCache } from './services/directoryCache.js';
 
 export const app = express();
@@ -92,7 +92,7 @@ app.use('/api/auth', authRouter);
 // broader /api prefix, or it would intercept every other /api/* request (including
 // legitimate company-admin ones) before they ever reach their own route/auth below.
 app.use('/api/platform', platformAuthRouter);
-app.use('/api/platform', requirePlatformAuth, platformRouter);
+app.use('/api/platform', requirePlatformAuth, platformAuditLogger, platformRouter);
 // Authenticates every company-admin request exactly once; every router mounted below
 // relies on this (a failure answers 401 here and never reaches them). auditLogger sits in
 // the same one-shot step so it attaches a single 'finish' listener per request.

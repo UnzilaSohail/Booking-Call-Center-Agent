@@ -5,6 +5,22 @@ import { getDb, newId } from './db.js';
 
 const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 
+// Same trail for platform admins (AIN-476): one platform login can reset passwords, suspend and delete companies, so
+// every change it makes is recorded: who, what path, when, from where. Mounted after requirePlatformAuth.
+export function platformAuditLogger(req, res, next) {
+  if (MUTATING_METHODS.has(req.method)) {
+    res.on('finish', () => {
+      if (res.statusCode >= 400 || !req.platformAdminId) return;
+      getDb()
+        .then((db) => db.collection('platform_audit_logs').insertOne({
+          _id: newId(), admin_id: req.platformAdminId, method: req.method, path: req.originalUrl, status: res.statusCode, ip: req.ip, created_at: new Date(),
+        }))
+        .catch((err) => console.error('platform audit log write failed:', err.message));
+    });
+  }
+  next();
+}
+
 export function auditLogger(req, res, next) {
   if (MUTATING_METHODS.has(req.method)) {
     res.on('finish', () => {

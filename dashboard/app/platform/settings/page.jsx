@@ -4,6 +4,7 @@ import RequirePlatformAuth from '../../../components/RequirePlatformAuth';
 import { platformApi } from '../../../lib/api';
 import { useToast } from '../../../lib/Toast';
 import PasswordInput from '../../../components/PasswordInput';
+import MfaCard from '../../../components/MfaCard';
 
 function ChangePasswordCard() {
   const toast = useToast();
@@ -52,6 +53,7 @@ function PlatformSettingsInner() {
     <div className="stack">
       <h1>Settings</h1>
       <ChangePasswordCard />
+      <MfaCard client={platformApi} />
     </div>
   );
 }
