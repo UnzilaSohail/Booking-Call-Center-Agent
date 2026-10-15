@@ -3,6 +3,7 @@
 // more than "check every so often."
 import { withSystemAccess, serialize } from '../db.js';
 import { closeBillingPeriod } from '../services/billingService.js';
+import { claimLease } from '../workerLease.js';
 
 export async function runBillingSweepOnce() {
   const now = new Date();
@@ -25,6 +26,7 @@ export function startBillingWorker(intervalMs = 60 * 60_000) {
     if (running) return;
     running = true;
     try {
+      if (!(await claimLease('billing', intervalMs * 2 + 60_000))) return; // another instance is the billing worker
       await runBillingSweepOnce();
     } catch (err) {
       console.error('billing worker tick failed:', err);

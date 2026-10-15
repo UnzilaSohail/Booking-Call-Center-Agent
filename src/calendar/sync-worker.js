@@ -5,6 +5,7 @@
 // puts it in the owner's Exceptions list.
 import { getDb, withTenant, withSystemAccess, serialize } from '../db.js';
 import { createEvent, updateEvent, deleteEvent } from './google.js';
+import { claimLease } from '../workerLease.js';
 
 const MAX_ATTEMPTS = 10;
 
@@ -97,6 +98,7 @@ export function startSyncWorker(intervalMs = 15_000) {
     if (running) return; // don't overlap ticks if a batch runs long
     running = true;
     try {
+      if (!(await claimLease('calendar-sync', intervalMs * 3))) return; // another instance is the sync worker
       await runSyncOnce();
     } catch (err) {
       console.error('sync worker tick failed:', err);

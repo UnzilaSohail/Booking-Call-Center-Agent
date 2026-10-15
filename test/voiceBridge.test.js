@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { WebSocket } from 'ws';
 import { createTenant, dropTenants, skip, getDb, newId } from './support/tenantFixture.js';
-import { attachTwilioMediaStreamServer, beginDrain, resetDrain, getActiveCalls } from '../src/voice/twilioBridge.js';
+import { attachTwilioMediaStreamServer, beginDrain, resetDrain, getActiveCalls, peerIp } from '../src/voice/twilioBridge.js';
 import { mulawFrameLevel, SPEECH_LEVEL } from '../src/voice/audio.js';
 import { signStreamToken } from '../src/voice/streamToken.js';
 
@@ -206,5 +206,37 @@ describe('twilio media stream bridge', { skip }, () => {
     await new Promise((r) => big.on('open', r));
     big.send('x'.repeat(200 * 1024));
     assert.equal(await code, 1009, 'message too big');
+  });
+
+  it('VR-10 one address cannot hold more open sockets than the cap, and a closed one frees its place (AIN-553)', async () => {
+    process.env.MAX_SOCKETS_PER_IP = '2';
+    const open = [];
+    try {
+      for (let i = 0; i < 2; i++) {
+        const ws = new WebSocket(url);
+        await new Promise((r, j) => { ws.on('open', r); ws.on('error', j); });
+        open.push(ws);
+      }
+      const refused = new WebSocket(url);
+      const status = await new Promise((r) => { refused.on('unexpected-response', (_q, res) => r(res.statusCode)); refused.on('error', () => {}); });
+      assert.equal(status, 429);
+      open[0].close();
+      await until(async () => {
+        const again = new WebSocket(url);
+        const ok = await new Promise((r) => { again.on('open', () => r(true)); again.on('error', () => r(false)); again.on('unexpected-response', () => r(false)); });
+        if (ok) open.push(again);
+        return ok;
+      });
+    } finally {
+      delete process.env.MAX_SOCKETS_PER_IP;
+      for (const ws of open) ws.close();
+    }
+  });
+
+  it('the real address behind nginx is the last X-Forwarded-For entry; a direct caller cannot choose its own', () => {
+    const req = (remoteAddress, xff) => ({ socket: { remoteAddress }, headers: xff ? { 'x-forwarded-for': xff } : {} });
+    assert.equal(peerIp(req('127.0.0.1', '6.6.6.6, 203.0.113.9')), '203.0.113.9');
+    assert.equal(peerIp(req('198.51.100.4', '6.6.6.6')), '198.51.100.4', 'not behind our proxy: the header is ignored');
+    assert.equal(peerIp(req('127.0.0.1')), '127.0.0.1');
   });
 });

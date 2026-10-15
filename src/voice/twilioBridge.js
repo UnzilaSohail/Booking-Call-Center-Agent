@@ -19,6 +19,18 @@ const MAX_CALLS_PER_BUSINESS = process.env.MAX_CALLS_PER_BUSINESS ? Number(proce
 const callsByBusiness = new Map();
 // Twilio media frames are a few hundred bytes of JSON; the ws default of 100 MiB per message is an open invitation.
 const MAX_FRAME_BYTES = 64 * 1024;
+// Open sockets per address, so one address cannot hold thousands of idle connections. Twilio's own calls share a
+// few addresses, so the default is generous. Behind nginx every socket comes from the proxy: the real address is the last
+// X-Forwarded-For entry (the one nginx added; earlier entries can be forged by the caller).
+const MAX_SOCKETS_PER_IP = () => Number(process.env.MAX_SOCKETS_PER_IP) || 100;
+const socketsByIp = new Map();
+const CRLF = String.fromCharCode(13, 10);
+export function peerIp(req) {
+  const remote = req.socket.remoteAddress ?? '';
+  const viaProxy = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
+  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  return viaProxy && forwarded.length ? forwarded.at(-1) : remote;
+}
 // A socket that has not sent a valid `start` by now is not a call.
 const START_TIMEOUT_MS = () => Number(process.env.STREAM_START_TIMEOUT_MS) || 5_000;
 
@@ -58,7 +70,19 @@ export function attachTwilioMediaStreamServer(httpServer, path = '/voice/stream'
       return;
     }
     if (pathname !== path) return; // not ours — leave the socket for any other upgrade handler
-    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+    const ip = peerIp(req);
+    if ((socketsByIp.get(ip) ?? 0) >= MAX_SOCKETS_PER_IP()) {
+      socket.end(`HTTP/1.1 429 Too Many Requests${CRLF}Connection: close${CRLF}${CRLF}`);
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      socketsByIp.set(ip, (socketsByIp.get(ip) ?? 0) + 1);
+      ws.on('close', () => {
+        const left = (socketsByIp.get(ip) ?? 1) - 1;
+        if (left > 0) socketsByIp.set(ip, left); else socketsByIp.delete(ip);
+      });
+      wss.emit('connection', ws, req);
+    });
   });
 
   wss.on('connection', (ws) => {
