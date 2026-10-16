@@ -19,7 +19,7 @@ export default function MfaCard({ client }) {
   function load() {
     client.getMe().then(setMe).catch((e) => setError(e.message));
   }
-  useEffect(load, []);
+  useEffect(load, [client]);
 
   async function startEnroll() {
     setBusy(true);

@@ -1,6 +1,7 @@
 import twilio from 'twilio';
 import { getDb, withTenant, newId } from '../db.js';
 import { trialExpired } from '../billing/access.js';
+import { tooMany } from '../rateLimit.js';
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -32,6 +33,25 @@ export const smsConfigured = () => Boolean(process.env.TWILIO_ACCOUNT_SID && pro
 // without Twilio still sees the whole text, which is how a code is read.
 const forLog = (to, body) => (process.env.NODE_ENV === 'production' ? [`***${String(to).slice(-4)}`] : [to, body]);
 
+// Texts cost real money and are the classic way to run up a bill (SMS pumping): each business may send SMS_DAILY_CAP_PER_BUSINESS
+// a day (default 300) and the whole platform SMS_DAILY_CAP_PLATFORM (default 5000). Counted per UTC day, in the database, so a
+// restart does not reset it. Login codes (no business) count towards the platform total only.
+const DAY_MS = 25 * 60 * 60_000;
+export async function smsBudgetAllows(businessId, now = new Date()) {
+  const day = now.toISOString().slice(0, 10);
+  const perBusiness = Number(process.env.SMS_DAILY_CAP_PER_BUSINESS) || 300;
+  const platform = Number(process.env.SMS_DAILY_CAP_PLATFORM) || 5000;
+  if (businessId && await tooMany(`sms-biz:${businessId}:${day}`, perBusiness, DAY_MS)) {
+    console.error(`SMS budget: business ${businessId} reached its ${perBusiness} texts for ${day}; not sending`);
+    return false;
+  }
+  if (await tooMany(`sms-platform:${day}`, platform, DAY_MS)) {
+    console.error(`SMS budget: the platform reached its ${platform} texts for ${day}; not sending`);
+    return false;
+  }
+  return true;
+}
+
 export async function sendSms(businessId, to, body) {
   const c = getClient();
   if (!c) {
@@ -52,6 +72,7 @@ export async function sendSms(businessId, to, body) {
     }
     if (business?.phone_number) from = business.phone_number;
   }
+  if (!(await smsBudgetAllows(businessId))) return null;
   if (!from) {
     console.warn('SMS not sent (no sending number available for this business, and no platform fallback configured):', ...forLog(to, body));
     return null;

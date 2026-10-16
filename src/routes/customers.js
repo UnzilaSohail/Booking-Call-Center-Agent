@@ -1,7 +1,7 @@
 // Customer directory (ROADMAP.md §4) — CRUD + CSV import/export over
 // src/services/customerService.js.
 import { Router } from 'express';
-import { listCustomers, getCustomerDetail, updateCustomer, toCsv, importCsv, findDuplicates, mergeCustomers } from '../services/customerService.js';
+import { listCustomers, countCustomers, getCustomerDetail, updateCustomer, toCsv, importCsv, findDuplicates, mergeCustomers } from '../services/customerService.js';
 import { requireArea } from '../auth.js';
 
 export const customersRouter = Router();
@@ -11,7 +11,12 @@ const gate = requireArea('customers');
 
 customersRouter.get('/customers', gate, async (req, res, next) => {
   try {
-    res.json(await listCustomers(req.businessId, { q: req.query.q }));
+    const q = typeof req.query.q === 'string' ? req.query.q : undefined; // ?q[]=x arrives as an array
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 500, 1), 500);
+    const skip = Math.max(parseInt(req.query.skip, 10) || 0, 0);
+    const items = await listCustomers(req.businessId, { q, limit, skip });
+    // ?paged=1 answers { items, total } so the page can offer "show more"; without it, the plain list as before.
+    res.json(req.query.paged ? { items, total: await countCustomers(req.businessId, q) } : items);
   } catch (err) {
     next(err);
   }
@@ -20,7 +25,7 @@ customersRouter.get('/customers', gate, async (req, res, next) => {
 // Mounted before /customers/:id so "export" is never swallowed as an :id.
 customersRouter.get('/customers/export', gate, async (req, res, next) => {
   try {
-    const customers = await listCustomers(req.businessId, {});
+    const customers = await listCustomers(req.businessId, { all: true });
     res.type('text/csv').set('Content-Disposition', 'attachment; filename="customers.csv"').send(toCsv(customers));
   } catch (err) {
     next(err);

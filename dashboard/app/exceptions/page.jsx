@@ -127,11 +127,26 @@ function ExceptionsInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   function load() {
     setLoading(true);
-    api.listExceptions(status).then(setItems).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    api.listExceptionsPage(status).then((r) => { setItems(r.items); setTotal(r.total); }).catch((e) => setError(e.message)).finally(() => setLoading(false));
   }
-  useEffect(load, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function showMore() {
+    setLoadingMore(true);
+    try {
+      const next = await api.listExceptionsPage(status, items.length);
+      setItems((prev) => [...prev, ...next.items]);
+      setTotal(next.total);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+  useEffect(load, [status]);  
   useEffect(() => { api.listStaff().then(setStaffList).catch(() => {}); }, []);
 
   return (
@@ -157,6 +172,12 @@ function ExceptionsInner() {
               {items.map((item) => <ExceptionRow key={`${item.type}:${item.id}`} item={item} staffList={staffList} onChanged={load} />)}
             </tbody>
           </table>
+        )}
+        {!loading && items.length < total && (
+          <div className="row" style={{ justifyContent: 'center', alignItems: 'center', marginTop: 14 }}>
+            <span className="muted" style={{ fontSize: 13 }}>Showing {items.length} of {total}</span>
+            <button type="button" disabled={loadingMore} onClick={showMore}>{loadingMore ? 'Loading...' : 'Show more'}</button>
+          </div>
         )}
       </div>
     </div>

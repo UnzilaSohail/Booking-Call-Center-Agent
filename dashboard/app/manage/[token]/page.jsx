@@ -26,7 +26,7 @@ function ManageInner() {
   function load() {
     myBookingApi.get(token).then(setData).catch((e) => setError(e instanceof ApiError ? e.message : 'something went wrong'));
   }
-  useEffect(load, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [token]);  
 
   useEffect(() => {
     if (mode !== 'reschedule') return;

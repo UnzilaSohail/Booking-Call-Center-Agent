@@ -29,16 +29,33 @@ function CustomersInner() {
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef(null);
   const [shown, setShown] = useState(50);
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback((query) => {
     setLoading(true);
     api.listCustomers(query)
-      .then((r) => { setCustomers(r); setShown(50); })
+      .then((r) => { setCustomers(r.items); setTotal(r.total); setShown(50); })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(''); }, [load]);
+
+  // 100 more rows; when everything fetched so far is on screen, fetch the next 500 from the server
+  async function showMore() {
+    if (shown < customers.length) { setShown(shown + 100); return; }
+    setLoadingMore(true);
+    try {
+      const next = await api.listCustomers(q, customers.length);
+      setCustomers((prev) => [...prev, ...next.items]);
+      setShown(shown + 100);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   function search(e) {
     e.preventDefault();
@@ -90,7 +107,7 @@ function CustomersInner() {
       {!loading && !error && customers.length > 0 && !q && (
         <div className="stat-cards">
           {[
-            [Users, 'var(--accent-soft)', 'var(--accent)', 'Customers', customers.length],
+            [Users, 'var(--accent-soft)', 'var(--accent)', 'Customers', total],
             [Crown, 'var(--warning-soft)', 'var(--warning)', 'VIP regulars', customers.filter((c) => c.tags?.includes('VIP')).length],
             [UserPlus, 'var(--success-soft)', 'var(--success)', 'New in the last 30 days', customers.filter((c) => Date.now() - new Date(c.created_at ?? 0).getTime() < 30 * 86_400_000).length],
             [Mail, 'var(--info-soft)', 'var(--info)', 'Reachable by email', customers.filter((c) => c.email).length],
@@ -132,10 +149,10 @@ function CustomersInner() {
             </tbody>
           </table>
         )}
-        {!loading && customers.length > shown && (
+        {!loading && (customers.length > shown || customers.length < total) && (
           <div className="row" style={{ justifyContent: 'center', alignItems: 'center', marginTop: 14 }}>
-            <span className="muted" style={{ fontSize: 13 }}>Showing {shown} of {customers.length}</span>
-            <button type="button" onClick={() => setShown(shown + 100)}>Show more</button>
+            <span className="muted" style={{ fontSize: 13 }}>Showing {Math.min(shown, customers.length)} of {total}</span>
+            <button type="button" disabled={loadingMore} onClick={showMore}>{loadingMore ? 'Loading...' : 'Show more'}</button>
           </div>
         )}
       </div>

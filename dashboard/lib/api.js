@@ -134,6 +134,7 @@ export const api = {
   updateTeamMember: (id, payload) => request(`/api/team-members/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
 
   listExceptions: (status) => request(`/api/exceptions?${new URLSearchParams({ status })}`, { tokenStore: companyTokenStore }),
+  listExceptionsPage: (status, skip = 0, limit = 50) => request(`/api/exceptions?${new URLSearchParams({ status, paged: '1', skip: String(skip), limit: String(limit) })}`, { tokenStore: companyTokenStore }),
   updateException: (type, id, payload) => request(`/api/exceptions/${type}/${id}`, { method: 'PATCH', body: payload, tokenStore: companyTokenStore }),
   retryException: (type, id) => request(`/api/exceptions/${type}/${id}/retry`, { method: 'POST', tokenStore: companyTokenStore }),
 
@@ -195,7 +196,8 @@ export const api = {
     return `${API_URL}/api/call-logs/${id}/recording?rt=${encodeURIComponent(token)}`;
   },
 
-  listCustomers: (q) => request(`/api/customers${q ? `?${new URLSearchParams({ q })}` : ''}`, { tokenStore: companyTokenStore }),
+  // one page ({ items, total }), 500 at a time
+  listCustomers: (q, skip = 0) => request(`/api/customers?${new URLSearchParams({ paged: '1', skip: String(skip), ...(q ? { q } : {}) })}`, { tokenStore: companyTokenStore }),
   getCustomer: (id) => request(`/api/customers/${id}`, { tokenStore: companyTokenStore }),
   getDuplicates: (id) => request(`/api/customers/${id}/duplicates`, { tokenStore: companyTokenStore }),
   mergeCustomer: (id, fromId) => request(`/api/customers/${id}/merge`, { method: 'POST', body: { fromId }, tokenStore: companyTokenStore }),

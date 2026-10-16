@@ -125,7 +125,12 @@ export async function listExceptions(businessId, status) {
 exceptionsRouter.get('/exceptions', gate, async (req, res, next) => {
   try {
     const status = req.query.status === 'resolved' ? 'resolved' : 'open';
-    res.json(await listExceptions(req.businessId, status));
+    const items = await listExceptions(req.businessId, status);
+    if (!req.query.paged) return res.json(items);
+    // ?paged=1&limit=50&skip=0 answers { items, total }: the page can show 50 at a time
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const skip = Math.max(parseInt(req.query.skip, 10) || 0, 0);
+    res.json({ items: items.slice(skip, skip + limit), total: items.length });
   } catch (err) {
     next(err);
   }

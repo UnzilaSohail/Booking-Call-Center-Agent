@@ -18,7 +18,7 @@ function ServicesSection() {
   const [error, setError] = useState(null);
 
   const load = () => api.listServices().then(setServices).catch((e) => setError(e.message));
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);  
 
   async function add(e) {
     e.preventDefault();

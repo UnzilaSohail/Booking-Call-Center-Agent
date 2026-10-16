@@ -107,15 +107,23 @@ export async function getConsent(businessId, phone) {
   return customer?.consent ?? null;
 }
 
-export async function listCustomers(businessId, { q } = {}) {
-  const filter = {};
-  if (q) {
-    const pattern = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    filter.$or = [{ name: { $regex: pattern, $options: 'i' } }, { phone: { $regex: pattern, $options: 'i' } }, { email: { $regex: pattern, $options: 'i' } }];
-  }
-  const customers = await withTenant(businessId, (c) => c('customers').find(filter).sort({ updated_at: -1 }).limit(500).toArray());
-  return serializeAll(customers);
+function customerFilter(q) {
+  if (!q) return {};
+  const pattern = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return { $or: [{ name: { $regex: pattern, $options: 'i' } }, { phone: { $regex: pattern, $options: 'i' } }, { email: { $regex: pattern, $options: 'i' } }] };
 }
+
+// One page of customers, newest first (_id breaks ties so pages never repeat or skip a row), plus how many match in all.
+// all: true returns every match (the CSV export used to stop silently at 500).
+export async function listCustomers(businessId, { q, limit = 500, skip = 0, all = false } = {}) {
+  const cursor = (c) => {
+    const found = c('customers').find(customerFilter(q)).sort({ updated_at: -1, _id: 1 });
+    return all ? found : found.skip(skip).limit(limit);
+  };
+  return serializeAll(await withTenant(businessId, (c) => cursor(c).toArray()));
+}
+
+export const countCustomers = (businessId, q) => withTenant(businessId, (c) => c('customers').countDocuments(customerFilter(q)));
 
 export async function getCustomerDetail(businessId, id) {
   const customer = await withTenant(businessId, (c) => c('customers').findOne({ _id: id }));

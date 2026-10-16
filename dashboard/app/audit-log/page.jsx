@@ -1,11 +1,13 @@
 'use client';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { AlertTriangle, Bot, CalendarDays, CreditCard, History, Settings, ShieldCheck, Tag, UserRound, Users } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import Avatar from '../../components/Avatar';
 import { api } from '../../lib/api';
 import { describeActivity, GROUPS } from '../../lib/activity';
 import Loading from '../../components/Skeleton';
+import LoadError from '../../components/LoadError';
+import { useApi } from '../../lib/useApi';
 
 // "Activity history": a plain-language timeline of what people did in the dashboard, newest first, grouped by day.
 // The stored record is technical (a web address); lib/activity.js turns it into a sentence.
@@ -37,15 +39,9 @@ function collapse(items) {
 }
 
 function AuditLogInner() {
-  const [logs, setLogs] = useState([]);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { data: logs, error, loading, reload } = useApi(() => api.listAuditLogs(), [], []);
   const [group, setGroup] = useState('');
   const [shown, setShown] = useState(40);
-
-  useEffect(() => {
-    api.listAuditLogs().then(setLogs).catch((e) => setError(e.message)).finally(() => setLoading(false));
-  }, []);
 
   const items = useMemo(() => collapse(logs.map((l) => ({ id: l.id, at: l.createdAt, who: l.admin?.name || l.admin?.email || 'Someone', ...describeActivity(l) })).filter((i) => !group || i.group === group)), [logs, group]);
   const days = useMemo(() => {
@@ -72,7 +68,7 @@ function AuditLogInner() {
 
       <div className="card">
         {loading && <Loading />}
-        {error && <p className="error-text">{error}</p>}
+        <LoadError error={error} onRetry={reload} />
         {!loading && !error && logs.length === 0 && (
           <div className="empty-state">
             <History size={28} color="var(--text-faint)" />

@@ -11,12 +11,33 @@
 // short-circuits to null before ever reaching Twilio, which is also a pass.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sendSms } from '../src/notifications/sms.js';
+import { sendSms, smsBudgetAllows } from '../src/notifications/sms.js';
 import { createTenant, dropTenants, skip, getDb } from './support/tenantFixture.js';
 
 test('sendSms returns null instead of throwing on a rejected request', async () => {
   const result = await sendSms(null, 'not-a-real-phone-number', 'test');
   assert.equal(result, null);
+});
+
+// AIN-562: a business, and the platform as a whole, can only send so many texts a day.
+test('the daily SMS budget stops one business, then the whole platform', { skip }, async () => {
+  process.env.SMS_DAILY_CAP_PER_BUSINESS = '2';
+  process.env.SMS_DAILY_CAP_PLATFORM = '4';
+  const day = new Date('2031-05-05T12:00:00Z'); // a day nothing else uses
+  const db = await getDb();
+  try {
+    assert.equal(await smsBudgetAllows('biz-a', day), true);
+    assert.equal(await smsBudgetAllows('biz-a', day), true);
+    assert.equal(await smsBudgetAllows('biz-a', day), false, 'third text for one business is refused');
+    assert.equal(await smsBudgetAllows('biz-b', day), true, 'another business is not affected');
+    assert.equal(await smsBudgetAllows(null, day), true, 'a login code counts towards the platform total only');
+    assert.equal(await smsBudgetAllows(null, day), false, 'the platform total (4) is used up');
+    assert.equal(await smsBudgetAllows('biz-b', new Date('2031-05-06T01:00:00Z')), true, 'the next day starts fresh');
+  } finally {
+    delete process.env.SMS_DAILY_CAP_PER_BUSINESS;
+    delete process.env.SMS_DAILY_CAP_PLATFORM;
+    await db.collection('rate_limits').deleteMany({ _id: { $regex: 'sms-(biz|platform)' } });
+  }
 });
 
 // A tenant's own number (the same one its customers call) should be looked up and used
