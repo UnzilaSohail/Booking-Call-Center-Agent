@@ -7,6 +7,8 @@ import { api } from '../../lib/api';
 import { DateTime } from '../../lib/datetime';
 import Loading from '../../components/Skeleton';
 import EmptyState from '../../components/EmptyState';
+import LoadError from '../../components/LoadError';
+import { useApi } from '../../lib/useApi';
 
 // What the AI was trying to do when something went wrong, in everyday words.
 const TOOL_NAMES = {
@@ -54,24 +56,15 @@ function formatDuration(seconds) {
 }
 
 function CallsInner() {
-  const [logs, setLogs] = useState([]);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [phone, setPhone] = useState('');
   const [outcome, setOutcome] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-
-  function load() {
-    setLoading(true);
-    api.listCallLogs({ phone, outcome, from: from ? new Date(from).toISOString() : undefined, to: to ? new Date(to).toISOString() : undefined })
-      .then(setLogs)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [applied, setApplied] = useState({ phone: '', outcome: '', from: '', to: '' });   // the filters last submitted with Filter
+  const { data: logs, error, loading, reload } = useApi(
+    () => api.listCallLogs({ phone: applied.phone, outcome: applied.outcome, from: applied.from ? new Date(applied.from).toISOString() : undefined, to: applied.to ? new Date(applied.to).toISOString() : undefined }),
+    [applied], []);
 
   return (
     <div className="stack">
@@ -81,7 +74,7 @@ function CallsInner() {
       </div>
 
       <div className="card" style={{ paddingBottom: 14 }}>
-        <form onSubmit={(e) => { e.preventDefault(); load(); }} className="row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <form onSubmit={(e) => { e.preventDefault(); setApplied({ phone, outcome, from, to }); }} className="row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div className="field" style={{ marginBottom: 0 }}>
             <label>Phone</label>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Search by phone" style={{ width: 160 }} />
@@ -106,7 +99,7 @@ function CallsInner() {
 
       <div className="card">
         {loading && <Loading />}
-        {error && <p className="error-text">{error}</p>}
+        <LoadError error={error} onRetry={reload} />
         {!loading && !error && logs.length === 0 && (
           <EmptyState icon={Phone} action={{ label: 'Set up your phone number', href: '/settings#calls' }}>
             No calls yet. Once your phone number is connected, every call shows up here with a summary.

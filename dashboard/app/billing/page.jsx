@@ -5,6 +5,8 @@ import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import { DateTime } from '../../lib/datetime';
 import Loading from '../../components/Skeleton';
+import LoadError from '../../components/LoadError';
+import { useApi } from '../../lib/useApi';
 
 const PLAN_ORDER = ['starter', 'growth', 'scale'];
 
@@ -253,17 +255,10 @@ function InvoicesCard({ invoices, onChanged }) {
 }
 
 function BillingInner() {
-  const [plan, setPlan] = useState(null);
-  const [usage, setUsage] = useState(null);
-  const [invoices, setInvoices] = useState([]);
-  const [error, setError] = useState(null);
-
-  function load() {
-    api.getBillingPlan().then(setPlan).catch((e) => setError(e.message));
-    api.getBillingUsage().then(setUsage).catch(() => {});
-    api.listInvoices().then(setInvoices).catch(() => {});
-  }
-  useEffect(load, []);
+  const { data: plan, error, reload: reloadPlan } = useApi(() => api.getBillingPlan());
+  const { data: usage, reload: reloadUsage } = useApi(() => api.getBillingUsage().catch(() => null));        // the plan card still shows without these two
+  const { data: invoices, reload: reloadInvoices } = useApi(() => api.listInvoices().catch(() => []), [], []);
+  const load = () => { reloadPlan(); reloadUsage(); reloadInvoices(); };
 
   return (
     <div className="stack">
@@ -271,7 +266,7 @@ function BillingInner() {
         <h1>Billing</h1>
         <p className="muted" style={{ marginTop: 4 }}>Your plan, usage this period, payment method, and invoice history.</p>
       </div>
-      {error && <p className="error-text">{error}</p>}
+      <LoadError error={error} onRetry={reloadPlan} />
       {!plan && !error && <Loading />}
       {plan && (
         <>

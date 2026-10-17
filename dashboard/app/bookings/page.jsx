@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import BookingModal from '../../components/BookingModal';
@@ -7,6 +7,8 @@ import { api } from '../../lib/api';
 import { DateTime } from '../../lib/datetime';
 import { useToast } from '../../lib/Toast';
 import EmptyState from '../../components/EmptyState';
+import LoadError from '../../components/LoadError';
+import { useApi } from '../../lib/useApi';
 
 function StatusBadge({ status }) {
   return <span className={`badge ${status === 'confirmed' ? 'success' : 'neutral'}`}>{status}</span>;
@@ -36,9 +38,7 @@ function DeliveryBadge({ booking }) {
 // People who asked to be texted if a time opens up on a full day (Jira 38). Hidden when nobody is waiting.
 function WaitlistCard() {
   const toast = useToast();
-  const [rows, setRows] = useState([]);
-  const load = useCallback(() => api.listWaitlist().then(setRows).catch(() => {}), []);
-  useEffect(() => { load(); }, [load]);
+  const { data: rows, reload: load } = useApi(() => api.listWaitlist(), [], []);   // a failed load just hides the card
   if (rows.length === 0) return null;
   async function remove(id) {
     try { await api.removeWaitlistEntry(id); load(); } catch (err) { toast.error(err.message); }
@@ -68,9 +68,7 @@ function BookingsInner() {
   const toast = useToast();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('confirmed');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [searched, setSearched] = useState('');   // q, 350 ms after typing stops
   const [services, setServices] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [modal, setModal] = useState(null);
@@ -81,26 +79,19 @@ function BookingsInner() {
     api.listStaff().then(setStaffList).catch(() => {});
   }, []);
 
-  const search = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    api.listBookings(undefined, undefined, { q: q || undefined, status: status === 'all' ? undefined : status })
-      .then((r) => {
-        // upcoming first (soonest at the top), then history (most recent first)
-        const now = Date.now();
-        const up = r.filter((b) => new Date(b.start_time) >= now).sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
-        setResults([...up, ...r.filter((b) => new Date(b.start_time) < now).sort((a, b) => new Date(b.start_time) - new Date(a.start_time))]);
-        setShown(25);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [q, status]);
-
-  useEffect(() => { search(); }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const t = setTimeout(search, 350); // debounce free-text typing
+    const t = setTimeout(() => setSearched(q), 350); // debounce free-text typing
     return () => clearTimeout(t);
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q]);
+  const { data: results, error, loading, reload: search, setData: setResults } = useApi(
+    () => api.listBookings(undefined, undefined, { q: searched || undefined, status: status === 'all' ? undefined : status }).then((r) => {
+      // upcoming first (soonest at the top), then history (most recent first)
+      const now = Date.now();
+      const up = r.filter((b) => new Date(b.start_time) >= now).sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+      setShown(25);
+      return [...up, ...r.filter((b) => new Date(b.start_time) < now).sort((a, b) => new Date(b.start_time) - new Date(a.start_time))];
+    }),
+    [searched, status], []);
 
   // A visit that already happened: staff say whether the customer came. Feeds the no-show rate on Overview and in the monthly report.
   async function markNoShow(b, flag) {
@@ -139,7 +130,7 @@ function BookingsInner() {
           </select>
         </div>
 
-        {error && <p className="error-text">{error}</p>}
+        <LoadError error={error} onRetry={search} />
         {loading && <p className="muted">Searching...</p>}
         {!loading && results.length === 0 && (
           <EmptyState icon={Search} action={{ label: 'Create a booking', onClick: () => setModal({ mode: 'create' }) }}>
