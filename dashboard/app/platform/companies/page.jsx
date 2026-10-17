@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import RequirePlatformAuth from '../../../components/RequirePlatformAuth';
 import RegisterCompanyForm from '../../../components/RegisterCompanyForm';
+import LoadError from '../../../components/LoadError';
+import { useApi } from '../../../lib/useApi';
 import { platformApi } from '../../../lib/api';
 
 function StatusBadge({ status }) {
@@ -12,16 +14,13 @@ function StatusBadge({ status }) {
 
 function CompaniesInner() {
   const router = useRouter();
-  const [companies, setCompanies] = useState([]);
   const [q, setQ] = useState('');
-  const [listError, setListError] = useState(null);
-
-  const load = () => platformApi.listCompanies(q || undefined).then(setCompanies).catch((e) => setListError(e.message));
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [searched, setSearched] = useState('');   // q, 300 ms after typing stops
   useEffect(() => {
-    const t = setTimeout(load, 300);
+    const t = setTimeout(() => setSearched(q), 300);
     return () => clearTimeout(t);
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q]);
+  const { data: companies, error: listError, loading, reload: load } = useApi(() => platformApi.listCompanies(searched || undefined), [searched], []);
 
   return (
     <div className="stack">
@@ -40,7 +39,7 @@ function CompaniesInner() {
             <input placeholder="Search..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 28 }} />
           </div>
         </div>
-        {listError && <p className="error-text">{listError}</p>}
+        <LoadError error={listError} onRetry={load} />
         <table>
           <thead><tr><th>Name</th><th>Status</th><th>Timezone</th><th>Phone number</th><th>Upcoming</th><th>Registered</th></tr></thead>
           <tbody>
@@ -54,7 +53,7 @@ function CompaniesInner() {
                 <td>{new Date(c.createdAt).toLocaleDateString()}</td>
               </tr>
             ))}
-            {companies.length === 0 && !listError && (
+            {companies.length === 0 && !listError && !loading && (
               <tr><td colSpan={6} className="muted">No companies match.</td></tr>
             )}
           </tbody>

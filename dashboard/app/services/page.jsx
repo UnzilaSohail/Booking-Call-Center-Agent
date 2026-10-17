@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pencil, Tag, Trash2, X } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import { api, ApiError } from '../../lib/api';
@@ -7,18 +7,18 @@ import { useToast } from '../../lib/Toast';
 import { useConfirm } from '../../lib/confirm';
 import EmptyState from '../../components/EmptyState';
 import InfoTip from '../../components/InfoTip';
+import LoadError from '../../components/LoadError';
+import { useApi } from '../../lib/useApi';
 
 function ServicesSection() {
   const confirm = useConfirm();
   const toast = useToast();
-  const [services, setServices] = useState([]);
   const [form, setForm] = useState({ name: '', durationMinutes: 30, bufferMinutes: 0, price: '' });
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [error, setError] = useState(null);
 
-  const load = () => api.listServices().then(setServices).catch((e) => setError(e.message));
-  useEffect(() => { load(); }, []);  
+  const { data: services, error: loadError, loading, reload: load } = useApi(() => api.listServices(), [], []);
 
   async function add(e) {
     e.preventDefault();
@@ -89,7 +89,7 @@ function ServicesSection() {
               </td>
             </tr>
           ))}
-          {services.length === 0 && <tr><td colSpan={5}><EmptyState icon={Tag} action={{ label: 'Add your first service', onClick: () => document.getElementById('service-name')?.focus() }}>No services yet. Add what customers can book, like a haircut or a check-up.</EmptyState></td></tr>}
+          {services.length === 0 && !loading && !loadError && <tr><td colSpan={5}><EmptyState icon={Tag} action={{ label: 'Add your first service', onClick: () => document.getElementById('service-name')?.focus() }}>No services yet. Add what customers can book, like a haircut or a check-up.</EmptyState></td></tr>}
         </tbody>
       </table>
       <form onSubmit={add} className="row" style={{ marginTop: 14, alignItems: 'flex-end' }}>
@@ -99,6 +99,7 @@ function ServicesSection() {
         <div className="field"><label>Price</label><input type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></div>
         <button type="submit" className="primary">Add</button>
       </form>
+      <LoadError error={loadError} onRetry={load} />
       {error && <p className="error-text">{error}</p>}
     </div>
   );

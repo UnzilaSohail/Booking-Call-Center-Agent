@@ -1,10 +1,12 @@
 'use client';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Phone } from 'lucide-react';
 import RequirePlatformAuth from '../../../components/RequirePlatformAuth';
 import { platformApi } from '../../../lib/api';
 import { DateTime } from '../../../lib/datetime';
 import Loading from '../../../components/Skeleton';
+import LoadError from '../../../components/LoadError';
+import { useApi } from '../../../lib/useApi';
 
 function OutcomeBadge({ log }) {
   if (log.booking) return <span className="badge success">Booked</span>;
@@ -15,17 +17,8 @@ function OutcomeBadge({ log }) {
 }
 
 function ActivityInner() {
-  const [logs, setLogs] = useState([]);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { data: logs, error, loading, reload } = useApi(() => platformApi.listCallLogs(), [], []);
   const [expandedId, setExpandedId] = useState(null);
-
-  useEffect(() => {
-    platformApi.listCallLogs()
-      .then(setLogs)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
 
   return (
     <div className="stack">
@@ -36,7 +29,7 @@ function ActivityInner() {
 
       <div className="card">
         {loading && <Loading />}
-        {error && <p className="error-text">{error}</p>}
+        <LoadError error={error} onRetry={reload} />
         {!loading && !error && logs.length === 0 && (
           <div className="empty-state">
             <Phone size={28} color="var(--text-faint)" />

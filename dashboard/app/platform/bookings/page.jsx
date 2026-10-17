@@ -1,9 +1,11 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import RequirePlatformAuth from '../../../components/RequirePlatformAuth';
 import { platformApi } from '../../../lib/api';
 import { DateTime } from '../../../lib/datetime';
+import LoadError from '../../../components/LoadError';
+import { useApi } from '../../../lib/useApi';
 
 function StatusBadge({ status }) {
   return <span className={`badge ${status === 'confirmed' ? 'success' : 'neutral'}`}>{status}</span>;
@@ -11,25 +13,14 @@ function StatusBadge({ status }) {
 
 function BookingsInner() {
   const [q, setQ] = useState('');
+  const [searched, setSearched] = useState('');   // what is actually searched: q, 350 ms after typing stops
   const [status, setStatus] = useState('confirmed');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const search = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    platformApi.listBookings(q || undefined, status === 'all' ? undefined : status)
-      .then(setResults)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [q, status]);
-
-  useEffect(() => { search(); }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const t = setTimeout(search, 350);
+    const t = setTimeout(() => setSearched(q), 350);
     return () => clearTimeout(t);
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q]);
+  const { data: results, error, loading, reload } = useApi(
+    () => platformApi.listBookings(searched || undefined, status === 'all' ? undefined : status), [searched, status], []);
 
   return (
     <div className="stack">
@@ -51,9 +42,9 @@ function BookingsInner() {
           </select>
         </div>
 
-        {error && <p className="error-text">{error}</p>}
+        <LoadError error={error} onRetry={reload} />
         {loading && <p className="muted">Searching...</p>}
-        {!loading && results.length === 0 && (
+        {!loading && !error && results.length === 0 && (
           <div className="empty-state">
             <Search size={28} color="var(--text-faint)" />
             <p>No bookings match.</p>
