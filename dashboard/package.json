@@ -2,7 +2,7 @@
   "name": "booking-dashboard",
   "version": "1.0.0",
   "private": true,
-  "description": "Admin dashboard (plan.md \u00c2\u00a78 phase 2) \u00e2\u20ac\u201d calendar view + manual booking, reading/writing the same API the voice agent uses.",
+  "description": "Admin dashboard (plan.md Â§8 phase 2) â€” calendar view + manual booking, reading/writing the same API the voice agent uses.",
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3002",
@@ -31,6 +31,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^17.13.0",
+    "jsdom": "^26.1.0",
     "prettier": "^3.9.10"
   }
 }
