@@ -1,10 +1,12 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import RequireAuth from '../../components/RequireAuth';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import Loading from '../../components/Skeleton';
+import LoadError from '../../components/LoadError';
+import { useApi } from '../../lib/useApi';
 
 const VOICE_OPTIONS = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede'];
 
@@ -183,15 +185,9 @@ function GoLiveStep({ status, onChanged }) {
 }
 
 function OnboardingContent() {
-  const [status, setStatus] = useState(null);
-  const [error, setError] = useState(null);
+  const { data: status, error, reload: load } = useApi(() => api.getOnboardingStatus());
 
-  function load() {
-    api.getOnboardingStatus().then(setStatus).catch((e) => setError(e.message));
-  }
-  useEffect(load, []);
-
-  if (!status) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
+  if (!status) return <div className="card">{error ? <LoadError error={error} onRetry={load} /> : <Loading />}</div>;
 
   const live = status.steps.find((s) => s.key === 'go_live')?.done;
 

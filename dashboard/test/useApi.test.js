@@ -26,7 +26,6 @@ function Probe({ fetcher, deps, initial }) {
 
 const mount = async (props) => { await act(async () => { root.render(React.createElement(Probe, props)); }); };
 const text = () => container.textContent;
-const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
 test('shows loading, then the data, and holds the initial value until the first answer', async () => {
   let resolve;

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   Area, CartesianGrid, Cell, ComposedChart, Line, Pie, PieChart,
@@ -12,6 +12,8 @@ import RequireAuth from '../components/RequireAuth';
 import Avatar from '../components/Avatar';
 import BookingModal from '../components/BookingModal';
 import { api } from '../lib/api';
+import { useApi } from '../lib/useApi';
+import LoadError from '../components/LoadError';
 import Loading from '../components/Skeleton';
 import SetupProgress from '../components/SetupProgress';
 import CountUp from '../components/CountUp';
@@ -93,34 +95,21 @@ function greeting() {
 }
 
 function HomeInner() {
-  const [me, setMe] = useState(null);
-  const [stats, setStats] = useState(null);
-  const [analytics, setAnalytics] = useState(null);
-  const [openExceptions, setOpenExceptions] = useState(null);
-  const [upcoming, setUpcoming] = useState([]);
-  const [services, setServices] = useState([]);
-  const [staffList, setStaffList] = useState([]);
   const [modal, setModal] = useState(null);
-  const [error, setError] = useState(null);
-  function load() {
-    api.getStats().then(setStats).catch((e) => setError(e.message));
-    api.getAnalytics().then(setAnalytics).catch(() => {});
+  // Only the headline numbers show an error; the rest (who is signed in, the lists, the extras) quietly stay empty if they fail.
+  const { data: stats, error, reload: reloadStats } = useApi(() => api.getStats());
+  const { data: analytics, reload: reloadAnalytics } = useApi(() => api.getAnalytics().catch(() => null));
+  const { data: upcoming, reload: reloadUpcoming } = useApi(() => {
     const now = new Date();
-    const weekOut = new Date(now.getTime() + 7 * 86400000);
-    api.listBookings(now.toISOString(), weekOut.toISOString())
-      .then((rows) => setUpcoming(rows.filter((b) => b.status === 'confirmed').slice(0, 6)))
-      .catch(() => {});
-  }
-
-  useEffect(() => {
-    api.getMe().then((m) => {
-      setMe(m);
-      if (m.areas?.includes('exceptions')) api.listExceptions('open').then((rows) => setOpenExceptions(rows.length)).catch(() => {});
-    }).catch(() => {});
-    api.listServices().then(setServices).catch(() => {});
-    api.listStaff().then(setStaffList).catch(() => {});
-    load();
-  }, []);
+    return api.listBookings(now.toISOString(), new Date(now.getTime() + 7 * 86400000).toISOString())
+      .then((rows) => rows.filter((b) => b.status === 'confirmed').slice(0, 6)).catch(() => []);
+  }, [], []);
+  const { data: me } = useApi(() => api.getMe().catch(() => null));
+  const { data: openExceptions } = useApi(
+    () => (me?.areas?.includes('exceptions') ? api.listExceptions('open').then((rows) => rows.length).catch(() => null) : Promise.resolve(null)), [me]);
+  const { data: services } = useApi(() => api.listServices().catch(() => []), [], []);
+  const { data: staffList } = useApi(() => api.listStaff().catch(() => []), [], []);
+  const load = () => { reloadStats(); reloadAnalytics(); reloadUpcoming(); };
 
   const staffNameById = Object.fromEntries(staffList.map((s) => [s.id, s.name]));
   const firstName = (me?.name || me?.email || '').split(/\s|@/)[0];
@@ -167,7 +156,7 @@ function HomeInner() {
         </div>
       </div>
 
-      {error && <p className="error-text">{error}</p>}
+      <LoadError error={error} onRetry={reloadStats} />
 
       <SetupProgress />
 
