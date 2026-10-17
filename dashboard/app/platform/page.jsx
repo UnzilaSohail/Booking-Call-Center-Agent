@@ -1,5 +1,4 @@
 'use client';
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Area, CartesianGrid, ComposedChart, Line, RadialBar, RadialBarChart,
@@ -12,6 +11,7 @@ import {
 import RequirePlatformAuth from '../../components/RequirePlatformAuth';
 import CountUp from '../../components/CountUp';
 import DemoDataCard from '../../components/DemoDataCard';
+import { useApi } from '../../lib/useApi';
 import Avatar from '../../components/Avatar';
 import { platformApi } from '../../lib/api';
 import { DateTime } from '../../lib/datetime';
@@ -106,12 +106,7 @@ function statusPill(createdVia) {
 }
 
 function OverviewInner() {
-  const [analytics, setAnalytics] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    platformApi.getAnalytics().then(setAnalytics).catch((e) => setError(e.message));
-  }, []);
+  const { data: analytics, error, reload } = useApi(() => platformApi.getAnalytics());
 
   const dailyData = (analytics?.dailyActivity ?? []).map((d) => ({
     ...d, label: new Date(d.date).toLocaleDateString([], { month: 'short', day: 'numeric' }),
@@ -313,7 +308,7 @@ function OverviewInner() {
         </div>
       </div>
 
-      <DemoDataCard onChanged={() => platformApi.getAnalytics().then(setAnalytics).catch(() => {})} />
+      <DemoDataCard onChanged={reload} />
     </div>
   );
 }

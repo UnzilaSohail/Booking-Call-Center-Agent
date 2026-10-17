@@ -1,11 +1,12 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Ban, CheckCircle2, KeyRound, Trash2 } from 'lucide-react';
 import RequirePlatformAuth from '../../../../components/RequirePlatformAuth';
-import { platformApi, ApiError } from '../../../../lib/api';
+import { platformApi } from '../../../../lib/api';
 import { useToast } from '../../../../lib/Toast';
 import Loading from '../../../../components/Skeleton';
+import { useApi } from '../../../../lib/useApi';
 import PasswordInput from '../../../../components/PasswordInput';
 
 function ResetPasswordRow({ admin }) {
@@ -69,12 +70,7 @@ function ResetPasswordRow({ admin }) {
 // Read-only view for platform ops (ROADMAP.md §11) — plan changes, payment method and
 // cancellation stay company-admin-only actions (dashboard/app/billing/page.jsx).
 function BillingSection({ id }) {
-  const [billing, setBilling] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    platformApi.getCompanyBilling(id).then(setBilling).catch((e) => setError(e instanceof ApiError ? e.message : 'failed to load'));
-  }, [id]);
+  const { data: billing, error } = useApi(() => platformApi.getCompanyBilling(id), [id]);
 
   if (error) return <div className="card"><h2>Billing</h2><p className="error-text">{error}</p></div>;
   if (!billing) return <div className="card"><h2>Billing</h2><Loading /></div>;
@@ -160,12 +156,8 @@ function CompanyDetailInner() {
   const { id } = useParams();
   const router = useRouter();
   const toast = useToast();
-  const [company, setCompany] = useState(null);
-  const [error, setError] = useState(null);
+  const { data: company, error, reload: load } = useApi(() => platformApi.getCompany(id), [id]);
   const [togglingStatus, setTogglingStatus] = useState(false);
-
-  const load = () => platformApi.getCompany(id).then(setCompany).catch((e) => setError(e instanceof ApiError ? e.message : 'failed to load'));
-  useEffect(() => { load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function toggleListing() {
     try {
