@@ -1,6 +1,8 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useToast } from '../lib/Toast';
+import { useApi } from '../lib/useApi';
+import LoadError from './LoadError';
 import Loading from './Skeleton';
 import PasswordInput from './PasswordInput';
 
@@ -9,17 +11,12 @@ import PasswordInput from './PasswordInput';
 // Settings page and the platform Settings page: `client` is `api` or `platformApi` (lib/api.js).
 export default function MfaCard({ client }) {
   const toast = useToast();
-  const [me, setMe] = useState(null);
+  const { data: me, error: loadError, reload: load } = useApi(() => client.getMe(), [client]);
   const [enrollment, setEnrollment] = useState(null); // { secret, otpauthUrl }
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-
-  function load() {
-    client.getMe().then(setMe).catch((e) => setError(e.message));
-  }
-  useEffect(load, [client]);
 
   async function startEnroll() {
     setBusy(true);
@@ -66,7 +63,7 @@ export default function MfaCard({ client }) {
     }
   }
 
-  if (!me) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
+  if (!me) return <div className="card">{loadError ? <LoadError error={loadError} onRetry={load} /> : <Loading />}</div>;
 
   return (
     <div className="card">

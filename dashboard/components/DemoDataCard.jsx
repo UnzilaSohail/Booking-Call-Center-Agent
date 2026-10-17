@@ -1,21 +1,21 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { platformApi } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
+import { useApi } from '../lib/useApi';
+import LoadError from './LoadError';
 
 // Platform console: add or remove the demo businesses (src/services/demoData.js). Everything it makes is flagged
 // as demo and removed by the second button; real companies are never touched. The login password is shown once.
 export default function DemoDataCard({ onChanged }) {
   const confirm = useConfirm();
-  const [status, setStatus] = useState(null);
+  const { data: status, error: loadError, reload: refresh } = useApi(() => platformApi.getDemoData());
   const [listed, setListed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const refresh = () => platformApi.getDemoData().then(setStatus).catch((e) => setError(e.message));
-  useEffect(() => { refresh(); }, []);
 
   async function run(fn) {
     setBusy(true); setError(null);
@@ -46,6 +46,7 @@ export default function DemoDataCard({ onChanged }) {
         <button type="button" className="primary" disabled={busy} onClick={add}>{busy ? 'Working...' : status?.present ? 'Reset demo data' : 'Add demo data'}</button>
         {status?.present && <button type="button" className="danger" disabled={busy} onClick={remove}>Remove demo data</button>}
       </div>
+      <LoadError error={loadError} onRetry={refresh} />
       {error && <p className="error-text" role="alert">{error}</p>}
       {result && (
         <div role="status" className="card" style={{ marginTop: 14, background: 'var(--surface-alt)', boxShadow: 'none' }}>

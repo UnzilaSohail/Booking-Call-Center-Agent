@@ -1,12 +1,12 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../../lib/api';
+import { useApi } from '../../lib/useApi';
+import LoadError from '../LoadError';
 
 export default function CalendarConnectSection() {
-  const [status, setStatus] = useState(null);
+  const { data: status, error: loadError, reload } = useApi(() => api.calendarStatus());
   const [error, setError] = useState(null);
-
-  useEffect(() => { api.calendarStatus().then(setStatus).catch((e) => setError(e.message)); }, []);
 
   async function connect() {
     try {
@@ -26,6 +26,7 @@ export default function CalendarConnectSection() {
         <p className="muted">Not connected. Bookings still work (the database is the source of truth); connect to also see them on your Google Calendar and to catch conflicts with manually-added personal events.</p>
       )}
       <button className="primary" onClick={connect}>{status?.connected ? 'Reconnect' : 'Connect Google Calendar'}</button>
+      <LoadError error={loadError} onRetry={reload} />
       {error && <p className="error-text">{error}</p>}
     </div>
   );

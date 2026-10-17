@@ -1,21 +1,18 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import Loading from '../Skeleton';
+import LoadError from '../LoadError';
+import { useApi } from '../../lib/useApi';
 
 export default function LocationsSection() {
   const toast = useToast();
-  const [locations, setLocations] = useState(null);
+  const { data: locations, error: loadError, reload: load } = useApi(() => api.listLocations());
   const [form, setForm] = useState({ name: '', address: '', contactPhone: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-
-  function load() {
-    api.listLocations().then(setLocations).catch((e) => setError(e.message));
-  }
-  useEffect(load, []);
 
   async function add(e) {
     e.preventDefault();
@@ -43,7 +40,7 @@ export default function LocationsSection() {
     }
   }
 
-  if (!locations) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
+  if (!locations) return <div className="card">{loadError ? <LoadError error={loadError} onRetry={load} /> : <Loading />}</div>;
 
   return (
     <div className="card">
