@@ -7,6 +7,8 @@ import { useToast } from '../../lib/Toast';
 import { DateTime } from '../../lib/datetime';
 import { useConfirm } from '../../lib/confirm';
 import EmptyState from '../EmptyState';
+import LoadError from '../LoadError';
+import { useApi } from '../../lib/useApi';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -201,7 +203,6 @@ function StaffScheduleEditor({ staff, locations, services, onChanged }) {
 export default function StaffSection() {
   const confirm = useConfirm();
   const toast = useToast();
-  const [staff, setStaff] = useState([]);
   const [locations, setLocations] = useState([]);
   const [services, setServices] = useState([]);
   const [name, setName] = useState('');
@@ -210,8 +211,8 @@ export default function StaffSection() {
   const [expandedId, setExpandedId] = useState(null);
   const [error, setError] = useState(null);
 
-  const load = () => api.listStaff().then(setStaff).catch((e) => setError(e.message));
-  useEffect(() => { load(); api.listLocations().then(setLocations).catch(() => {}); api.listServices().then(setServices).catch(() => {}); }, []);  
+  const { data: staff, error: loadError, reload: load } = useApi(() => api.listStaff(), [], []);
+  useEffect(() => { api.listLocations().then(setLocations).catch(() => {}); api.listServices().then(setServices).catch(() => {}); }, []);  
 
   async function add(e) {
     e.preventDefault();
@@ -293,7 +294,8 @@ export default function StaffSection() {
               )}
             </Fragment>
           ))}
-          {staff.length === 0 && <tr><td colSpan={2}><EmptyState icon={Users} action={{ label: 'Add your first team member', onClick: () => document.getElementById('staff-name')?.focus() }}>No team members yet. Add the people customers can book with.</EmptyState></td></tr>}
+          {staff.length === 0 && loadError && <tr><td colSpan={2}><LoadError error={loadError} onRetry={load} /></td></tr>}
+          {staff.length === 0 && !loadError && <tr><td colSpan={2}><EmptyState icon={Users} action={{ label: 'Add your first team member', onClick: () => document.getElementById('staff-name')?.focus() }}>No team members yet. Add the people customers can book with.</EmptyState></td></tr>}
         </tbody>
       </table>
       <form onSubmit={add} className="row" style={{ alignItems: 'flex-end', marginTop: 10 }}>

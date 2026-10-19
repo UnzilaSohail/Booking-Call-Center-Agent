@@ -5,6 +5,8 @@ import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import { copyText } from '../../lib/clipboard';
 import Loading from '../Skeleton';
+import LoadError from '../LoadError';
+import { useApi } from '../../lib/useApi';
 import { useConfirm } from '../../lib/confirm';
 
 // Matches src/permissions.js's AREAS — the fixed set a custom role picks from.
@@ -16,7 +18,6 @@ const AREA_LABELS = { bookings: 'Bookings and calendar', customers: 'Customers',
 export default function TeamMembersSection() {
   const confirm = useConfirm();
   const toast = useToast();
-  const [members, setMembers] = useState([]);
   const [me, setMe] = useState(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -28,8 +29,8 @@ export default function TeamMembersSection() {
   // owner can copy the link even when the email could not be sent.
   const [lastInvite, setLastInvite] = useState(null);
 
-  const load = () => api.listTeamMembers().then(setMembers).catch((e) => setError(e.message));
-  useEffect(() => { load(); api.getMe().then(setMe).catch(() => {}); }, []);
+  const { data: members, error: loadError, reload: load } = useApi(() => api.listTeamMembers(), [], []);
+  useEffect(() => { api.getMe().then(setMe).catch(() => {}); }, []);
 
   const isOwner = me?.role === 'owner';
 
@@ -136,7 +137,7 @@ export default function TeamMembersSection() {
               )}
             </tr>
           ))}
-          {members.length === 0 && <tr><td colSpan={isOwner ? 5 : 4}><Loading lines={2} /></td></tr>}
+          {members.length === 0 && <tr><td colSpan={isOwner ? 5 : 4}>{loadError ? <LoadError error={loadError} onRetry={load} /> : <Loading lines={2} />}</td></tr>}
         </tbody>
       </table>
 

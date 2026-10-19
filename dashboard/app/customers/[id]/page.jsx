@@ -8,6 +8,8 @@ import { api } from '../../../lib/api';
 import { useToast } from '../../../lib/Toast';
 import { DateTime } from '../../../lib/datetime';
 import Loading from '../../../components/Skeleton';
+import LoadError from '../../../components/LoadError';
+import { useApi } from '../../../lib/useApi';
 import { useConfirm } from '../../../lib/confirm';
 
 // Staff review of "same person, new phone" (Jira 18k/18l/18m). Same email is a strong match;
@@ -61,7 +63,6 @@ function CustomerDetailInner() {
   const { id } = useParams();
   const router = useRouter();
   const toast = useToast();
-  const [customer, setCustomer] = useState(null);
   const [services, setServices] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [form, setForm] = useState(null);
@@ -69,13 +70,13 @@ function CustomerDetailInner() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  function load() {
-    api.getCustomer(id).then((c) => {
-      setCustomer(c);
-      setForm({ name: c.name ?? '', email: c.email ?? '', notes: c.notes ?? '', tags: c.tags ?? [], preferences: c.preferences, consent: c.consent });
-    }).catch((e) => setError(e.message));
-  }
-  useEffect(() => { load(); api.listServices().then(setServices).catch(() => {}); api.listStaff().then(setStaffList).catch(() => {}); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { data: customer, error: loadError, reload: load } = useApi(() => api.getCustomer(id), [id]);
+  // The form is a copy of the loaded customer that the person edits; a fresh load (also after a save) resets it.
+  useEffect(() => {
+    const c = customer;
+    if (c) setForm({ name: c.name ?? '', email: c.email ?? '', notes: c.notes ?? '', tags: c.tags ?? [], preferences: c.preferences, consent: c.consent });
+  }, [customer]);
+  useEffect(() => { api.listServices().then(setServices).catch(() => {}); api.listStaff().then(setStaffList).catch(() => {}); }, []);
 
   async function save() {
     setSaving(true);
@@ -100,7 +101,7 @@ function CustomerDetailInner() {
     setForm((f) => ({ ...f, tags: f.tags.filter((t) => t !== tag) }));
   }
 
-  if (error) return <p className="error-text">{error}</p>;
+  if (loadError) return <LoadError error={loadError} onRetry={load} />;
   if (!customer || !form) return <Loading />;
 
   const serviceName = (sid) => services.find((s) => s.id === sid)?.name ?? '—';
