@@ -4,6 +4,8 @@ import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import Loading from '../Skeleton';
+import LoadError from '../LoadError';
+import { useApi } from '../../lib/useApi';
 
 export default function HolidaysSection() {
   const toast = useToast();
@@ -11,7 +13,9 @@ export default function HolidaysSection() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => { api.getHolidays().then((h) => setHolidays(h.length ? h : [{ date: '', name: '' }])).catch((e) => setError(e.message)); }, []);
+  const { data: loaded, error: loadError, reload } = useApi(() => api.getHolidays(), []);
+  // The editable copy: a fresh load replaces it.
+  useEffect(() => { if (loaded) setHolidays(loaded.length ? loaded : [{ date: '', name: '' }]); }, [loaded]);
 
   function update(i, patch) {
     setHolidays((prev) => prev.map((h, idx) => (idx === i ? { ...h, ...patch } : h)));
@@ -31,7 +35,7 @@ export default function HolidaysSection() {
     }
   }
 
-  if (!holidays) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
+  if (!holidays) return <div className="card">{loadError ? <LoadError error={loadError} onRetry={reload} /> : <Loading />}</div>;
 
   return (
     <div className="card">

@@ -4,6 +4,8 @@ import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import Loading from '../Skeleton';
+import LoadError from '../LoadError';
+import { useApi } from '../../lib/useApi';
 import InfoTip from '../InfoTip';
 
 // Department-based transfer routing (ROADMAP.md §5) — src/voice/tools.js's
@@ -15,7 +17,9 @@ export default function TransferDepartmentsSection() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => { api.getTransferDepartments().then((d) => setDepartments(d.length ? d : [{ name: '', phoneNumber: '' }])).catch((e) => setError(e.message)); }, []);
+  const { data: loaded, error: loadError, reload } = useApi(() => api.getTransferDepartments(), []);
+  // The editable copy: a fresh load replaces it.
+  useEffect(() => { if (loaded) setDepartments(loaded.length ? loaded : [{ name: '', phoneNumber: '' }]); }, [loaded]);
 
   function update(i, patch) {
     setDepartments((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
@@ -35,7 +39,7 @@ export default function TransferDepartmentsSection() {
     }
   }
 
-  if (!departments) return <div className="card">{error ? <p className="error-text">{error}</p> : <Loading />}</div>;
+  if (!departments) return <div className="card">{loadError ? <LoadError error={loadError} onRetry={reload} /> : <Loading />}</div>;
 
   return (
     <div className="card">
