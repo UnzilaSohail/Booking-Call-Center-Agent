@@ -6,6 +6,8 @@ import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import { DateTime } from '../../lib/datetime';
 import Loading from '../../components/Skeleton';
+import LoadError from '../../components/LoadError';
+import { useApi } from '../../lib/useApi';
 
 const TYPE_LABELS = {
   failed_booking: 'Booking that did not go through',
@@ -122,31 +124,25 @@ function ExceptionRow({ item, staffList, onChanged }) {
 
 function ExceptionsInner() {
   const [status, setStatus] = useState('open');
-  const [items, setItems] = useState([]);
   const [staffList, setStaffList] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const [total, setTotal] = useState(0);
+  const [moreError, setMoreError] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const { data, error, loading, reload: load, setData } = useApi(() => api.listExceptionsPage(status), [status]);
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
 
-  function load() {
-    setLoading(true);
-    api.listExceptionsPage(status).then((r) => { setItems(r.items); setTotal(r.total); }).catch((e) => setError(e.message)).finally(() => setLoading(false));
-  }
   async function showMore() {
     setLoadingMore(true);
+    setMoreError(null);
     try {
       const next = await api.listExceptionsPage(status, items.length);
-      setItems((prev) => [...prev, ...next.items]);
-      setTotal(next.total);
+      setData((prev) => ({ items: [...prev.items, ...next.items], total: next.total }));
     } catch (err) {
-      setError(err.message);
+      setMoreError(err.message);
     } finally {
       setLoadingMore(false);
     }
   }
-  useEffect(load, [status]);  
   useEffect(() => { api.listStaff().then(setStaffList).catch(() => {}); }, []);
 
   return (
@@ -162,10 +158,11 @@ function ExceptionsInner() {
           <button className={status === 'resolved' ? 'primary' : 'ghost'} onClick={() => setStatus('resolved')}>Resolved</button>
         </div>
 
-        {error && <p className="error-text">{error}</p>}
+        <LoadError error={error} onRetry={load} />
+        {moreError && <p className="error-text">{moreError}</p>}
         {loading && <Loading />}
-        {!loading && items.length === 0 && <div className="empty-state"><p>{status === 'open' ? 'Nothing needs attention right now.' : 'Nothing resolved yet.'}</p></div>}
-        {!loading && items.length > 0 && (
+        {!loading && !error && items.length === 0 && <div className="empty-state"><p>{status === 'open' ? 'Nothing needs attention right now.' : 'Nothing resolved yet.'}</p></div>}
+        {!loading && !error && items.length > 0 && (
           <table>
             <thead><tr><th>Type</th><th>Details</th><th>When</th><th>Assigned to</th><th></th></tr></thead>
             <tbody>
@@ -173,7 +170,7 @@ function ExceptionsInner() {
             </tbody>
           </table>
         )}
-        {!loading && items.length < total && (
+        {!loading && !error && items.length < total && (
           <div className="row" style={{ justifyContent: 'center', alignItems: 'center', marginTop: 14 }}>
             <span className="muted" style={{ fontSize: 13 }}>Showing {items.length} of {total}</span>
             <button type="button" disabled={loadingMore} onClick={showMore}>{loadingMore ? 'Loading...' : 'Show more'}</button>

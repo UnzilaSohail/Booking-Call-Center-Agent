@@ -1,11 +1,13 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Contact, Crown, Download, Mail, Upload, UserPlus, Users } from 'lucide-react';
 import RequireAuth from '../../components/RequireAuth';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/Toast';
 import Loading from '../../components/Skeleton';
+import LoadError from '../../components/LoadError';
+import { useApi } from '../../lib/useApi';
 import EmptyState from '../../components/EmptyState';
 import Avatar from '../../components/Avatar';
 import CountUp from '../../components/CountUp';
@@ -22,33 +24,25 @@ function downloadText(filename, text) {
 
 function CustomersInner() {
   const toast = useToast();
-  const [customers, setCustomers] = useState([]);
-  const [q, setQ] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [q, setQ] = useState('');        // what is typed
+  const [query, setQuery] = useState('');  // what was searched
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef(null);
   const [shown, setShown] = useState(50);
-  const [total, setTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
-
-  const load = useCallback((query) => {
-    setLoading(true);
-    api.listCustomers(query)
-      .then((r) => { setCustomers(r.items); setTotal(r.total); setShown(50); })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { load(''); }, [load]);
+  const { data, error, loading, reload, setData } = useApi(() => api.listCustomers(query), [query]);
+  const customers = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const firstId = customers[0]?.id;
+  useEffect(() => { setShown(50); }, [firstId, query]);   // a fresh search starts at the top again
 
   // 100 more rows; when everything fetched so far is on screen, fetch the next 500 from the server
   async function showMore() {
     if (shown < customers.length) { setShown(shown + 100); return; }
     setLoadingMore(true);
     try {
-      const next = await api.listCustomers(q, customers.length);
-      setCustomers((prev) => [...prev, ...next.items]);
+      const next = await api.listCustomers(query, customers.length);
+      setData((prev) => ({ ...prev, items: [...prev.items, ...next.items] }));
       setShown(shown + 100);
     } catch (err) {
       toast.error(err.message);
@@ -59,7 +53,7 @@ function CustomersInner() {
 
   function search(e) {
     e.preventDefault();
-    load(q);
+    if (q === query) reload(); else setQuery(q);
   }
 
   async function exportCsv() {
@@ -79,7 +73,7 @@ function CustomersInner() {
       const text = await file.text();
       const { imported, updated } = await api.importCustomersCsv(text);
       toast.success(`Imported ${imported}, updated ${updated}`);
-      load(q);
+      reload();
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -104,7 +98,7 @@ function CustomersInner() {
         </div>
       </div>
 
-      {!loading && !error && customers.length > 0 && !q && (
+      {!loading && !error && customers.length > 0 && !query && (
         <div className="stat-cards">
           {[
             [Users, 'var(--accent-soft)', 'var(--accent)', 'Customers', total],
@@ -128,7 +122,7 @@ function CustomersInner() {
 
       <div className="card">
         {loading && <Loading />}
-        {error && <p className="error-text">{error}</p>}
+        <LoadError error={error} onRetry={reload} />
         {!loading && !error && customers.length === 0 && (
           <EmptyState icon={Contact} action={{ label: 'Import a customer list (CSV)', onClick: () => fileInputRef.current?.click() }}>
             No customers yet. They appear automatically when someone books or calls, or you can import a list you already have.
