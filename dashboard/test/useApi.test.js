@@ -67,3 +67,25 @@ test('reload keeps the data on screen while it refetches, and setData lets a pag
   await act(async () => { seen.setData(99); });
   assert.equal(seen.data, 99);
 });
+
+test('a slow answer to an older request never replaces the newer one (fast tab switch or typing)', async () => {
+  const resolvers = {};
+  const fetcher = (q) => () => new Promise((r) => { resolvers[q] = r; });
+  await mount({ fetcher: fetcher('open'), deps: ['open'] });
+  await mount({ fetcher: fetcher('resolved'), deps: ['resolved'] });
+  await act(async () => { resolvers.resolved('RESOLVED'); });
+  await act(async () => { resolvers.open('OPEN (late)'); });
+  assert.equal(text(), 'data:"RESOLVED"');
+  assert.equal(seen.loading, false);
+});
+
+test('an old request that fails late does not put an error on screen over the newer data', async () => {
+  const settle = {};
+  const fetcher = (q) => () => new Promise((resolve, reject) => { settle[q] = { resolve, reject }; });
+  await mount({ fetcher: fetcher('a'), deps: ['a'] });
+  await mount({ fetcher: fetcher('b'), deps: ['b'] });
+  await act(async () => { settle.b.resolve('B'); });
+  await act(async () => { settle.a.reject(new Error('timeout')); });
+  assert.equal(text(), 'data:"B"');
+  assert.equal(seen.error, null);
+});
