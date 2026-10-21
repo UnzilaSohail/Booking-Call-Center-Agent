@@ -5,6 +5,7 @@ import { MapPin, Navigation, Search } from 'lucide-react';
 import { publicApi } from '../../lib/api';
 import { gradientFor, initials } from '../../lib/brand';
 import Loading from '../../components/Skeleton';
+import { useApi } from '../../lib/useApi';
 import PublicNav from '../../components/PublicNav';
 import Turnstile, { turnstileOn } from '../../components/Turnstile';
 
@@ -20,9 +21,8 @@ export default function FindPage() {
   const [city, setCity] = useState('');
   const [categories, setCategories] = useState([]);
   const [cities, setCities] = useState([]);
-  const [data, setData] = useState(null);
   const [page, setPage] = useState(1);
-  const [error, setError] = useState(null);
+  const [locError, setError] = useState(null);   // location problems; a failed search is `loadError` below
   // Jira 16x "near me" — the coords themselves, plus state for the button's own label
   // (not just a boolean) so the person gets real feedback ("locating...", or why it failed)
   // instead of a button that silently does nothing.
@@ -35,17 +35,22 @@ export default function FindPage() {
     publicApi.cities().then(setCities).catch(() => {});
   }, []);
 
+  // what is searched follows what is typed after a short pause, so each keystroke is not a request
+  const [asked, setAsked] = useState({ q: '', category: '', city: '', page: 1, near: null });
   useEffect(() => {
-    const t = setTimeout(() => {
-      const params = { page };
-      if (q.trim()) params.q = q.trim();
-      if (category) params.category = category;
-      if (city) params.city = city;
-      if (near) { params.lat = near.lat; params.lng = near.lng; }
-      publicApi.directory(params).then((d) => { setData(d); setError(null); }).catch((e) => setError(e.message));
-    }, 250);
+    const t = setTimeout(() => setAsked({ q, category, city, page, near }), 250);
     return () => clearTimeout(t);
   }, [q, category, city, page, near]);
+  const { data, error: loadError } = useApi(() => {
+    const params = { page: asked.page };
+    if (asked.q.trim()) params.q = asked.q.trim();
+    if (asked.category) params.category = asked.category;
+    if (asked.city) params.city = asked.city;
+    if (asked.near) { params.lat = asked.near.lat; params.lng = asked.near.lng; }
+    return publicApi.directory(params);
+  }, [asked]);
+  const error = locError || loadError;
+  const shown = loadError ? null : data;   // after a failed search the old results would sit under the new filter
 
   const reset = (fn) => (v) => { fn(v); setPage(1); };
 
@@ -53,7 +58,7 @@ export default function FindPage() {
     if (!navigator.geolocation) { setError('Your browser does not support location search.'); return; }
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => { setNear({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setLocating(false); setPage(1); },
+      (pos) => { setNear({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setLocating(false); setPage(1); setError(null); },
       () => { setError("Couldn't get your location — check your browser's location permission."); setLocating(false); },
       { timeout: 10_000 }
     );
@@ -100,22 +105,22 @@ export default function FindPage() {
         </section>
 
         {error && <p className="error-text" role="alert">{error}</p>}
-        {!data && !error && (
+        {!shown && !error && (
           <div className="stack" style={{ gap: 14 }}>{[0, 1, 2].map((i) => <div key={i} className="card" style={{ padding: 22 }}><Loading lines={3} /></div>)}</div>
         )}
-        {data && data.results.length > 0 && (
-          <p className="muted" style={{ margin: '0 0 12px' }} aria-live="polite">{data.total} business{data.total === 1 ? '' : 'es'} found{near ? ', nearest first' : ''}</p>
+        {shown && shown.results.length > 0 && (
+          <p className="muted" style={{ margin: '0 0 12px' }} aria-live="polite">{shown.total} business{shown.total === 1 ? '' : 'es'} found{near ? ', nearest first' : ''}</p>
         )}
-        {data?.results.length === 0 && (
+        {shown?.results.length === 0 && (
           <div className="card" style={{ padding: 22 }}>
             <p style={{ margin: '0 0 10px' }}>{q || category || city || near ? 'No businesses match. Try a different word, or clear the filters.' : 'No businesses are listed here yet. Tell us what you need and we will help you find one.'}</p>
             {(q || category || city || near) && <button type="button" onClick={() => { setQ(''); setCategory(''); setCity(''); setNear(null); setPage(1); }}>Clear filters</button>}
           </div>
         )}
-        {data?.results.length === 0 && <LeadForm defaultCity={city} />}
+        {shown?.results.length === 0 && <LeadForm defaultCity={city} />}
 
         <div className="stack stagger" style={{ gap: 14 }}>
-          {data?.results.map((b) => (
+          {shown?.results.map((b) => (
             <article key={b.slug} className="card lift biz-card">
               <div className="avatar-lg" style={{ background: gradientFor(b.name) }} aria-hidden="true">{initials(b.name)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -140,14 +145,14 @@ export default function FindPage() {
           ))}
         </div>
 
-        {data && data.total > data.pageSize && (
+        {shown && shown.total > shown.pageSize && (
           <div className="row" style={{ marginTop: 18, alignItems: 'center' }}>
             <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
-            <span className="muted">Page {page} of {Math.ceil(data.total / data.pageSize)}</span>
-            <button type="button" disabled={page * data.pageSize >= data.total} onClick={() => setPage(page + 1)}>Next</button>
+            <span className="muted">Page {page} of {Math.ceil(shown.total / shown.pageSize)}</span>
+            <button type="button" disabled={page * shown.pageSize >= shown.total} onClick={() => setPage(page + 1)}>Next</button>
           </div>
         )}
-        {data?.results.length > 0 && (
+        {shown?.results.length > 0 && (
           <p className="muted" style={{ fontSize: 13.5, marginTop: 22 }}>
             Not finding the right fit?{' '}
             <button type="button" onClick={() => setLeadOpen((v) => !v)} style={{ padding: 0, border: 'none', background: 'none', color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', boxShadow: 'none' }}>
@@ -155,7 +160,7 @@ export default function FindPage() {
             </button>
           </p>
         )}
-        {data?.results.length > 0 && leadOpen && <LeadForm defaultCity={city} />}
+        {shown?.results.length > 0 && leadOpen && <LeadForm defaultCity={city} />}
 
         <p className="muted" style={{ fontSize: 13, marginTop: 28 }}>Are you a business? <Link href="/signup">Sign up</Link> or <Link href="/login">log in</Link>.</p>
       </main>
